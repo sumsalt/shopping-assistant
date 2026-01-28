@@ -1,0 +1,30 @@
+{
+  "name": "shopping-assistant",
+  "version": "1.0.0",
+  "description": "购物助手 - 支持库存查询和到货提醒",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "ts-node src/index.ts",
+    "test": "vitest",
+    "test:run": "vitest run"
+  },
+  "keywords": [
+    "shopping",
+    "stock",
+    "yishou"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@types/spark-md5": "^3.0.5",
+    "ts-node": "^10.9.0",
+    "typescript": "^5.3.0",
+    "vitest": "^1.0.0"
+  },
+  "dependencies": {
+    "spark-md5": "^3.0.2"
+  }
+}

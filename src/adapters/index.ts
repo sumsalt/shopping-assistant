@@ -1,0 +1,55 @@
+/**
+ * 平台适配器 - 注册与导出
+ */
+
+import { Platform, StockCheckError, StockCheckErrorType } from '../types';
+import { PlatformAdapter, AdapterConfig } from './types';
+import { YishouAdapter } from './yishou';
+
+// 适配器注册表
+const adapterRegistry = new Map<Platform, new (config: AdapterConfig) => PlatformAdapter>();
+
+/**
+ * 注册适配器
+ */
+export const registerAdapter = (
+  platform: Platform,
+  AdapterClass: new (config: AdapterConfig) => PlatformAdapter
+): void => {
+  adapterRegistry.set(platform, AdapterClass);
+};
+
+/**
+ * 获取适配器实例
+ * @param platform 平台类型
+ * @param config 适配器配置
+ * @returns 平台适配器实例
+ * @throws StockCheckError 如果平台不支持
+ */
+export const getAdapter = (platform: Platform, config: AdapterConfig = {}): PlatformAdapter => {
+  const AdapterClass = adapterRegistry.get(platform);
+  
+  if (!AdapterClass) {
+    throw new StockCheckError(
+      StockCheckErrorType.PLATFORM_NOT_SUPPORTED,
+      `平台 "${platform}" 暂不支持，当前支持的平台：${getSupportedPlatforms().join(', ')}`
+    );
+  }
+  
+  return new AdapterClass(config);
+};
+
+/**
+ * 获取支持的平台列表
+ */
+export const getSupportedPlatforms = (): Platform[] => {
+  return Array.from(adapterRegistry.keys());
+};
+
+// 注册一手平台适配器
+registerAdapter('yishou', YishouAdapter);
+
+// 导出类型和适配器
+export * from './types';
+export { BaseAdapter } from './base-adapter';
+export { YishouAdapter } from './yishou';
