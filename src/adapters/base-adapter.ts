@@ -2,8 +2,8 @@
  * 平台适配器 - 基础抽象类
  */
 
-import { Platform, StockCheckResult, CollectionStockCheckResult, ProductSkuResult } from '../types';
-import { PlatformAdapter, AdapterConfig } from './types';
+import type { Platform, StockCheckResult, CollectionStockCheckResult, ProductSkuResult } from '../types';
+import type { PlatformAdapter, AdapterConfig } from './types';
 
 /**
  * 基础适配器抽象类

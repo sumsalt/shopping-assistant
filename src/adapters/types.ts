@@ -2,7 +2,7 @@
  * 平台适配器 - 类型定义
  */
 
-import { Platform, StockCheckResult, CollectionStockCheckResult, ProductSkuResult } from '../types';
+import type { Platform, StockCheckResult, CollectionStockCheckResult, ProductSkuResult } from '../types';
 
 /**
  * 平台适配器接口

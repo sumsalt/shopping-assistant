@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { isInStock, getStockMessage, mapToStockResult, isCollectionItemInStock, getCollectionItemMessage, mapCollectionItemToResult, mapCartDetailToSkuResult } from './index';
-import { YishouGoodsData, YishouCollectionGoodsData, YishouCartDetailData } from '../../types';
+import type { YishouGoodsData, YishouCollectionGoodsData, YishouCartDetailData } from '../../types';
 
 // 创建测试用的商品数据工厂函数
 const createMockGoodsData = (overrides: Partial<YishouGoodsData> = {}): YishouGoodsData => ({

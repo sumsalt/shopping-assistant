@@ -2,8 +2,10 @@
  * 库存查询 - 主函数
  */
 
-import { StockCheckRequest, StockCheckResult, CollectionStockCheckResult, ProductSkuResult, StockCheckError, StockCheckErrorType, Platform } from './types';
-import { getAdapter, AdapterConfig } from './adapters';
+import { StockCheckError, StockCheckErrorType } from './types';
+import type { StockCheckRequest, StockCheckResult, CollectionStockCheckResult, ProductSkuResult, Platform } from './types';
+import { getAdapter } from './adapters';
+import type { AdapterConfig } from './adapters';
 
 /**
  * 库存查询配置

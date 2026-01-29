@@ -10,14 +10,14 @@ export {
   getAdapter, 
   getSupportedPlatforms, 
   registerAdapter,
-  PlatformAdapter,
-  AdapterConfig,
   BaseAdapter,
   YishouAdapter,
 } from './adapters';
+export type { PlatformAdapter, AdapterConfig } from './adapters';
 
 // 导出工具函数
 export { httpRequest, httpPost } from './utils/http';
 
 // 导出库存查询主函数
-export { checkStock, checkCollectionStock, getProductSkus, CheckStockOptions, CollectionStockRequest, ProductSkuRequest } from './stock-check';
+export { checkStock, checkCollectionStock, getProductSkus } from './stock-check';
+export type { CheckStockOptions, CollectionStockRequest, ProductSkuRequest } from './stock-check';

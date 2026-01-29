@@ -2,8 +2,9 @@
  * 平台适配器 - 注册与导出
  */
 
-import { Platform, StockCheckError, StockCheckErrorType } from '../types';
-import { PlatformAdapter, AdapterConfig } from './types';
+import { StockCheckError, StockCheckErrorType } from '../types';
+import type { Platform } from '../types';
+import type { PlatformAdapter, AdapterConfig } from './types';
 import { YishouAdapter } from './yishou';
 
 // 适配器注册表

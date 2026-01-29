@@ -9,10 +9,14 @@ import { StockCheckError, StockCheckErrorType } from './types';
 // Mock 适配器模块
 vi.mock('./adapters', () => {
   const mockCheckStock = vi.fn();
+  const mockCheckCollectionStock = vi.fn();
+  const mockGetProductSkus = vi.fn();
   return {
     getAdapter: vi.fn(() => ({
       platform: 'yishou',
       checkStock: mockCheckStock,
+      checkCollectionStock: mockCheckCollectionStock,
+      getProductSkus: mockGetProductSkus,
     })),
     getSupportedPlatforms: vi.fn(() => ['yishou']),
   };
@@ -50,6 +54,8 @@ describe('checkStock - 库存查询主函数', () => {
         productImage: 'https://example.com/image.jpg',
         message: '商品有货，可以购买',
       }),
+      checkCollectionStock: vi.fn(),
+      getProductSkus: vi.fn(),
     };
     
     vi.mocked(getAdapter).mockReturnValue(mockAdapter);
@@ -80,6 +86,8 @@ describe('checkStock - 库存查询主函数', () => {
         productImage: 'https://example.com/image.jpg',
         message: '商品有货，可以购买',
       }),
+      checkCollectionStock: vi.fn(),
+      getProductSkus: vi.fn(),
     };
     
     vi.mocked(getAdapter).mockReturnValue(mockAdapter);

@@ -2,9 +2,10 @@
  * 一手平台适配器
  */
 
-import { Platform, StockCheckResult, YishouGoodsData, YishouGoodsResponse, StockCheckError, StockCheckErrorType, YishouCollectionGoodsData, YishouCollectionResponse, CollectionStockResult, CollectionStockCheckResult, YishouCartDetailResponse, YishouCartDetailData, YishouColorAttribute, ProductSkuResult, SkuInfo } from '../../types';
+import { StockCheckError, StockCheckErrorType } from '../../types';
+import type { Platform, StockCheckResult, YishouGoodsData, YishouGoodsResponse, YishouCollectionGoodsData, YishouCollectionResponse, CollectionStockResult, CollectionStockCheckResult, YishouCartDetailResponse, YishouCartDetailData, YishouColorAttribute, ProductSkuResult, SkuInfo } from '../../types';
 import { BaseAdapter } from '../base-adapter';
-import { AdapterConfig } from '../types';
+import type { AdapterConfig } from '../types';
 import { httpPost } from '../../utils/http';
 import { generateYishouSign } from '../../utils/crypto';
 
