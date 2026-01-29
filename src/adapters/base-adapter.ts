@@ -2,7 +2,7 @@
  * 平台适配器 - 基础抽象类
  */
 
-import { Platform, StockCheckResult, CollectionStockCheckResult } from '../types';
+import { Platform, StockCheckResult, CollectionStockCheckResult, ProductSkuResult } from '../types';
 import { PlatformAdapter, AdapterConfig } from './types';
 
 /**
@@ -34,4 +34,9 @@ export abstract class BaseAdapter implements PlatformAdapter {
    * 查询收藏夹内商品的库存状态（抽象方法，子类必须实现）
    */
   abstract checkCollectionStock(page?: number, pageSize?: number): Promise<CollectionStockCheckResult>;
+
+  /**
+   * 获取商品的所有 SKU 信息（抽象方法，子类必须实现）
+   */
+  abstract getProductSkus(productNo: string): Promise<ProductSkuResult>;
 }

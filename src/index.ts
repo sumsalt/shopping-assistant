@@ -20,4 +20,4 @@ export {
 export { httpRequest, httpPost } from './utils/http';
 
 // 导出库存查询主函数
-export { checkStock, checkCollectionStock, CheckStockOptions, CollectionStockRequest } from './stock-check';
+export { checkStock, checkCollectionStock, getProductSkus, CheckStockOptions, CollectionStockRequest, ProductSkuRequest } from './stock-check';

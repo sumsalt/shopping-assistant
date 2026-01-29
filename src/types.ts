@@ -189,6 +189,148 @@ export interface CollectionStockCheckResult {
   outOfStockCount: number;
 }
 
+// ==================== SKU 相关类型 ====================
+
+/**
+ * 一手 SKU 项数据（单个尺码）
+ */
+export interface YishouSkuItem {
+  /** 尺码名称 */
+  size: string;
+  /** SKU ID */
+  sku: string;
+  /** 库存数量 */
+  stock: string;
+  /** 可售库存 */
+  sale_stock: string;
+  /** 排序 */
+  sort: string;
+  /** SKU 标签 */
+  sku_tag: string;
+  /** 是否显示库存 */
+  is_show_stock: string;
+  /** 是否现货 */
+  is_stock_now: string;
+}
+
+/**
+ * 一手颜色属性数据（包含多个尺码）
+ */
+export interface YishouColorAttribute {
+  /** 颜色名称 */
+  color: string;
+  /** 颜色ID */
+  color_id: string;
+  /** 颜色卡图片 */
+  color_card: string;
+  /** 颜色缩略图 */
+  card_thumb: string;
+  /** 是否推荐 */
+  is_recommend: string;
+  /** 该颜色下的所有尺码 SKU */
+  item: YishouSkuItem[];
+}
+
+/**
+ * 一手商品详情 API 响应（cart_detail 接口）
+ */
+export interface YishouCartDetailResponse {
+  /** 响应码 */
+  code: string;
+  /** 响应消息 */
+  msg: string;
+  /** 商品详情数据 */
+  data: YishouCartDetailData;
+}
+
+/**
+ * 一手商品详情数据
+ */
+export interface YishouCartDetailData {
+  /** 商品ID */
+  goods_id: string;
+  /** 商品货号 */
+  goods_no: string;
+  /** 商品名称 */
+  goods_name: string;
+  /** 拿货价 */
+  shop_price: string;
+  /** 商品缩略图 */
+  goods_thumb: string;
+  /** 销量 */
+  sales: string;
+  /** 颜色（逗号分隔） */
+  color: string;
+  /** 尺码（逗号分隔） */
+  size: string;
+  /** 是否补货中 */
+  is_replenish: string;
+  /** 颜色尺码属性列表 */
+  attribute: YishouColorAttribute[];
+  /** 限购数量，-1表示不限购 */
+  restriction_number: number;
+  /** 限购提示文案 */
+  restriction_text: string;
+  /** 已购数量 */
+  buy_number: number;
+}
+
+/**
+ * 通用 SKU 信息（转换后）
+ */
+export interface SkuInfo {
+  /** SKU ID */
+  skuId: string;
+  /** 颜色 */
+  color: string;
+  /** 颜色ID */
+  colorId: string;
+  /** 尺码 */
+  size: string;
+  /** 库存数量 */
+  stock: number;
+  /** 可售库存 */
+  saleStock: number;
+  /** 是否有货 */
+  inStock: boolean;
+  /** 颜色缩略图 */
+  colorImage: string;
+}
+
+/**
+ * 商品 SKU 查询结果
+ */
+export interface ProductSkuResult {
+  /** 平台类型 */
+  platform: Platform;
+  /** 商品ID */
+  productId: string;
+  /** 商品名称 */
+  productName: string;
+  /** 商品货号 */
+  productNo: string;
+  /** 价格 */
+  price: number;
+  /** 商品主图 */
+  productImage: string;
+  /** 商品链接 */
+  productUrl: string;
+  /** 销量 */
+  sales: number;
+  /** 可用颜色列表 */
+  colors: string[];
+  /** 可用尺码列表 */
+  sizes: string[];
+  /** 所有 SKU 列表 */
+  skuList: SkuInfo[];
+  /** 有货 SKU 数量 */
+  inStockSkuCount: number;
+  /** 总 SKU 数量 */
+  totalSkuCount: number;
+  /** 限购数量，-1表示不限购 */
+  restrictionNumber: number;
+}
+
 // ==================== 错误类型 ====================
 
 /**

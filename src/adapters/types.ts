@@ -2,7 +2,7 @@
  * 平台适配器 - 类型定义
  */
 
-import { Platform, StockCheckResult, CollectionStockCheckResult } from '../types';
+import { Platform, StockCheckResult, CollectionStockCheckResult, ProductSkuResult } from '../types';
 
 /**
  * 平台适配器接口
@@ -27,6 +27,13 @@ export interface PlatformAdapter {
    * @returns 收藏夹库存查询结果
    */
   checkCollectionStock(page?: number, pageSize?: number): Promise<CollectionStockCheckResult>;
+
+  /**
+   * 获取商品的所有 SKU 信息
+   * @param productNo 商品货号
+   * @returns 商品 SKU 查询结果
+   */
+  getProductSkus(productNo: string): Promise<ProductSkuResult>;
 }
 
 /**

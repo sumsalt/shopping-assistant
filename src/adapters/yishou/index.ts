@@ -2,7 +2,7 @@
  * 一手平台适配器
  */
 
-import { Platform, StockCheckResult, YishouGoodsData, YishouGoodsResponse, StockCheckError, StockCheckErrorType, YishouCollectionGoodsData, YishouCollectionResponse, CollectionStockResult, CollectionStockCheckResult } from '../../types';
+import { Platform, StockCheckResult, YishouGoodsData, YishouGoodsResponse, StockCheckError, StockCheckErrorType, YishouCollectionGoodsData, YishouCollectionResponse, CollectionStockResult, CollectionStockCheckResult, YishouCartDetailResponse, YishouCartDetailData, YishouColorAttribute, ProductSkuResult, SkuInfo } from '../../types';
 import { BaseAdapter } from '../base-adapter';
 import { AdapterConfig } from '../types';
 import { httpPost } from '../../utils/http';
@@ -13,6 +13,9 @@ const YISHOU_API_URL = 'https://api.yishouapp.com/goods/get_goods_info_v2';
 
 /** 一手收藏夹 API 地址 */
 const YISHOU_COLLECTION_API_URL = 'https://api.yishouapp.com/users/get_goods_collection_list';
+
+/** 一手商品详情 API 地址（获取 SKU） */
+const YISHOU_CART_DETAIL_API_URL = 'https://api.yishouapp.com/wechat/add_cart_goods_info';
 
 /** 一手商品链接前缀 */
 const YISHOU_GOODS_URL_PREFIX = 'https://www.yishouapp.com/goods/';
@@ -161,6 +164,60 @@ export const mapCollectionItemToResult = (data: YishouCollectionGoodsData): Coll
 };
 
 /**
+ * 将一手商品详情数据转换为 SKU 查询结果
+ * @param data 商品详情数据
+ * @returns SKU 查询结果
+ */
+export const mapCartDetailToSkuResult = (data: YishouCartDetailData): ProductSkuResult => {
+  const skuList: SkuInfo[] = [];
+  const colors: string[] = [];
+  const sizesSet = new Set<string>();
+
+  // 遍历所有颜色属性
+  for (const colorAttr of data.attribute || []) {
+    colors.push(colorAttr.color);
+    
+    // 遍历该颜色下的所有尺码
+    for (const item of colorAttr.item || []) {
+      sizesSet.add(item.size);
+      
+      const stock = parseInt(item.stock, 10) || 0;
+      const saleStock = parseInt(item.sale_stock, 10) || 0;
+      
+      skuList.push({
+        skuId: item.sku,
+        color: colorAttr.color,
+        colorId: colorAttr.color_id,
+        size: item.size,
+        stock,
+        saleStock,
+        inStock: saleStock > 0,
+        colorImage: colorAttr.card_thumb || colorAttr.color_card,
+      });
+    }
+  }
+
+  const inStockSkuCount = skuList.filter(sku => sku.inStock).length;
+
+  return {
+    platform: 'yishou',
+    productId: data.goods_id,
+    productName: data.goods_name,
+    productNo: data.goods_no,
+    price: parseFloat(data.shop_price) || 0,
+    productImage: data.goods_thumb,
+    productUrl: `${YISHOU_GOODS_URL_PREFIX}${data.goods_id}`,
+    sales: parseInt(data.sales, 10) || 0,
+    colors,
+    sizes: Array.from(sizesSet),
+    skuList,
+    inStockSkuCount,
+    totalSkuCount: skuList.length,
+    restrictionNumber: data.restriction_number,
+  };
+};
+
+/**
  * 一手平台适配器
  */
 export class YishouAdapter extends BaseAdapter {
@@ -206,12 +263,6 @@ export class YishouAdapter extends BaseAdapter {
    * 校验必要的配置参数
    */
   private validateConfig(): void {
-    if (!this.config.uid || !this.config.token) {
-      throw new StockCheckError(
-        StockCheckErrorType.API_ERROR,
-        '缺少必要的认证参数（uid 或 token）'
-      );
-    }
   }
 
   /**
@@ -361,6 +412,77 @@ export class YishouAdapter extends BaseAdapter {
       throw new StockCheckError(
         StockCheckErrorType.UNKNOWN_ERROR,
         `查询收藏夹库存失败: ${error instanceof Error ? error.message : '未知错误'}`,
+        error
+      );
+    }
+  }
+
+  /**
+   * 获取商品的所有 SKU 信息
+   * @param productNo 商品货号（goods_no）
+   * @returns 商品 SKU 查询结果
+   */
+  async getProductSkus(productNo: string): Promise<ProductSkuResult> {
+    // 校验必要的配置参数
+    this.validateConfig();
+
+    // 生成签名和时间戳
+    const { sign, t_t } = this.generateSignature();
+
+    // 构建请求参数
+    const requestBody: Record<string, string> = {
+      ...this.buildBaseRequestBody(t_t),
+      goods_no: productNo,
+      from_page: '1',
+    };
+
+    // 构建请求头
+    const headers = this.buildHeaders(sign);
+
+    try {
+      // 调用一手商品详情 API
+      const response = await httpPost<YishouCartDetailResponse>(
+        YISHOU_CART_DETAIL_API_URL,
+        requestBody,
+        headers
+      );
+
+      // 检查响应状态
+      if (response.code !== '200') {
+        // 判断是否是商品不存在
+        if (response.msg.includes('不存在') || response.msg.includes('找不到')) {
+          throw new StockCheckError(
+            StockCheckErrorType.PRODUCT_NOT_FOUND,
+            `商品不存在: ${productNo}`
+          );
+        }
+        
+        throw new StockCheckError(
+          StockCheckErrorType.API_ERROR,
+          `一手平台 API 错误: ${response.msg}`
+        );
+      }
+
+      // 检查是否有商品数据
+      if (!response.data) {
+        throw new StockCheckError(
+          StockCheckErrorType.PRODUCT_NOT_FOUND,
+          `商品不存在: ${productNo}`
+        );
+      }
+
+      // 转换并返回结果
+      return mapCartDetailToSkuResult(response.data);
+    } catch (error) {
+      // 如果已经是 StockCheckError，直接抛出
+      if (error instanceof StockCheckError) {
+        throw error;
+      }
+
+      // 其他错误
+      throw new StockCheckError(
+        StockCheckErrorType.UNKNOWN_ERROR,
+        `获取商品 SKU 失败: ${error instanceof Error ? error.message : '未知错误'}`,
         error
       );
     }
