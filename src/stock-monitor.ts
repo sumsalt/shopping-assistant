@@ -38,6 +38,8 @@ export interface MonitorTask {
   recipient: string;
   /** 邮件主题（可选） */
   subject?: string;
+  /** 商品图片 URL（可选） */
+  productImage?: string;
 }
 
 /**
@@ -212,7 +214,7 @@ export const monitorStock = async (
           const emailResult = await sendEmail({
             to: task.recipient,
             subject: task.subject || `🎉 ${result.productName} 已到货`,
-            html: createBackInStockTemplate(result.productName, result.price),
+            html: createBackInStockTemplate(result.productName, result.price, task.productImage),
           });
 
           status.emailSent = emailResult.success;
@@ -405,7 +407,7 @@ export const createCancellableMonitor = (
             const emailResult = await sendEmail({
               to: task.recipient,
               subject: task.subject || `🎉 ${result.productName} 已到货`,
-              html: createBackInStockTemplate(result.productName, result.price),
+              html: createBackInStockTemplate(result.productName, result.price, task.productImage),
             });
 
             status.emailSent = emailResult.success;

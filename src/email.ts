@@ -234,11 +234,13 @@ export async function verifyEmailConfig(): Promise<boolean> {
  * 创建邮件模板 - 到货提醒
  * @param productName 商品名称
  * @param price 价格
+ * @param productImage 商品图片 URL（可选）
  * @returns HTML 邮件内容
  */
 export function createBackInStockTemplate(
   productName: string,
-  price: number
+  price: number,
+  productImage?: string
 ): string {
   return `
     <!DOCTYPE html>
@@ -281,6 +283,14 @@ export function createBackInStockTemplate(
           color: #333;
           margin: 15px 0;
         }
+        .product-image {
+          width: 100%;
+          max-width: 300px;
+          height: auto;
+          border-radius: 8px;
+          margin: 15px 0;
+          object-fit: cover;
+        }
         .price {
           font-size: 24px;
           color: #e53935;
@@ -303,6 +313,7 @@ export function createBackInStockTemplate(
         <div class="content">
           <p>您好！</p>
           <p>您关注的商品已到货，快去看看吧！</p>
+          ${productImage ? `<img src="${productImage}" alt="${productName}" class="product-image" />` : ''}
           <div class="product-name">${productName}</div>
           <div class="price">¥${price.toFixed(2)}</div>
         </div>

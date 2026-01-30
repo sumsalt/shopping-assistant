@@ -63,6 +63,7 @@ export default defineEventHandler(async (event) => {
       },
       recipient: currentUser.email,
       subject: `🔔 ${product.productName} 已到货`,
+      productImage: product.productImage,
     }))
 
     // 构建监控配置
