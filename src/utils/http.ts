@@ -2,9 +2,8 @@
  * HTTP 请求工具
  */
 
+import axios, { type AxiosRequestConfig, type AxiosResponse } from 'axios';
 import { StockCheckError, StockCheckErrorType } from '../types';
-import { HttpsProxyAgent } from 'https-proxy-agent';
-import fetch, { type RequestInit } from 'node-fetch';
 
 /**
  * HTTP 请求选项
@@ -15,7 +14,7 @@ export interface HttpRequestOptions {
   /** 请求头 */
   headers?: Record<string, string>;
   /** 请求体（用于 POST 请求） */
-  body?: Record<string, string>;
+  body?: Record<string, string> | string;
   /** 超时时间（毫秒） */
   timeout?: number;
   /** 代理 URL（可选） */
@@ -23,12 +22,19 @@ export interface HttpRequestOptions {
 }
 
 /**
- * 将对象编码为 x-www-form-urlencoded 格式
+ * 创建 Axios 代理配置
  */
-const encodeFormData = (data: Record<string, string>): string => {
-  return Object.entries(data)
-    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
-    .join('&');
+const createProxyConfig = (proxyUrl: string) => {
+  const url = new URL(proxyUrl);
+  return {
+    protocol: url.protocol,
+    host: url.hostname,
+    port: parseInt(url.port || (url.protocol === 'https:' ? '443' : '80')),
+    auth: url.username ? {
+      username: decodeURIComponent(url.username),
+      password: decodeURIComponent(url.password || ''),
+    } : undefined,
+  };
 };
 
 /**
@@ -49,67 +55,82 @@ export const httpRequest = async <T>(
     proxyUrl,
   } = options;
 
-  // 创建 AbortController 用于超时控制
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeout);
+  const axiosConfig: AxiosRequestConfig = {
+    url,
+    method,
+    timeout,
+    headers,
+    proxy: proxyUrl ? createProxyConfig(proxyUrl) : false,
+  };
 
-  try {
-    const fetchOptions: RequestInit = {
-      method,
-      headers: {
+  // 处理请求体
+  if (method === 'POST' && body) {
+    if (typeof body === 'string') {
+      axiosConfig.data = body;
+    } else {
+      axiosConfig.data = new URLSearchParams(body).toString();
+      axiosConfig.headers = {
         ...headers,
-      },
-      signal: controller.signal,
-    };
-
-    // 如果配置了代理，添加代理 agent
-    if (proxyUrl) {
-      fetchOptions.agent = new HttpsProxyAgent(proxyUrl);
-    }
-
-    // 处理 POST 请求体
-    if (method === 'POST' && body) {
-      fetchOptions.headers = {
-        ...fetchOptions.headers,
         'Content-Type': 'application/x-www-form-urlencoded',
       };
-      fetchOptions.body = encodeFormData(body);
     }
+  }
 
-    const response = await fetch(url, fetchOptions);
-
-    if (!response.ok) {
-      throw new StockCheckError(
-        StockCheckErrorType.API_ERROR,
-        `HTTP 请求失败: ${response.status} ${response.statusText}`
-      );
-    }
-
-    const data = await response.json();
-    return data as T;
+  try {
+    const response: AxiosResponse<T> = await axios(axiosConfig);
+    return response.data;
   } catch (error) {
-    // 处理超时错误
-    if (error instanceof Error && error.name === 'AbortError') {
+    if (axios.isAxiosError(error)) {
+      const errorMessage = error.message;
+      const code = error.code;
+
+      // 代理相关错误
+      if (proxyUrl && (
+        code === 'ECONNREFUSED' ||
+        code === 'ETIMEDOUT' ||
+        code === 'ENOTFOUND' ||
+        code === 'ECONNRESET' ||
+        errorMessage.includes('ENOTFOUND')
+      )) {
+        throw new StockCheckError(
+          StockCheckErrorType.NETWORK_ERROR,
+          `代理连接失败: ${errorMessage}。请检查代理地址是否正确或代理服务器是否正常运行`,
+          error
+        );
+      }
+
+      // 网络错误
+      if (code === 'ETIMEDOUT' || errorMessage.includes('timeout')) {
+        throw new StockCheckError(
+          StockCheckErrorType.NETWORK_ERROR,
+          `请求超时（${timeout}ms）`,
+          error
+        );
+      }
+
+      // HTTP 错误响应
+      if (error.response) {
+        throw new StockCheckError(
+          StockCheckErrorType.API_ERROR,
+          `HTTP 请求失败: ${error.response.status} ${error.response.statusText}`,
+          error
+        );
+      }
+
+      // 其他错误
       throw new StockCheckError(
         StockCheckErrorType.NETWORK_ERROR,
-        `请求超时（${timeout}ms）`,
+        `网络请求失败: ${errorMessage}`,
         error
       );
     }
 
-    // 如果已经是 StockCheckError，直接抛出
-    if (error instanceof StockCheckError) {
-      throw error;
-    }
-
-    // 其他网络错误
+    // 非 Axios 错误
     throw new StockCheckError(
       StockCheckErrorType.NETWORK_ERROR,
       `网络请求失败: ${error instanceof Error ? error.message : '未知错误'}`,
       error
     );
-  } finally {
-    clearTimeout(timeoutId);
   }
 };
 
