@@ -99,8 +99,9 @@ export const useMonitor = () => {
         interval: config?.interval || 1,
         duration: config?.duration || 3600,
         adapterConfig: {
-          uid: userConfig.uid || '',
-          token: userConfig.token || '',
+          // 暂时不使用登录态
+          // uid: userConfig.uid || '',
+          // token: userConfig.token || '',
           openid: userConfig.openid || '',
           model: userConfig.model || '',
           version: userConfig.version || '',
