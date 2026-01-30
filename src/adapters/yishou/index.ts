@@ -304,7 +304,8 @@ export class YishouAdapter extends BaseAdapter {
       const response = await httpPost<YishouGoodsResponse>(
         YISHOU_API_URL,
         requestBody,
-        headers
+        headers,
+        { proxyUrl: this.config.proxyUrl }
       );
 
       // 检查响应状态
@@ -377,7 +378,9 @@ export class YishouAdapter extends BaseAdapter {
       const response = await httpPost<YishouCollectionResponse>(
         YISHOU_COLLECTION_API_URL,
         requestBody,
-        headers
+        headers,
+        // 这个接口不走代理
+        // { proxyUrl: this.config.proxyUrl }
       );
 
       // 检查是否有商品数据
@@ -439,7 +442,8 @@ export class YishouAdapter extends BaseAdapter {
       const response = await httpPost<YishouCartDetailResponse>(
         YISHOU_CART_DETAIL_API_URL,
         requestBody,
-        headers
+        headers,
+        { proxyUrl: this.config.proxyUrl }
       );
 
       // 检查响应状态

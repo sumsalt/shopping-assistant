@@ -3,6 +3,8 @@
  */
 
 import { StockCheckError, StockCheckErrorType } from '../types';
+import { HttpsProxyAgent } from 'https-proxy-agent';
+import fetch, { type RequestInit } from 'node-fetch';
 
 /**
  * HTTP 请求选项
@@ -16,6 +18,8 @@ export interface HttpRequestOptions {
   body?: Record<string, string>;
   /** 超时时间（毫秒） */
   timeout?: number;
+  /** 代理 URL（可选） */
+  proxyUrl?: string;
 }
 
 /**
@@ -42,6 +46,7 @@ export const httpRequest = async <T>(
     headers = {},
     body,
     timeout = 10000,
+    proxyUrl,
   } = options;
 
   // 创建 AbortController 用于超时控制
@@ -56,6 +61,11 @@ export const httpRequest = async <T>(
       },
       signal: controller.signal,
     };
+
+    // 如果配置了代理，添加代理 agent
+    if (proxyUrl) {
+      fetchOptions.agent = new HttpsProxyAgent(proxyUrl);
+    }
 
     // 处理 POST 请求体
     if (method === 'POST' && body) {
@@ -108,16 +118,19 @@ export const httpRequest = async <T>(
  * @param url 请求 URL
  * @param body 请求体
  * @param headers 请求头
+ * @param options 请求选项（包含代理等）
  * @returns 响应数据
  */
 export const httpPost = async <T>(
   url: string,
   body: Record<string, string>,
-  headers?: Record<string, string>
+  headers?: Record<string, string>,
+  options?: Partial<Omit<HttpRequestOptions, 'method' | 'body' | 'headers'>>
 ): Promise<T> => {
   return httpRequest<T>(url, {
     method: 'POST',
     body,
     headers,
+    ...options,
   });
 };

@@ -11,6 +11,7 @@ export interface UserConfig {
   version: string
   version_name: string
   wx_version_name?: string
+  proxyUrl?: string
 }
 
 // API 响应基础类型

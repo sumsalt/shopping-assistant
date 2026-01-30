@@ -106,6 +106,21 @@
             </div>
           </div>
 
+          <!-- 分隔线 -->
+          <hr class="border-gray-200" />
+
+          <!-- 代理设置区域 -->
+          <div>
+            <h3 class="text-lg font-medium text-gray-900 mb-4">代理设置（可选）</h3>
+
+            <UiInput
+              v-model="formData.proxyUrl"
+              label="代理 URL"
+              placeholder="如：http://proxy.example.com:8080"
+              help-text="如果需要通过代理访问，请填写代理地址"
+            />
+          </div>
+
           <!-- 操作按钮 -->
           <div class="flex items-center justify-between pt-4">
             <UiButton

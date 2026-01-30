@@ -60,4 +60,6 @@ export interface AdapterConfig {
   wx_version_name?: string;
   /** 平台类型（默认: wx） */
   plat_type?: string;
+  /** 代理 URL（可选） */
+  proxyUrl?: string;
 }

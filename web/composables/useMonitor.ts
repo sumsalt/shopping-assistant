@@ -107,6 +107,7 @@ export const useMonitor = () => {
           version: userConfig.version || '',
           version_name: userConfig.version_name || '',
           wx_version_name: userConfig.wx_version_name || '',
+          proxyUrl: userConfig.proxyUrl,
         },
       }
 

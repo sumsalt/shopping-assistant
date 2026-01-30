@@ -37,6 +37,7 @@ export default defineEventHandler(async (event) => {
       version: (query.version as string) || '5.11.0',
       version_name: (query.version_name as string) || '5.11.0',
       wx_version_name: (query.wx_version_name as string) || '8.0.43',
+      proxyUrl: query.proxyUrl as string | undefined,
     }
 
     // 调用核心库获取 SKU

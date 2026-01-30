@@ -70,7 +70,10 @@ export default defineEventHandler(async (event) => {
     const config: StockMonitorConfig = {
       interval: body.config?.interval || 60,
       duration: body.config?.duration || 3600,
-      adapterConfig: body.config?.adapterConfig || {},
+      adapterConfig: {
+        ...body.config?.adapterConfig,
+        proxyUrl: body.config?.proxyUrl,
+      },
     }
 
     // 生成任务 ID

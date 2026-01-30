@@ -13,6 +13,7 @@ const DEFAULT_CONFIG: UserConfig = {
   version: '5.11.0',
   version_name: '5.11.0',
   wx_version_name: '8.0.43',
+  proxyUrl: '',
 }
 
 // 必填字段（uid、token、openid 改为非必须）

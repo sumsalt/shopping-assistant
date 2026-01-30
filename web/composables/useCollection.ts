@@ -97,6 +97,7 @@ export const useCollection = () => {
         version: config.version || '',
         version_name: config.version_name || '',
         wx_version_name: config.wx_version_name || '',
+        proxyUrl: config.proxyUrl || '',
       })
 
       const response = await $fetch<ApiResponse<CollectionResult>>(

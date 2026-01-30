@@ -19,6 +19,7 @@ interface CheckStockBody {
     version?: string
     version_name?: string
     wx_version_name?: string
+    proxyUrl?: string
   }
 }
 
@@ -51,6 +52,7 @@ export default defineEventHandler(async (event) => {
       version: config.version || '5.11.0',
       version_name: config.version_name || '5.11.0',
       wx_version_name: config.wx_version_name || '8.0.43',
+      proxyUrl: config.proxyUrl,
     }
 
     // 调用核心库查询库存
