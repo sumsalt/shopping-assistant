@@ -140,12 +140,10 @@ export const getSessionFromEvent = (event: H3Event): Session | null => {
  * @param event H3事件
  * @param sessionId 会话ID
  */
-export const setSessionCookie = (event: H3Event, sessionId: string): void => {
-  const isProduction = process.env.NODE_ENV === 'production'
-  
+export const setSessionCookie = (event: H3Event, sessionId: string): void => {  
   setCookie(event, SESSION_COOKIE_NAME, sessionId, {
     httpOnly: true,
-    secure: isProduction,
+    secure: false,
     sameSite: 'lax',
     path: '/',
     maxAge: SESSION_DURATION / 1000, // 秒为单位

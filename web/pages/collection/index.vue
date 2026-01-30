@@ -46,7 +46,7 @@
           </svg>
         </div>
         <h3 class="text-lg font-medium text-gray-900 mb-2">加载失败</h3>
-        <p class="text-gray-500 mb-4">{{ error }}</p>
+        <p class="text-gray-500 mb-4 break-all">{{ error }}</p>
         <UiButton variant="outline" @click="handleRefresh">
           重新加载
         </UiButton>

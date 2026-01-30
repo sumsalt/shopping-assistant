@@ -351,7 +351,7 @@ export enum StockCheckErrorType {
  * 库存查询错误
  */
 export class StockCheckError extends Error {
-  public readonly cause?: unknown;
+  public override readonly cause?: unknown;
   
   constructor(
     public readonly type: StockCheckErrorType,
