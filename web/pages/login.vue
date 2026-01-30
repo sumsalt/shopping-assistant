@@ -1,25 +1,25 @@
 <template>
-  <div class="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 px-4 py-8">
+  <div class="min-h-screen flex items-center justify-center bg-gray-50 px-4 py-8">
     <div class="w-full max-w-md">
       <!-- Logo 和标题 -->
       <div class="text-center mb-8">
-        <div class="inline-flex items-center justify-center w-16 h-16 bg-blue-600 rounded-full mb-4">
-          <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div class="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-4">
+          <svg class="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
               d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
           </svg>
         </div>
-        <h1 class="text-3xl font-bold text-white">购物助手</h1>
-        <p class="text-gray-400 mt-2">登录以访问系统</p>
+        <h1 class="text-3xl font-bold text-gray-900">购物助手</h1>
+        <p class="text-gray-500 mt-2">登录以访问系统</p>
       </div>
 
       <!-- 登录表单卡片 -->
-      <div class="bg-gray-800 rounded-2xl shadow-xl p-8 border border-gray-700">
+      <div class="bg-white rounded-2xl shadow-lg p-8 border border-gray-200">
         <form @submit.prevent="handleSubmit" class="space-y-6">
           <!-- 错误提示 -->
           <div 
             v-if="errorMessage" 
-            class="bg-red-500/10 border border-red-500/50 text-red-400 px-4 py-3 rounded-lg flex items-center gap-2"
+            class="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-lg flex items-center gap-2"
             role="alert"
             aria-live="polite"
           >
@@ -32,12 +32,12 @@
 
           <!-- 用户名输入 -->
           <div>
-            <label for="username" class="block text-sm font-medium text-gray-300 mb-2">
+            <label for="username" class="block text-sm font-medium text-gray-700 mb-2">
               用户名
             </label>
             <div class="relative">
               <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
                     d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                 </svg>
@@ -52,7 +52,7 @@
                 placeholder="请输入用户名"
                 tabindex="0"
                 aria-label="用户名"
-                class="block w-full pl-10 pr-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                class="block w-full pl-10 pr-4 py-3 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed transition-colors"
                 @keydown.enter="focusPassword"
               />
             </div>
@@ -60,12 +60,12 @@
 
           <!-- 密码输入 -->
           <div>
-            <label for="password" class="block text-sm font-medium text-gray-300 mb-2">
+            <label for="password" class="block text-sm font-medium text-gray-700 mb-2">
               密码
             </label>
             <div class="relative">
               <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
                     d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                 </svg>
@@ -81,14 +81,14 @@
                 placeholder="请输入密码"
                 tabindex="0"
                 aria-label="密码"
-                class="block w-full pl-10 pr-12 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                class="block w-full pl-10 pr-12 py-3 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed transition-colors"
               />
               <!-- 密码可见性切换 -->
               <button
                 type="button"
                 tabindex="0"
                 aria-label="切换密码可见性"
-                class="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-300 transition-colors"
+                class="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 transition-colors"
                 @click="togglePasswordVisibility"
                 @keydown.enter.prevent="togglePasswordVisibility"
               >
@@ -112,7 +112,7 @@
             :disabled="isLoading || !isFormValid"
             tabindex="0"
             aria-label="登录"
-            class="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-600/50 disabled:cursor-not-allowed text-white font-semibold rounded-lg transition-colors flex items-center justify-center gap-2"
+            class="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 disabled:cursor-not-allowed text-white font-semibold rounded-lg transition-colors flex items-center justify-center gap-2"
           >
             <svg 
               v-if="isLoading" 
@@ -129,7 +129,7 @@
       </div>
 
       <!-- 底部信息 -->
-      <p class="text-center text-gray-500 text-sm mt-6">
+      <p class="text-center text-gray-400 text-sm mt-6">
         © {{ new Date().getFullYear() }} 购物助手 - 保留所有权利
       </p>
     </div>
