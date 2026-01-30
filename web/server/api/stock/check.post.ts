@@ -45,8 +45,8 @@ export default defineEventHandler(async (event) => {
 
     // 构建适配器配置
     const adapterConfig = {
-      uid: config.uid || '',
-      token: config.token || '',
+      // uid: config.uid || '',
+      // token: config.token || '',
       openid: config.openid || '',
       model: config.model || 'iPhone 14 Pro Max',
       version: config.version || '5.11.0',
