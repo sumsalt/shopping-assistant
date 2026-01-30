@@ -284,11 +284,12 @@ export function createBackInStockTemplate(
           margin: 15px 0;
         }
         .product-image {
+          display: block;
           width: 100%;
           max-width: 300px;
           height: auto;
           border-radius: 8px;
-          margin: 15px 0;
+          margin: 15px auto;
           object-fit: cover;
         }
         .price {
