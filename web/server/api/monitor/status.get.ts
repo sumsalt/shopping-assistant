@@ -28,7 +28,7 @@ export default defineEventHandler(async (event) => {
     return createSuccessResponse({
       id: task.id,
       status: task.status,
-      taskCount: task.tasks.length,
+      taskCount: task.products.length,
       config: task.config,
       createdAt: task.createdAt,
       results: task.results,

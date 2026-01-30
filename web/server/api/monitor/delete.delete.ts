@@ -35,6 +35,15 @@ export default defineEventHandler(async (event) => {
       return createErrorResponse('FORBIDDEN', '无权删除此任务')
     }
 
+    // 停止监控任务（如果正在运行）
+    if (task.controller && task.status === 'running') {
+      try {
+        task.controller.abort()
+      } catch (error) {
+        console.error('停止监控任务失败:', error)
+      }
+    }
+
     // 删除任务
     monitorTasks.delete(taskId)
 

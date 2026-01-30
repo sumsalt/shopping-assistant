@@ -8,9 +8,8 @@ interface MonitorTaskItem {
   taskCount: number
   products: Array<{
     productId: string
-    platform: string
-    recipient: string
-    subject: string
+    productName: string
+    productImage?: string
   }>
   status: 'running' | 'stopped' | 'completed'
   interval: number
@@ -43,6 +42,9 @@ export const useMonitorTasks = () => {
 
   // 任务列表
   const tasks = ref<MonitorTaskItem[]>([])
+
+  // 展开的任务 ID 集合
+  const expandedTaskIds = ref<Set<string>>(new Set())
 
   /**
    * 加载任务列表
@@ -89,6 +91,7 @@ export const useMonitorTasks = () => {
       if (response.success) {
         // 从列表中移除任务
         tasks.value = tasks.value.filter(t => t.id !== taskId)
+        expandedTaskIds.value.delete(taskId)
         toast.success('任务已删除')
         return true
       } else {
@@ -112,6 +115,24 @@ export const useMonitorTasks = () => {
    */
   const refresh = () => {
     fetchTasks()
+  }
+
+  /**
+   * 切换展开/收起
+   */
+  const toggleExpand = (taskId: string) => {
+    if (expandedTaskIds.value.has(taskId)) {
+      expandedTaskIds.value.delete(taskId)
+    } else {
+      expandedTaskIds.value.add(taskId)
+    }
+  }
+
+  /**
+   * 判断是否展开
+   */
+  const isExpanded = (taskId: string): boolean => {
+    return expandedTaskIds.value.has(taskId)
   }
 
   /**
@@ -167,6 +188,8 @@ export const useMonitorTasks = () => {
     fetchTasks,
     deleteTask,
     refresh,
+    toggleExpand,
+    isExpanded,
     getStatusText,
     getStatusColor,
     formatTime,

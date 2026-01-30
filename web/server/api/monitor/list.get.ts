@@ -20,13 +20,8 @@ export default defineEventHandler(async (event) => {
       .filter(task => task.userId === currentUser.username)
       .map(task => ({
         id: task.id,
-        taskCount: task.tasks.length,
-        products: task.tasks.map(t => ({
-          productId: t.request.productId,
-          platform: t.request.platform,
-          recipient: t.recipient,
-          subject: t.subject,
-        })),
+        taskCount: task.products.length,
+        products: task.products,
         status: task.status,
         interval: task.config.interval,
         duration: task.config.duration,

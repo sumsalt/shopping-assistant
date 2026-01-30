@@ -74,7 +74,7 @@ export const useMonitor = () => {
    * 创建监控任务
    */
   const createMonitorTask = async (
-    products: Array<{ productId: string; productName: string }>,
+    products: Array<{ productId: string; productName: string; productImage?: string }>,
     config?: MonitorConfig
   ): Promise<string | null> => {
     const userConfig = checkConfig()
@@ -94,16 +94,6 @@ export const useMonitor = () => {
     error.value = null
 
     try {
-      // 构建任务列表
-      const tasks: MonitorTask[] = products.map(product => ({
-        request: {
-          platform: 'yishou',
-          productId: product.productId,
-        },
-        recipient: user.value!.email,
-        subject: `🔔 ${product.productName} 已到货`,
-      }))
-
       // 构建监控配置
       const monitorConfig: MonitorConfig = {
         interval: config?.interval || 1,
@@ -123,7 +113,7 @@ export const useMonitor = () => {
       const response = await $fetch<ApiResponse<CreateTaskResponse>>('/api/monitor/create', {
         method: 'POST',
         body: {
-          tasks,
+          products,
           config: monitorConfig,
         },
       })
@@ -154,6 +144,7 @@ export const useMonitor = () => {
     outOfStockItems: Array<{
       productId: string
       productName: string
+      productImage?: string
     }>
   ): Promise<string | null> => {
     if (outOfStockItems.length === 0) {

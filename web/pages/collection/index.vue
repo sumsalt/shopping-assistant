@@ -249,6 +249,7 @@ const handleProductClick = (productNo: string) => {
 const handleMonitorSingle = async (item: {
   productId: string
   productName: string
+  productImage: string
   collectId: string
 }) => {
   // 添加到监控状态
@@ -259,6 +260,7 @@ const handleMonitorSingle = async (item: {
       {
         productId: item.productId,
         productName: item.productName,
+        productImage: item.productImage,
       },
     ])
   } finally {
@@ -272,6 +274,7 @@ const handleMonitorAll = async () => {
   const products = allOutOfStockItems.value.map(item => ({
     productId: item.productId,
     productName: item.productName,
+    productImage: item.productImage,
   }))
 
   await monitorAllOutOfStock(products)
