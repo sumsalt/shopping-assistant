@@ -47,8 +47,8 @@
       </h3>
 
       <!-- 货号 -->
-      <p v-if="productNo" class="text-xs text-gray-500">
-        货号：{{ productNo }}
+      <p v-if="productId" class="text-xs text-gray-500">
+        货号：{{ productId }}
       </p>
 
       <!-- 价格 -->

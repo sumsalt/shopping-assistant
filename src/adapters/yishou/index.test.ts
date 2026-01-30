@@ -16,7 +16,6 @@ const createMockGoodsData = (overrides: Partial<YishouGoodsData> = {}): YishouGo
   goods_status: '1',
   is_on_sale: '1',
   is_stockout: '0',
-  buy_status: '1',
   color: '红色',
   size: 'M',
   remind_off_sale: '',
@@ -31,16 +30,6 @@ describe('isInStock - 库存状态判断', () => {
 
   it('当 is_stockout 为 "1" 时，应返回 false（缺货）', () => {
     const data = createMockGoodsData({ is_stockout: '1' });
-    expect(isInStock(data)).toBe(false);
-  });
-
-  it('当 buy_status 为 "2" 时，应返回 false（已售罄）', () => {
-    const data = createMockGoodsData({ buy_status: '2' });
-    expect(isInStock(data)).toBe(false);
-  });
-
-  it('当 buy_status 为 "3" 时，应返回 false（已下架）', () => {
-    const data = createMockGoodsData({ buy_status: '3' });
     expect(isInStock(data)).toBe(false);
   });
 
@@ -66,21 +55,16 @@ describe('getStockMessage - 库存状态描述', () => {
     expect(getStockMessage(data, false)).toBe('商品暂时缺货');
   });
 
-  it('当售罄时，应返回"商品已售罄"', () => {
-    const data = createMockGoodsData({ buy_status: '2' });
-    expect(getStockMessage(data, false)).toBe('商品已售罄');
-  });
-
   it('当下架时，应返回下架提示信息', () => {
-    const data = createMockGoodsData({ 
-      buy_status: '3', 
-      remind_off_sale: '该商品已经下架，无法购买' 
+    const data = createMockGoodsData({
+      goods_status: '2',
+      remind_off_sale: '该商品已经下架，无法购买',
     });
     expect(getStockMessage(data, false)).toBe('该商品已经下架，无法购买');
   });
 
   it('当下架且无提示信息时，应返回默认下架信息', () => {
-    const data = createMockGoodsData({ buy_status: '3', remind_off_sale: '' });
+    const data = createMockGoodsData({ goods_status: '2', remind_off_sale: '' });
     expect(getStockMessage(data, false)).toBe('商品已下架');
   });
 

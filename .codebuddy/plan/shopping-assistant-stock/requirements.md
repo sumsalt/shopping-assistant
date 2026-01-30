@@ -286,7 +286,6 @@ interface YishouGoodsData {
   goods_status: string;       // 商品状态：1-正常，2-下架
   is_on_sale: string;         // 是否在售：1-在售，0-停售
   is_stockout: string;        // 是否缺货：1-缺货，0-有货
-  buy_status: string;         // 购买状态：1-可购买，2-已售罄，3-已下架
   color: string;              // 颜色（可能为空）
   size: string;               // 尺码（可能为空）
   remind_off_sale: string;    // 下架提示信息
@@ -360,13 +359,10 @@ interface PlatformAdapter {
 const isInStock = (data: YishouGoodsData): boolean => {
   // 以下任一条件满足则视为无货：
   // 1. is_stockout === "1"（缺货）
-  // 2. buy_status === "2"（已售罄）
-  // 3. buy_status === "3"（已下架）
-  // 4. is_on_sale === "0"（停售）
-  // 5. goods_status === "2"（下架）
+  // 2. is_on_sale === "0"（停售）
+  // 3. goods_status === "2"（下架）
   
   if (data.is_stockout === "1") return false;
-  if (data.buy_status === "2" || data.buy_status === "3") return false;
   if (data.is_on_sale === "0") return false;
   if (data.goods_status === "2") return false;
   

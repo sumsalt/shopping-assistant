@@ -25,7 +25,7 @@
       - _需求：1.2_
 
 - [ ] 3. 实现库存状态判断逻辑
-   - 根据 is_stockout、buy_status、is_on_sale、goods_status 字段判断库存状态
+   - 根据 is_stockout、is_on_sale、goods_status 字段判断库存状态
    - 处理有货/无货的不同返回消息
    - _需求：1.3、1.4_
 

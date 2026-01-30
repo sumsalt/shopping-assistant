@@ -18,8 +18,7 @@ export type MD5Input = string | number;
 export const md5 = (...inputs: MD5Input[]): string => {
   const spark = new SparkMD5();
   for (const input of inputs) {
-    // 这里一手处理比较奇怪、需要传number进去
-    spark.append(input as any);
+    spark.append(input as string | ArrayBuffer);
   }
   return spark.end();
 };

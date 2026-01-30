@@ -38,3 +38,18 @@ export type {
   EmailAttachment,
   EmailResult,
 } from './email';
+
+// 导出库存监控
+export {
+  monitorStock,
+  monitorSingleStock,
+  createCancellableMonitor,
+} from './stock-monitor';
+export type {
+  StockMonitorConfig,
+  MonitorTask,
+  MonitorResult,
+  MonitorProgress,
+  ProgressCallback,
+  ResultCallback,
+} from './stock-monitor';

@@ -4,7 +4,6 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { checkStock } from './stock-check';
-import { StockCheckError, StockCheckErrorType } from './types';
 
 // Mock 适配器模块
 vi.mock('./adapters', () => {
@@ -29,7 +28,8 @@ describe('checkStock - 库存查询主函数', () => {
 
   it('缺少 platform 参数时，应抛出错误', async () => {
     await expect(
-      checkStock({ platform: '' as any, productId: '123' })
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      checkStock({ platform: '' as any, productId: '123' }),
     ).rejects.toThrow('缺少必要参数: platform');
   });
 

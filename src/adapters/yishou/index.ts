@@ -3,7 +3,7 @@
  */
 
 import { StockCheckError, StockCheckErrorType } from '../../types';
-import type { Platform, StockCheckResult, YishouGoodsData, YishouGoodsResponse, YishouCollectionGoodsData, YishouCollectionResponse, CollectionStockResult, CollectionStockCheckResult, YishouCartDetailResponse, YishouCartDetailData, YishouColorAttribute, ProductSkuResult, SkuInfo } from '../../types';
+import type { Platform, StockCheckResult, YishouGoodsData, YishouGoodsResponse, YishouCollectionGoodsData, YishouCollectionResponse, CollectionStockResult, CollectionStockCheckResult, YishouCartDetailResponse, YishouCartDetailData, ProductSkuResult, SkuInfo } from '../../types';
 import { BaseAdapter } from '../base-adapter';
 import type { AdapterConfig } from '../types';
 import { httpPost } from '../../utils/http';
@@ -30,16 +30,13 @@ const YISHOU_GOODS_URL_PREFIX = 'https://www.yishouapp.com/goods/';
 export const isInStock = (data: YishouGoodsData): boolean => {
   // 以下任一条件满足则视为无货：
   // 1. is_stockout === "1"（缺货）
-  // 2. buy_status === "2"（已售罄）
-  // 3. buy_status === "3"（已下架）
-  // 4. is_on_sale === "0"（停售）
-  // 5. goods_status === "2"（下架）
-  
+  // 2. is_on_sale === "0"（停售）
+  // 3. goods_status === "2"（下架）
+
   if (data.is_stockout === '1') return false;
-  if (data.buy_status === '2' || data.buy_status === '3') return false;
   if (data.is_on_sale === '0') return false;
   if (data.goods_status === '2') return false;
-  
+
   return true;
 };
 
@@ -53,21 +50,18 @@ export const getStockMessage = (data: YishouGoodsData, inStock: boolean): string
   if (inStock) {
     return '商品有货，可以购买';
   }
-  
+
   // 根据具体状态返回更详细的信息
   if (data.is_stockout === '1') {
     return '商品暂时缺货';
   }
-  if (data.buy_status === '2') {
-    return '商品已售罄';
-  }
-  if (data.buy_status === '3' || data.goods_status === '2') {
+  if (data.goods_status === '2') {
     return data.remind_off_sale || '商品已下架';
   }
   if (data.is_on_sale === '0') {
     return '商品已停售';
   }
-  
+
   return '商品无货';
 };
 

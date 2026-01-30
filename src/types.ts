@@ -81,8 +81,6 @@ export interface YishouGoodsData {
   is_on_sale: string;
   /** 是否缺货：1-缺货，0-有货 */
   is_stockout: string;
-  /** 购买状态：1-可购买，2-已售罄，3-已下架 */
-  buy_status: string;
   /** 颜色（可能为空） */
   color: string;
   /** 尺码（可能为空） */
@@ -353,7 +351,7 @@ export enum StockCheckErrorType {
  * 库存查询错误
  */
 export class StockCheckError extends Error {
-  public override readonly cause?: unknown;
+  public readonly cause?: unknown;
   
   constructor(
     public readonly type: StockCheckErrorType,

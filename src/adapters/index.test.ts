@@ -15,9 +15,11 @@ describe('getAdapter - 适配器工厂', () => {
   });
 
   it('当平台不支持时，应抛出 PLATFORM_NOT_SUPPORTED 错误', () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     expect(() => getAdapter('jd' as any)).toThrow(StockCheckError);
-    
+
     try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       getAdapter('jd' as any);
     } catch (error) {
       expect(error).toBeInstanceOf(StockCheckError);

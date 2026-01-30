@@ -2,8 +2,8 @@
  * 邮件服务 - 提供邮件发送能力
  */
 
-import { createTransport, Transporter } from 'nodemailer';
-import type { SentMessageInfo } from 'nodemailer';
+import { createTransport } from 'nodemailer';
+import type { SentMessageInfo, Transporter } from 'nodemailer';
 
 /**
  * 邮件配置
