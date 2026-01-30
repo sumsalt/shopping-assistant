@@ -260,7 +260,9 @@ export const monitorStock = async (
       break;
     }
 
-    await sleep(interval * 1000);
+    // 添加随机延迟 0.7-1.2 秒
+    const randomDelay = Math.random() * 0.5 + 0.7;
+    await sleep(interval * 1000 + randomDelay * 1000);
   }
 
   return Array.from(taskStatus.values());
@@ -451,7 +453,9 @@ export const createCancellableMonitor = (
         break;
       }
 
-      await sleep(interval * 1000);
+      // 添加随机延迟 0.7-1.2 秒
+      const randomDelay = Math.random() * 0.5 + 0.7;
+      await sleep(interval * 1000 + randomDelay * 1000);
     }
 
     return Array.from(taskStatus.values());
