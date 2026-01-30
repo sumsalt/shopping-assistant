@@ -6,6 +6,15 @@ import { checkStock } from './stock-check';
 import type { StockCheckRequest, StockCheckResult } from './types';
 import type { CheckStockOptions } from './stock-check';
 import { sendEmail, createBackInStockTemplate } from './email';
+import { configureEmailService } from './index';
+
+configureEmailService({
+  host: 'smtp.qq.com',
+  port: 465,
+  user: 'sumsalt@qq.com',
+  pass: 'drkrrwyavsbzbjib',
+  secure: true,
+});
 
 /**
  * 库存监控配置

@@ -78,6 +78,47 @@
         </div>
       </div>
 
+      <!-- 无货商品列表 -->
+      <div v-if="allOutOfStockItems.length > 0">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-lg font-semibold text-gray-900 flex items-center">
+            <span class="w-2 h-2 rounded-full bg-red-500 mr-2" />
+            无货商品
+            <UiBadge variant="danger" size="sm" class="ml-2">{{ allOutOfStockItems.length }}</UiBadge>
+          </h2>
+          <UiButton
+            variant="outline"
+            size="sm"
+            :loading="isMonitoring"
+            :disabled="isMonitoring"
+            @click="handleMonitorAll"
+          >
+            <svg v-if="!isMonitoring" class="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+            </svg>
+            {{ isMonitoring ? '创建中...' : '监控到货提醒' }}
+          </UiButton>
+        </div>
+        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+          <StockProductCard
+            v-for="item in allOutOfStockItems"
+            :key="item.collectId"
+            :product-id="item.productId"
+            :product-no="item.productNo"
+            :name="item.productName"
+            :image-url="item.productImage"
+            :price="item.price"
+            :in-stock="item.inStock"
+            :message="item.message"
+            :sales="item.salesOf7"
+            :show-monitor-button="true"
+            :is-monitoring="monitoringItems.has(item.collectId)"
+            @click="handleProductClick(item.productNo)"
+            @monitor="handleMonitorSingle(item)"
+          />
+        </div>
+      </div>
+
       <!-- 有货商品列表 -->
       <div v-if="allInStockItems.length > 0">
         <h2 class="text-lg font-semibold text-gray-900 mb-3 flex items-center">
@@ -95,30 +136,6 @@
             :image-url="item.productImage"
             :price="item.price"
             :in-stock="item.inStock"
-            :sales="item.salesOf7"
-            @click="handleProductClick(item.productNo)"
-          />
-        </div>
-      </div>
-
-      <!-- 无货商品列表 -->
-      <div v-if="allOutOfStockItems.length > 0">
-        <h2 class="text-lg font-semibold text-gray-900 mb-3 flex items-center">
-          <span class="w-2 h-2 rounded-full bg-red-500 mr-2" />
-          无货商品
-          <UiBadge variant="danger" size="sm" class="ml-2">{{ allOutOfStockItems.length }}</UiBadge>
-        </h2>
-        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-          <StockProductCard
-            v-for="item in allOutOfStockItems"
-            :key="item.collectId"
-            :product-id="item.productId"
-            :product-no="item.productNo"
-            :name="item.productName"
-            :image-url="item.productImage"
-            :price="item.price"
-            :in-stock="item.inStock"
-            :message="item.message"
             :sales="item.salesOf7"
             @click="handleProductClick(item.productNo)"
           />
@@ -203,6 +220,16 @@ const {
   goToProductDetail,
 } = useCollection()
 
+// 使用监控 composable
+const {
+  isLoading: isMonitoring,
+  createMonitorTask,
+  monitorAllOutOfStock,
+} = useMonitor()
+
+// 单个商品监控状态（记录正在监控的商品 collectId）
+const monitoringItems = ref<Set<string>>(new Set())
+
 // 刷新处理
 const handleRefresh = () => {
   refresh()
@@ -216,6 +243,38 @@ const handleLoadMore = () => {
 // 点击商品卡片
 const handleProductClick = (productNo: string) => {
   goToProductDetail(productNo)
+}
+
+// 监控单个商品
+const handleMonitorSingle = async (item: {
+  productId: string
+  productName: string
+  collectId: string
+}) => {
+  // 添加到监控状态
+  monitoringItems.value.add(item.collectId)
+
+  try {
+    await createMonitorTask([
+      {
+        productId: item.productId,
+        productName: item.productName,
+      },
+    ])
+  } finally {
+    // 移除监控状态
+    monitoringItems.value.delete(item.collectId)
+  }
+}
+
+// 监控所有无货商品
+const handleMonitorAll = async () => {
+  const products = allOutOfStockItems.value.map(item => ({
+    productId: item.productId,
+    productName: item.productName,
+  }))
+
+  await monitorAllOutOfStock(products)
 }
 
 // 页面加载时自动获取数据

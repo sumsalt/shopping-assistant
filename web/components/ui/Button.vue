@@ -42,7 +42,7 @@
 // 组件属性定义
 interface Props {
   variant?: 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger'
-  size?: 'sm' | 'md' | 'lg'
+  size?: 'xs' | 'sm' | 'md' | 'lg'
   type?: 'button' | 'submit' | 'reset'
   disabled?: boolean
   loading?: boolean
@@ -80,6 +80,7 @@ const variantClasses: Record<string, string> = {
 
 // 尺寸样式映射
 const sizeClasses: Record<string, string> = {
+  xs: 'px-2 py-1 text-xs',
   sm: 'px-3 py-1.5 text-sm',
   md: 'px-4 py-2 text-base',
   lg: 'px-6 py-3 text-lg',

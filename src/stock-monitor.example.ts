@@ -1,15 +1,6 @@
-import { configureEmailService, monitorStock } from './index';
+import { monitorStock } from './index';
 
 const main = async () => {
-  // 配置邮件服务
-  configureEmailService({
-    host: 'smtp.qq.com',
-    port: 465,
-    user: 'sumsalt@qq.com',
-    pass: 'drkrrwyavsbzbjib',
-    secure: true,
-  });
-
   // 启动监控
   await monitorStock(
     [
