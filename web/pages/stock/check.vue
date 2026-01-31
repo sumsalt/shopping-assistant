@@ -73,7 +73,10 @@
           :price="stockResult.price"
           :in-stock="stockResult.inStock"
           :message="stockResult.message"
+          :show-monitor-button="!stockResult.inStock"
+          :is-monitoring="isCreatingMonitor && monitoringProductId === stockResult.productId"
           @click="handleProductClick"
+          @monitor="handleMonitor"
         />
 
         <!-- 详细信息卡片 -->
@@ -107,14 +110,32 @@
           </dl>
 
           <template #footer>
-            <UiButton
-              variant="outline"
-              size="sm"
-              class="w-full"
-              @click="handleProductClick"
-            >
-              查看 SKU 详情
-            </UiButton>
+            <div class="flex gap-2">
+              <!-- 监控按钮 -->
+              <UiButton
+                v-if="!stockResult.inStock"
+                variant="primary"
+                size="sm"
+                class="flex-1"
+                :loading="isCreatingMonitor && monitoringProductId === stockResult.productId"
+                :disabled="isCreatingMonitor"
+                @click="handleMonitor"
+              >
+                <svg v-if="!isCreatingMonitor || monitoringProductId !== stockResult.productId" class="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                </svg>
+                {{ isCreatingMonitor && monitoringProductId === stockResult.productId ? '创建中' : '监控到货' }}
+              </UiButton>
+              <!-- 查看详情按钮 -->
+              <UiButton
+                variant="outline"
+                size="sm"
+                :class="stockResult.inStock ? 'flex-1' : ''"
+                @click="handleProductClick"
+              >
+                查看 SKU 详情
+              </UiButton>
+            </div>
           </template>
         </UiCard>
       </div>
@@ -153,6 +174,9 @@ definePageMeta({
   title: '库存查询',
 })
 
+// 使用 toast
+const toast = useToast()
+
 // 使用库存查询 composable
 const {
   stockResult,
@@ -162,8 +186,14 @@ const {
   goToProductDetail,
 } = useStock()
 
+// 使用监控 composable
+const { createMonitorTask, isLoading: isCreatingMonitor } = useMonitor()
+
 // 搜索关键词
 const searchQuery = ref('')
+
+// 正在监控的商品 ID
+const monitoringProductId = ref<string | null>(null)
 
 // 搜索处理
 const handleSearch = async () => {
@@ -183,6 +213,35 @@ const handleRetry = () => {
 const handleProductClick = () => {
   if (stockResult.value?.productNo) {
     goToProductDetail(stockResult.value.productNo)
+  }
+}
+
+// 监控商品
+const handleMonitor = async () => {
+  if (!stockResult.value) {
+    return
+  }
+
+  const result = stockResult.value
+
+  // 如果有货，提示用户
+  if (result.inStock) {
+    toast.warning('商品当前有货，无需监控')
+    return
+  }
+
+  monitoringProductId.value = result.productId
+
+  try {
+    await createMonitorTask([
+      {
+        productId: result.productId,
+        productName: result.productName,
+        productImage: result.productImage,
+      },
+    ])
+  } finally {
+    monitoringProductId.value = null
   }
 }
 </script>

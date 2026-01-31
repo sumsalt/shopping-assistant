@@ -111,6 +111,40 @@ export const useMonitorTasks = () => {
   }
 
   /**
+   * 重新发起监控任务
+   */
+  const restartTask = async (taskId: string): Promise<boolean> => {
+    isLoading.value = true
+    error.value = null
+
+    try {
+      const response = await $fetch<ApiResponse<{ taskId: string; message: string }>>('/api/monitor/restart', {
+        method: 'POST',
+        body: { taskId },
+      })
+
+      if (response.success) {
+        // 刷新任务列表
+        await fetchTasks()
+        toast.success('监控任务已重新发起')
+        return true
+      } else {
+        const errorMsg = response.error?.message || '重新发起失败'
+        error.value = errorMsg
+        toast.error(errorMsg)
+        return false
+      }
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : '网络请求失败'
+      error.value = errorMsg
+      toast.error(errorMsg)
+      return false
+    } finally {
+      isLoading.value = false
+    }
+  }
+
+  /**
    * 刷新任务列表
    */
   const refresh = () => {
@@ -187,6 +221,7 @@ export const useMonitorTasks = () => {
     // 方法
     fetchTasks,
     deleteTask,
+    restartTask,
     refresh,
     toggleExpand,
     isExpanded,

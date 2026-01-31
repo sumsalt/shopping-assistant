@@ -99,6 +99,21 @@
 
             <!-- 操作按钮组 -->
             <div class="flex items-center gap-2 ml-4">
+              <!-- 重新发起按钮（仅对已完成的任务显示） -->
+              <UiButton
+                v-if="task.status === 'completed' || task.status === 'stopped'"
+                variant="ghost"
+                size="sm"
+                :loading="isRestarting(task.id)"
+                :disabled="isRestarting(task.id)"
+                class="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                @click="handleRestart(task)"
+              >
+                <svg v-if="!isRestarting(task.id)" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                重新发起
+              </UiButton>
               <!-- 删除按钮 -->
               <UiButton
                 variant="ghost"
@@ -222,6 +237,7 @@ const {
   error,
   fetchTasks,
   deleteTask,
+  restartTask,
   refresh,
   toggleExpand,
   isExpanded,
@@ -230,9 +246,14 @@ const {
   formatTime,
 } = useMonitorTasks()
 
+// 使用确认弹窗
+const { danger: confirmDelete, warning: confirmRestart } = useConfirmDialog()
+
 // 正在删除的任务 ID 集合
 const deletingTaskIds = ref<Set<string>>(new Set())
 
+// 正在重新发起的任务 ID 集合
+const restartingTaskIds = ref<Set<string>>(new Set())
 // 图片加载失败处理
 const handleImageError = (event: Event) => {
   const target = event.target as HTMLImageElement
@@ -249,9 +270,15 @@ const isDeleting = (taskId: string): boolean => {
   return deletingTaskIds.value.has(taskId)
 }
 
+// 判断任务是否正在重新发起
+const isRestarting = (taskId: string): boolean => {
+  return restartingTaskIds.value.has(taskId)
+}
+
 // 删除任务
 const handleDelete = async (task: { id: string }) => {
-  if (!confirm('确定要删除此监控任务吗？')) {
+  const confirmed = await confirmDelete('确定要删除此监控任务吗？删除后无法恢复。')
+  if (!confirmed) {
     return
   }
 
@@ -261,6 +288,22 @@ const handleDelete = async (task: { id: string }) => {
     await deleteTask(task.id)
   } finally {
     deletingTaskIds.value.delete(task.id)
+  }
+}
+
+// 重新发起监控任务
+const handleRestart = async (task: { id: string }) => {
+  const confirmed = await confirmRestart('确定要重新发起此监控任务吗？将创建新的监控任务。')
+  if (!confirmed) {
+    return
+  }
+
+  restartingTaskIds.value.add(task.id)
+
+  try {
+    await restartTask(task.id)
+  } finally {
+    restartingTaskIds.value.delete(task.id)
   }
 }
 

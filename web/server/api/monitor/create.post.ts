@@ -32,6 +32,51 @@ const generateTaskId = (): string => {
   return `task_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`
 }
 
+/**
+ * 启动监控任务
+ */
+export const startMonitorTask = (
+  taskId: string,
+  tasks: MonitorTask[],
+  config: StockMonitorConfig
+): { controller: AbortController; promise: Promise<any[]> } => {
+  // 在后台启动监控任务（不等待结果）
+  const { controller, promise } = createCancellableMonitor(
+    tasks,
+    config,
+    (progress) => {
+      console.log(`任务 ${taskId} 进度:`, progress)
+    },
+    (result) => {
+      console.log(`任务 ${taskId} 结果:`, result)
+    }
+  )
+
+  // 保存控制器以便停止任务
+  const task = monitorTasks.get(taskId)
+  if (task) {
+    task.controller = controller
+  }
+
+  promise.then((results) => {
+    const task = monitorTasks.get(taskId)
+    if (task) {
+      task.status = 'completed'
+      task.results = results
+      task.controller = undefined
+    }
+  }).catch((error) => {
+    console.error(`任务 ${taskId} 失败:`, error)
+    const task = monitorTasks.get(taskId)
+    if (task) {
+      task.status = 'stopped'
+      task.controller = undefined
+    }
+  })
+
+  return { controller, promise }
+}
+
 export default defineEventHandler(async (event) => {
   try {
     // 获取当前用户
@@ -90,39 +135,8 @@ export default defineEventHandler(async (event) => {
       createdAt: new Date(),
     })
 
-    // 在后台启动监控任务（不等待结果）
-    const { controller, promise } = createCancellableMonitor(
-      tasks,
-      config,
-      (progress) => {
-        console.log(`任务 ${taskId} 进度:`, progress)
-      },
-      (result) => {
-        console.log(`任务 ${taskId} 结果:`, result)
-      }
-    )
-
-    // 保存控制器以便停止任务
-    const task = monitorTasks.get(taskId)
-    if (task) {
-      task.controller = controller
-    }
-
-    promise.then((results) => {
-      const task = monitorTasks.get(taskId)
-      if (task) {
-        task.status = 'completed'
-        task.results = results
-        task.controller = undefined
-      }
-    }).catch((error) => {
-      console.error(`任务 ${taskId} 失败:`, error)
-      const task = monitorTasks.get(taskId)
-      if (task) {
-        task.status = 'stopped'
-        task.controller = undefined
-      }
-    })
+    // 启动监控任务
+    startMonitorTask(taskId, tasks, config)
 
     // 返回任务 ID
     return createSuccessResponse({
