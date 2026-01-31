@@ -58,6 +58,8 @@ export interface MonitorResult {
   error?: string;
   /** 检测次数 */
   checkCount: number;
+  /** 错误次数 */
+  errorCount?: number;
 }
 
 /**
@@ -138,134 +140,8 @@ export const monitorStock = async (
   progressCallback?: ProgressCallback,
   resultCallback?: ResultCallback
 ): Promise<MonitorResult[]> => {
-  const {
-    interval = 60,
-    duration,
-    adapterConfig = {},
-  } = config;
-
-  // 校验参数
-  if (!tasks || tasks.length === 0) {
-    throw new Error('监控任务列表不能为空');
-  }
-
-  if (interval <= 0) {
-    throw new Error('循环间隔时间必须大于 0');
-  }
-
-  if (duration !== undefined && duration <= 0) {
-    throw new Error('循环总时长必须大于 0');
-  }
-
-  // 记录每个商品的状态
-  const taskStatus = new Map<string, MonitorResult>();
-  const startTime = Date.now();
-  let totalCheckCount = 0;
-
-  // 初始化任务状态
-  tasks.forEach(task => {
-    const key = `${task.request.platform}-${task.request.productId}`;
-    taskStatus.set(key, {
-      productId: task.request.productId,
-      productName: '',
-      detected: false,
-      checkCount: 0,
-    });
-  });
-
-  // 主监控循环
-  while (true) {
-    const elapsedTime = Math.floor((Date.now() - startTime) / 1000);
-
-    // 检查是否达到总时长限制
-    if (duration && elapsedTime >= duration) {
-      break;
-    }
-
-    // 检查是否所有商品都已检测到有货
-    const allDetected = Array.from(taskStatus.values()).every(status => status.detected);
-    if (allDetected) {
-      break;
-    }
-
-    // 遍历任务进行检查
-    for (const task of tasks) {
-      const key = `${task.request.platform}-${task.request.productId}`;
-      const status = taskStatus.get(key);
-
-      if (!status || status.detected) {
-        continue; // 跳过已检测到的商品
-      }
-
-      try {
-        // 调用 checkStock 检查库存
-        const result: StockCheckResult = await checkStock(task.request, { adapterConfig });
-
-        // 更新状态中的商品名称
-        status.productName = result.productName;
-        status.checkCount++;
-        totalCheckCount++;
-
-        // 判断是否有货
-        if (result.inStock) {
-          status.detected = true;
-
-          // 发送邮件通知
-          const emailResult = await sendEmail({
-            to: task.recipient,
-            subject: task.subject || `🎉 ${result.productName} 已到货`,
-            html: createBackInStockTemplate(result.productName, result.price, task.productImage),
-          });
-
-          status.emailSent = emailResult.success;
-          if (!emailResult.success) {
-            status.error = emailResult.error;
-          }
-
-          // 触发结果回调
-          if (resultCallback) {
-            resultCallback(status);
-          }
-        }
-      } catch (error) {
-        status.error = error instanceof Error ? error.message : String(error);
-        status.checkCount++;
-        totalCheckCount++;
-
-        // 触发结果回调（即使出错也通知）
-        if (resultCallback) {
-          resultCallback(status);
-        }
-      }
-    }
-
-    // 计算进度
-    const detectedCount = Array.from(taskStatus.values()).filter(s => s.detected).length;
-    const progress: MonitorProgress = {
-      elapsedTime,
-      duration,
-      progress: duration ? Math.floor((elapsedTime / duration) * 100) : undefined,
-      checkCount: totalCheckCount,
-      detectedCount,
-    };
-
-    // 触发进度回调
-    if (progressCallback) {
-      progressCallback(progress);
-    }
-
-    // 等待下一次检查
-    if (duration && elapsedTime + interval >= duration) {
-      // 如果下次检查时间超过总时长，直接结束
-      break;
-    }
-
-    // 添加随机延迟 0.7-1.2 秒
-    const randomDelay = Math.random() * 0.5 + 0.7;
-    await sleep(interval * 1000 + randomDelay * 1000);
-  }
-
-  return Array.from(taskStatus.values());
+  const { promise } = createCancellableMonitor(tasks, config, progressCallback, resultCallback);
+  return promise;
 };
 
 /**
@@ -334,7 +210,7 @@ export const createCancellableMonitor = (
 
   const promise = (async (): Promise<MonitorResult[]> => {
     const {
-      interval = 60,
+      interval = 1,
       duration,
       adapterConfig = {},
     } = config;
@@ -365,6 +241,7 @@ export const createCancellableMonitor = (
         productName: '',
         detected: false,
         checkCount: 0,
+        errorCount: 0,
       });
     });
 
@@ -416,24 +293,25 @@ export const createCancellableMonitor = (
             if (!emailResult.success) {
               status.error = emailResult.error;
             }
-
-            if (resultCallback) {
-              resultCallback(status);
-            }
           }
+
+          // 每次检查都触发结果回调（不仅是有货或出错时）
+          if (resultCallback) {
+            resultCallback(status);
+          }
+
+          const randomDelay = Math.random() * 0.5 + 0.7;
+          await sleep(interval * 1000 + randomDelay * 1000);
         } catch (error) {
           status.error = error instanceof Error ? error.message : String(error);
           status.checkCount++;
+          status.errorCount = (status.errorCount || 0) + 1;
           totalCheckCount++;
 
           if (resultCallback) {
             resultCallback(status);
           }
         }
-
-        // 添加随机延迟 0.7-1.2 秒
-        const randomDelay = Math.random() * 0.5 + 0.7;
-        await sleep(interval * 1000 + randomDelay * 1000);
       }
 
       const detectedCount = Array.from(taskStatus.values()).filter(s => s.detected).length;

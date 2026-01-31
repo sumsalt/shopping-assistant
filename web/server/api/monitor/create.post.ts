@@ -40,15 +40,41 @@ export const startMonitorTask = (
   tasks: MonitorTask[],
   config: StockMonitorConfig
 ): { controller: AbortController; promise: Promise<any[]> } => {
+  // 初始化任务结果数组，为每个商品创建初始结果
+  const taskData = monitorTasks.get(taskId)
+  if (taskData) {
+    taskData.results = tasks.map(task => ({
+      productId: task.request.productId,
+      productName: '',
+      detected: false,
+      checkCount: 0,
+      errorCount: 0,
+    }))
+  }
+
   // 在后台启动监控任务（不等待结果）
   const { controller, promise } = createCancellableMonitor(
     tasks,
     config,
     (progress) => {
       console.log(`任务 ${taskId} 进度:`, progress)
+      // 这里不更新 checkCount，因为每个商品的 checkCount 在各自的 result 中
     },
     (result) => {
       console.log(`任务 ${taskId} 结果:`, result)
+
+      // 更新商品结果
+      const task = monitorTasks.get(taskId)
+      if (task && task.results) {
+        // 查找是否已存在该商品的结果，如果存在则更新
+        const existingIndex = task.results.findIndex((r: any) => r.productId === result.productId)
+        if (existingIndex >= 0) {
+          task.results[existingIndex] = {
+            ...task.results[existingIndex],
+            ...result,
+          }
+        }
+      }
     }
   )
 

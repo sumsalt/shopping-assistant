@@ -15,7 +15,15 @@ interface MonitorTaskItem {
   interval: number
   duration: number
   createdAt: Date
-  results?: any[]
+  results?: Array<{
+    productId: string
+    productName: string
+    detected: boolean
+    emailSent?: boolean
+    error?: string
+    checkCount: number
+    errorCount?: number
+  }>
 }
 
 // 任务列表响应类型
@@ -212,6 +220,22 @@ export const useMonitorTasks = () => {
     return d.toLocaleDateString('zh-CN')
   }
 
+  /**
+   * 计算请求总次数
+   */
+  const getTotalRequestCount = (task: MonitorTaskItem): number => {
+    if (!task.results || task.results.length === 0) return 0
+    return task.results.reduce((sum, result) => sum + result.checkCount, 0)
+  }
+
+  /**
+   * 计算请求失败次数
+   */
+  const getFailedRequestCount = (task: MonitorTaskItem): number => {
+    if (!task.results || task.results.length === 0) return 0
+    return task.results.reduce((sum, result) => sum + (result.errorCount || 0), 0)
+  }
+
   return {
     // 状态
     tasks,
@@ -228,5 +252,7 @@ export const useMonitorTasks = () => {
     getStatusText,
     getStatusColor,
     formatTime,
+    getTotalRequestCount,
+    getFailedRequestCount,
   }
 }
