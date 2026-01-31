@@ -21,6 +21,7 @@ interface CheckStockBody {
     version_name?: string
     wx_version_name?: string
     proxyUrl?: string
+    proxyEnabled?: '1' | '0'
   }
 }
 
@@ -47,6 +48,7 @@ export default defineEventHandler(async (event) => {
       version_name: config.version_name || '5.11.0',
       wx_version_name: config.wx_version_name || '8.0.43',
       proxyUrl: config.proxyUrl,
+      proxyEnabled: config.proxyEnabled,
     }
 
     // 判断是单个查询还是批量查询

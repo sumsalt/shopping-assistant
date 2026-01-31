@@ -45,6 +45,7 @@ export default defineEventHandler(async (event) => {
       version_name: (query.version_name as string) || '5.11.0',
       wx_version_name: (query.wx_version_name as string) || '8.0.43',
       proxyUrl: query.proxyUrl as string | undefined,
+      proxyEnabled: (query.proxyEnabled as '1' | '0') || '0',
     }
 
     // 调用核心库查询收藏夹
