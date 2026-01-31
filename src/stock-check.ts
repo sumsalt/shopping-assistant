@@ -3,7 +3,15 @@
  */
 
 import { StockCheckError, StockCheckErrorType } from './types';
-import type { StockCheckRequest, StockCheckResult, CollectionStockCheckResult, ProductSkuResult, Platform } from './types';
+import type {
+  StockCheckRequest,
+  StockCheckResult,
+  BatchStockCheckRequest,
+  BatchStockCheckResult,
+  CollectionStockCheckResult,
+  ProductSkuResult,
+  Platform
+} from './types';
 import { getAdapter } from './adapters';
 import type { AdapterConfig } from './adapters';
 
@@ -39,18 +47,18 @@ export interface ProductSkuRequest {
 
 /**
  * 查询商品库存状态
- * 
+ *
  * @param request 库存查询请求参数
  * @param options 查询选项（包含平台认证配置等）
  * @returns 库存查询结果
- * 
+ *
  * @example
  * ```typescript
  * const result = await checkStock(
  *   { platform: 'yishou', productId: '123456' },
  *   { adapterConfig: { uid: 'xxx', token: 'xxx', sign: 'xxx' } }
  * );
- * 
+ *
  * if (result.inStock) {
  *   console.log('商品有货！');
  * } else {
@@ -85,6 +93,118 @@ export const checkStock = async (
 
   // 调用适配器查询库存
   return adapter.checkStock(productId, sku);
+};
+
+/**
+ * 批量查询商品库存状态
+ *
+ * @param request 批量库存查询请求参数
+ * @param options 查询选项（包含平台认证配置等）
+ * @returns 批量库存查询结果
+ *
+ * @example
+ * ```typescript
+ * const result = await checkStockBatch(
+ *   {
+ *     platform: 'yishou',
+ *     productIds: ['123456', '123457', '123458'],
+ *     skus: ['红色-M', '蓝色-L', '黑色-XL']
+ *   },
+ *   { adapterConfig: { uid: 'xxx', token: 'xxx' } }
+ * );
+ *
+ * console.log(`成功查询: ${result.successCount} 件`);
+ * console.log(`查询失败: ${result.failedCount} 件`);
+ *
+ * // 遍历成功查询的商品
+ * result.successItems.forEach(item => {
+ *   if (item.inStock) {
+ *     console.log(`${item.productName} 有货！`);
+ *   }
+ * });
+ *
+ * // 查看失败的商品
+ * result.failedItems.forEach(item => {
+ *   console.log(`商品 ${item.productId} 查询失败: ${item.error}`);
+ * });
+ * ```
+ */
+export const checkStockBatch = async (
+  request: BatchStockCheckRequest,
+  options: CheckStockOptions = {}
+): Promise<BatchStockCheckResult> => {
+  const { platform, productIds, skus } = request;
+  const { adapterConfig = {} } = options;
+
+  // 校验参数
+  if (!platform) {
+    throw new StockCheckError(
+      StockCheckErrorType.API_ERROR,
+      '缺少必要参数: platform'
+    );
+  }
+
+  if (!productIds || productIds.length === 0) {
+    throw new StockCheckError(
+      StockCheckErrorType.API_ERROR,
+      '商品ID列表不能为空'
+    );
+  }
+
+  // 校验 skus 长度（如果提供）
+  if (skus && skus.length > 0 && skus.length !== productIds.length) {
+    throw new StockCheckError(
+      StockCheckErrorType.API_ERROR,
+      'skus 列表长度必须与 productIds 列表长度一致'
+    );
+  }
+
+  // 获取对应平台的适配器
+  const adapter = getAdapter(platform, adapterConfig);
+
+  // 并发查询所有商品
+  const promises = productIds.map(async (productId, index) => {
+    try {
+      const sku = skus?.[index];
+      return await adapter.checkStock(productId, sku);
+    } catch (error) {
+      throw { productId, error };
+    }
+  });
+
+  const results = await Promise.allSettled(promises);
+
+  // 分类处理结果
+  const successItems: StockCheckResult[] = [];
+  const failedItems: Array<{
+    productId: string;
+    error: string;
+    errorType: StockCheckErrorType;
+  }> = [];
+
+  results.forEach((result) => {
+    if (result.status === 'fulfilled') {
+      successItems.push(result.value);
+    } else {
+      const { productId, error } = result.reason;
+      const errorMessage = error instanceof Error ? error.message : '未知错误';
+      const errorType = error instanceof StockCheckError ? error.type : StockCheckErrorType.UNKNOWN_ERROR;
+      failedItems.push({
+        productId,
+        error: errorMessage,
+        errorType,
+      });
+    }
+  });
+
+  return {
+    platform,
+    successItems,
+    failedItems,
+    total: productIds.length,
+    successCount: successItems.length,
+    failedCount: failedItems.length,
+  };
 };
 
 /**

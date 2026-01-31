@@ -13,6 +13,20 @@ interface StockCheckResult {
   message: string
 }
 
+// 批量库存查询结果类型
+interface BatchStockCheckResult {
+  platform: string
+  successItems: StockCheckResult[]
+  failedItems: Array<{
+    productId: string
+    error: string
+    errorType: string
+  }>
+  total: number
+  successCount: number
+  failedCount: number
+}
+
 // SKU 信息类型
 interface SkuInfo {
   skuId: string
@@ -63,6 +77,7 @@ export const useStock = () => {
 
   // 库存查询状态
   const stockResult = ref<StockCheckResult | null>(null)
+  const batchStockResults = ref<BatchStockCheckResult | null>(null)
   const isCheckingStock = ref(false)
   const stockError = ref<string | null>(null)
 
@@ -96,6 +111,7 @@ export const useStock = () => {
     isCheckingStock.value = true
     stockError.value = null
     stockResult.value = null
+    batchStockResults.value = null
 
     try {
       const response = await $fetch<ApiResponse<StockCheckResult>>('/api/stock/check', {
@@ -108,6 +124,58 @@ export const useStock = () => {
 
       if (response.success && response.data) {
         stockResult.value = response.data
+        return response.data
+      } else {
+        const errorMsg = response.error?.message || '查询失败'
+        stockError.value = errorMsg
+        toast.error(errorMsg)
+        return null
+      }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : '网络请求失败'
+      stockError.value = errorMsg
+      toast.error(errorMsg)
+      return null
+    } finally {
+      isCheckingStock.value = false
+    }
+  }
+
+  /**
+   * 批量查询商品库存
+   */
+  const checkStockBatch = async (
+    productIds: string[],
+    skus?: string[]
+  ): Promise<BatchStockCheckResult | null> => {
+    const config = checkConfig()
+    if (!config) {
+      return null
+    }
+
+    isCheckingStock.value = true
+    stockError.value = null
+    stockResult.value = null
+    batchStockResults.value = null
+
+    try {
+      const response = await $fetch<ApiResponse<BatchStockCheckResult>>('/api/stock/check', {
+        method: 'POST',
+        body: {
+          productId: productIds,
+          sku: skus,
+          config,
+        },
+      })
+
+      if (response.success && response.data) {
+        batchStockResults.value = response.data
+
+        // 如果只有一个商品且查询成功，也设置到 stockResult 以兼容旧逻辑
+        if (response.data.successItems.length === 1) {
+          stockResult.value = response.data.successItems[0]
+        }
+
         return response.data
       } else {
         const errorMsg = response.error?.message || '查询失败'
@@ -186,6 +254,7 @@ export const useStock = () => {
    */
   const reset = () => {
     stockResult.value = null
+    batchStockResults.value = null
     stockError.value = null
     skuResult.value = null
     skuError.value = null
@@ -194,9 +263,11 @@ export const useStock = () => {
   return {
     // 库存查询
     stockResult,
+    batchStockResults,
     isCheckingStock,
     stockError,
     checkStock,
+    checkStockBatch,
 
     // SKU 查询
     skuResult,

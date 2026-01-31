@@ -19,7 +19,7 @@ export type { PlatformAdapter, AdapterConfig } from './adapters';
 export { httpRequest, httpPost } from './utils/http';
 
 // 导出库存查询主函数
-export { checkStock, checkCollectionStock, getProductSkus } from './stock-check';
+export { checkStock, checkStockBatch, checkCollectionStock, getProductSkus } from './stock-check';
 export type { CheckStockOptions, CollectionStockRequest, ProductSkuRequest } from './stock-check';
 
 // 导出邮件服务

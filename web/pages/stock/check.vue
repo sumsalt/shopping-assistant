@@ -3,7 +3,7 @@
     <!-- 页面标题 -->
     <div class="mb-6">
       <h1 class="text-2xl font-bold text-gray-900">库存查询</h1>
-      <p class="mt-1 text-sm text-gray-500">输入商品 ID 或货号查询库存状态</p>
+      <p class="mt-1 text-sm text-gray-500">输入商品 ID 或货号查询库存状态，支持批量查询</p>
     </div>
 
     <!-- 搜索区域 -->
@@ -13,7 +13,7 @@
           <div class="flex-1">
             <UiInput
               v-model="searchQuery"
-              placeholder="请输入商品 ID 或货号"
+              placeholder="请输入商品 ID 或货号，多个 ID 用逗号分隔"
               size="lg"
               clearable
               :disabled="isCheckingStock"
@@ -24,6 +24,9 @@
                 </svg>
               </template>
             </UiInput>
+            <p v-if="searchQuery.includes(',') || searchQuery.includes('，')" class="mt-1 text-xs text-gray-500">
+              检测到多个商品 ID，将进行批量查询
+            </p>
           </div>
           <UiButton
             type="submit"
@@ -61,7 +64,77 @@
       </div>
     </div>
 
-    <!-- 查询结果 -->
+    <!-- 批量查询结果 -->
+    <div v-else-if="batchStockResults" class="space-y-6">
+      <!-- 统计信息 -->
+      <div class="bg-white rounded-lg border border-gray-200 p-6">
+        <h3 class="text-lg font-medium text-gray-900 mb-4">查询结果统计</h3>
+        <div class="grid grid-cols-3 gap-4">
+          <div class="text-center">
+            <div class="text-3xl font-bold text-blue-600">{{ batchStockResults.total }}</div>
+            <div class="text-sm text-gray-500">总数</div>
+          </div>
+          <div class="text-center">
+            <div class="text-3xl font-bold text-green-600">{{ batchStockResults.successCount }}</div>
+            <div class="text-sm text-gray-500">成功</div>
+          </div>
+          <div class="text-center">
+            <div class="text-3xl font-bold text-red-600">{{ batchStockResults.failedCount }}</div>
+            <div class="text-sm text-gray-500">失败</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 成功的商品列表 -->
+      <div v-if="batchStockResults.successItems.length > 0" class="space-y-4">
+        <h3 class="text-lg font-medium text-gray-900">查询成功（{{ batchStockResults.successCount }}）</h3>
+        <div class="grid grid-cols-1 gap-4">
+          <div
+            v-for="item in batchStockResults.successItems"
+            :key="item.productId"
+            class="bg-white rounded-lg border border-gray-200 p-4"
+          >
+            <StockProductCard
+              :product-id="item.productId"
+              :product-no="item.productNo"
+              :name="item.productName"
+              :image-url="item.productImage"
+              :price="item.price"
+              :in-stock="item.inStock"
+              :message="item.message"
+              :show-monitor-button="!item.inStock"
+              :is-monitoring="isCreatingMonitor && monitoringProductId === item.productId"
+              @click="handleProductClick(item)"
+              @monitor="handleMonitor(item)"
+            />
+          </div>
+        </div>
+      </div>
+
+      <!-- 失败的商品列表 -->
+      <div v-if="batchStockResults.failedItems.length > 0" class="space-y-4">
+        <h3 class="text-lg font-medium text-gray-900">查询失败（{{ batchStockResults.failedCount }}）</h3>
+        <div class="space-y-2">
+          <div
+            v-for="item in batchStockResults.failedItems"
+            :key="item.productId"
+            class="bg-red-50 rounded-lg border border-red-200 p-4"
+          >
+            <div class="flex items-start justify-between">
+              <div>
+                <div class="font-medium text-gray-900">{{ item.productId }}</div>
+                <div class="mt-1 text-sm text-red-700">{{ item.error }}</div>
+              </div>
+              <div class="px-2 py-1 text-xs font-medium text-red-700 bg-red-100 rounded">
+                {{ item.errorType }}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 单个查询结果 -->
     <div v-else-if="stockResult" class="space-y-6">
       <!-- 商品卡片 -->
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -75,8 +148,8 @@
           :message="stockResult.message"
           :show-monitor-button="!stockResult.inStock"
           :is-monitoring="isCreatingMonitor && monitoringProductId === stockResult.productId"
-          @click="handleProductClick"
-          @monitor="handleMonitor"
+          @click="handleProductClick(stockResult)"
+          @monitor="handleMonitor(stockResult)"
         />
 
         <!-- 详细信息卡片 -->
@@ -119,7 +192,7 @@
                 class="flex-1"
                 :loading="isCreatingMonitor && monitoringProductId === stockResult.productId"
                 :disabled="isCreatingMonitor"
-                @click="handleMonitor"
+                @click="handleMonitor(stockResult)"
               >
                 <svg v-if="!isCreatingMonitor || monitoringProductId !== stockResult.productId" class="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
@@ -131,7 +204,7 @@
                 variant="outline"
                 size="sm"
                 :class="stockResult.inStock ? 'flex-1' : ''"
-                @click="handleProductClick"
+                @click="handleProductClick(stockResult)"
               >
                 查看 SKU 详情
               </UiButton>
@@ -160,7 +233,8 @@
     <div class="mt-6 p-4 bg-blue-50 rounded-lg">
       <h4 class="text-sm font-medium text-blue-800 mb-2">使用说明</h4>
       <ul class="text-sm text-blue-700 list-disc list-inside space-y-1">
-        <li>支持输入商品 ID（数字）或货号（字母+数字）进行查询</li>
+        <li>支持输入单个或多个商品 ID 进行查询，多个 ID 用逗号分隔</li>
+        <li>批量查询时，会显示成功和失败的商品列表及统计信息</li>
         <li>查询结果显示商品基本信息和库存状态</li>
         <li>点击商品卡片或"查看 SKU 详情"按钮可查看所有颜色尺码的库存</li>
       </ul>
@@ -180,9 +254,11 @@ const toast = useToast()
 // 使用库存查询 composable
 const {
   stockResult,
+  batchStockResults,
   isCheckingStock,
   stockError,
   checkStock,
+  checkStockBatch,
   goToProductDetail,
 } = useStock()
 
@@ -201,7 +277,17 @@ const handleSearch = async () => {
   if (!query) {
     return
   }
-  await checkStock(query)
+
+  // 检查是否是批量查询（包含逗号）
+  const productIds = query.split(/[,，]/).map(id => id.trim()).filter(id => id)
+
+  if (productIds.length > 1) {
+    // 批量查询
+    await checkStockBatch(productIds)
+  } else {
+    // 单个查询
+    await checkStock(productIds[0])
+  }
 }
 
 // 重试
@@ -210,34 +296,32 @@ const handleRetry = () => {
 }
 
 // 点击商品卡片
-const handleProductClick = () => {
-  if (stockResult.value?.productNo) {
-    goToProductDetail(stockResult.value.productNo)
+const handleProductClick = (item: any) => {
+  if (item?.productNo) {
+    goToProductDetail(item.productNo)
   }
 }
 
 // 监控商品
-const handleMonitor = async () => {
-  if (!stockResult.value) {
+const handleMonitor = async (item: any) => {
+  if (!item) {
     return
   }
 
-  const result = stockResult.value
-
   // 如果有货，提示用户
-  if (result.inStock) {
+  if (item.inStock) {
     toast.warning('商品当前有货，无需监控')
     return
   }
 
-  monitoringProductId.value = result.productId
+  monitoringProductId.value = item.productId
 
   try {
     await createMonitorTask([
       {
-        productId: result.productId,
-        productName: result.productName,
-        productImage: result.productImage,
+        productId: item.productId,
+        productName: item.productName,
+        productImage: item.productImage,
       },
     ])
   } finally {

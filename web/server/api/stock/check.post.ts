@@ -1,16 +1,17 @@
 /**
  * 库存查询 API
  * POST /api/stock/check
+ * 支持单个或批量查询
  */
 
-import { checkStock } from '@core'
+import { checkStock, checkStockBatch } from '@core'
 import type { StockCheckRequest, StockCheckResult, StockCheckError } from '@core'
 import { createSuccessResponse, createErrorResponse, ErrorCode } from '../../utils/response'
 
 // 请求体类型
 interface CheckStockBody {
-  productId: string
-  sku?: string
+  productId?: string | string[]
+  sku?: string | string[]
   config?: {
     uid?: string
     token?: string
@@ -36,13 +37,6 @@ export default defineEventHandler(async (event) => {
     // config 为可选，uid、token、openid 也为可选
     const config = body.config || {}
 
-    // 构建请求参数
-    const request: StockCheckRequest = {
-      platform: 'yishou',
-      productId: body.productId,
-      sku: body.sku,
-    }
-
     // 构建适配器配置
     const adapterConfig = {
       // uid: config.uid || '',
@@ -55,10 +49,36 @@ export default defineEventHandler(async (event) => {
       proxyUrl: config.proxyUrl,
     }
 
-    // 调用核心库查询库存
-    const result: StockCheckResult = await checkStock(request, { adapterConfig })
+    // 判断是单个查询还是批量查询
+    if (Array.isArray(body.productId)) {
+      // 批量查询
+      const productIds = body.productId as string[]
+      const skus = body.sku ? (Array.isArray(body.sku) ? body.sku : undefined) : undefined
 
-    return createSuccessResponse(result)
+      // 调用核心库批量查询库存
+      const result = await checkStockBatch(
+        {
+          platform: 'yishou',
+          productIds,
+          skus,
+        },
+        { adapterConfig }
+      )
+
+      return createSuccessResponse(result)
+    } else {
+      // 单个查询
+      const request: StockCheckRequest = {
+        platform: 'yishou',
+        productId: body.productId as string,
+        sku: body.sku as string | undefined,
+      }
+
+      // 调用核心库查询库存
+      const result: StockCheckResult = await checkStock(request, { adapterConfig })
+
+      return createSuccessResponse(result)
+    }
   } catch (error: unknown) {
     console.error('库存查询失败:', error)
 
