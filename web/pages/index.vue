@@ -45,7 +45,7 @@
     </div>
 
     <!-- 快捷入口 -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 mb-8">
       <!-- 库存查询 -->
       <NuxtLink
         to="/stock/check"
@@ -76,6 +76,38 @@
         </div>
         <h3 class="text-lg font-semibold text-gray-900 mb-1">收藏夹监控</h3>
         <p class="text-sm text-gray-500">一键监控收藏夹中所有商品的库存状态</p>
+      </NuxtLink>
+
+      <!-- 凑单计算器 -->
+      <NuxtLink
+        to="/calculator"
+        class="block p-6 bg-white rounded-lg border border-gray-200 hover:shadow-md hover:border-orange-300 transition-all group"
+      >
+        <div class="flex items-center mb-4">
+          <div class="w-12 h-12 rounded-lg bg-orange-100 flex items-center justify-center group-hover:bg-orange-200 transition-colors">
+            <svg class="w-6 h-6 text-orange-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+            </svg>
+          </div>
+        </div>
+        <h3 class="text-lg font-semibold text-gray-900 mb-1">凑单计算器</h3>
+        <p class="text-sm text-gray-500">计算最优凑单方案，快速满足满减条件</p>
+      </NuxtLink>
+
+      <!-- 监控任务 -->
+      <NuxtLink
+        to="/monitor"
+        class="block p-6 bg-white rounded-lg border border-gray-200 hover:shadow-md hover:border-indigo-300 transition-all group"
+      >
+        <div class="flex items-center mb-4">
+          <div class="w-12 h-12 rounded-lg bg-indigo-100 flex items-center justify-center group-hover:bg-indigo-200 transition-colors">
+            <svg class="w-6 h-6 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+            </svg>
+          </div>
+        </div>
+        <h3 class="text-lg font-semibold text-gray-900 mb-1">监控任务</h3>
+        <p class="text-sm text-gray-500">管理到货监控任务，设置通知提醒</p>
       </NuxtLink>
 
       <!-- 系统配置 -->
