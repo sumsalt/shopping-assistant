@@ -162,17 +162,25 @@ export const checkStockBatch = async (
   // 获取对应平台的适配器
   const adapter = getAdapter(platform, adapterConfig);
 
-  // 并发查询所有商品
-  const promises = productIds.map(async (productId, index) => {
-    try {
-      const sku = skus?.[index];
-      return await adapter.checkStock(productId, sku);
-    } catch (error) {
-      throw { productId, error };
-    }
-  });
+  // 串行查询所有商品，每次查询后等待 0.5 秒
+  const results: PromiseSettledResult<StockCheckResult>[] = [];
 
-  const results = await Promise.allSettled(promises);
+  for (let i = 0; i < productIds.length; i++) {
+    const productId = productIds[i];
+    const sku = skus?.[i];
+
+    try {
+      const result = await adapter.checkStock(productId, sku);
+      results.push({ status: 'fulfilled', value: result });
+    } catch (error) {
+      results.push({ status: 'rejected', reason: { productId, error } });
+    }
+
+    // 等待 0.5 秒后继续（最后一个商品不需要等待）
+    if (i < productIds.length - 1) {
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+  }
 
   // 分类处理结果
   const successItems: StockCheckResult[] = [];

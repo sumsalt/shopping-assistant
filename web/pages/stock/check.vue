@@ -68,7 +68,22 @@
     <div v-else-if="batchStockResults" class="space-y-6">
       <!-- 统计信息 -->
       <div class="bg-white rounded-lg border border-gray-200 p-6">
-        <h3 class="text-lg font-medium text-gray-900 mb-4">查询结果统计</h3>
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-lg font-medium text-gray-900">查询结果统计</h3>
+          <UiButton
+            v-if="outOfStockCount > 0"
+            variant="primary"
+            size="sm"
+            :loading="isCreatingMonitor"
+            :disabled="isCreatingMonitor"
+            @click="handleBatchMonitor"
+          >
+            <svg v-if="!isCreatingMonitor" class="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+            </svg>
+            {{ isCreatingMonitor ? '创建中' : '监控所有无货商品' }}
+          </UiButton>
+        </div>
         <div class="grid grid-cols-3 gap-4">
           <div class="text-center">
             <div class="text-3xl font-bold text-blue-600">{{ batchStockResults.total }}</div>
@@ -81,6 +96,20 @@
           <div class="text-center">
             <div class="text-3xl font-bold text-red-600">{{ batchStockResults.failedCount }}</div>
             <div class="text-sm text-gray-500">失败</div>
+          </div>
+        </div>
+        <div v-if="outOfStockCount > 0" class="mt-4 p-3 bg-orange-50 rounded-lg">
+          <div class="flex items-center justify-between">
+            <div class="text-sm text-orange-800">
+              发现 <span class="font-bold">{{ outOfStockCount }}</span> 个无货商品
+            </div>
+            <UiButton
+              variant="outline"
+              size="xs"
+              @click="handleBatchMonitor"
+            >
+              点击批量创建监控
+            </UiButton>
           </div>
         </div>
       </div>
@@ -251,6 +280,9 @@ definePageMeta({
 // 使用 toast
 const toast = useToast()
 
+// 使用确认对话框
+const confirmDialog = useConfirmDialog()
+
 // 使用库存查询 composable
 const {
   stockResult,
@@ -270,6 +302,14 @@ const searchQuery = ref('')
 
 // 正在监控的商品 ID
 const monitoringProductId = ref<string | null>(null)
+
+// 计算无货商品数量
+const outOfStockCount = computed(() => {
+  if (!batchStockResults.value) {
+    return 0
+  }
+  return batchStockResults.value.successItems.filter(item => !item.inStock).length
+})
 
 // 搜索处理
 const handleSearch = async () => {
@@ -326,6 +366,44 @@ const handleMonitor = async (item: any) => {
     ])
   } finally {
     monitoringProductId.value = null
+  }
+}
+
+// 批量监控所有无货商品
+const handleBatchMonitor = async () => {
+  if (!batchStockResults.value) {
+    return
+  }
+
+  const outOfStockItems = batchStockResults.value.successItems.filter(item => !item.inStock)
+
+  if (outOfStockItems.length === 0) {
+    toast.info('没有需要监控的无货商品')
+    return
+  }
+
+  const confirmed = await confirmDialog.confirm({
+    title: '批量创建监控',
+    message: `确定要为 ${outOfStockItems.length} 个无货商品创建到货监控吗？`,
+    confirmText: '确定',
+    cancelText: '取消',
+  })
+
+  if (!confirmed) {
+    return
+  }
+
+  try {
+    await createMonitorTask(
+      outOfStockItems.map(item => ({
+        productId: item.productId,
+        productName: item.productName,
+        productImage: item.productImage,
+      }))
+    )
+    toast.success(`成功为 ${outOfStockItems.length} 个商品创建监控`)
+  } catch (error) {
+    toast.error('批量创建监控失败')
   }
 }
 </script>
