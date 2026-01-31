@@ -74,7 +74,7 @@ export const useConfigStore = defineStore('config', () => {
    * 更新单个配置项
    */
   const updateField = (field: keyof UserConfig, value: string) => {
-    config.value[field] = value
+    config.value[field] = value as any
     saveConfig(config.value)
   }
 
