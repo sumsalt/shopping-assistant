@@ -236,6 +236,19 @@ export class YishouAdapter extends BaseAdapter {
   }
 
   /**
+   * 获取代理配置
+   * 根据 proxyEnabled 和 proxyUrl 决定是否使用代理
+   * @returns 代理配置或 undefined
+   */
+  private getProxyConfig(): { proxyUrl?: string } | undefined {
+    // 只有在启用代理（"1"）且有代理 URL 时才返回代理配置
+    if (this.config.proxyEnabled === '1' && this.config.proxyUrl) {
+      return { proxyUrl: this.config.proxyUrl };
+    }
+    return undefined;
+  }
+
+  /**
    * 构建通用请求体基础参数
    * @param t_t 时间戳
    * @returns 基础请求参数
@@ -305,7 +318,7 @@ export class YishouAdapter extends BaseAdapter {
         YISHOU_API_URL,
         requestBody,
         headers,
-        { proxyUrl: this.config.proxyUrl }
+        this.getProxyConfig()
       );
 
       // 检查响应状态
@@ -380,7 +393,7 @@ export class YishouAdapter extends BaseAdapter {
         requestBody,
         headers,
         // 这个接口不走代理
-        // { proxyUrl: this.config.proxyUrl }
+        // this.getProxyConfig()
       );
 
       // 检查是否有商品数据
@@ -443,7 +456,8 @@ export class YishouAdapter extends BaseAdapter {
         YISHOU_CART_DETAIL_API_URL,
         requestBody,
         headers,
-        { proxyUrl: this.config.proxyUrl }
+        // 这个接口不走代理
+        // this.getProxyConfig()
       );
 
       // 检查响应状态

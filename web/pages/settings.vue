@@ -113,12 +113,32 @@
           <div>
             <h3 class="text-lg font-medium text-gray-900 mb-4">代理设置（可选）</h3>
 
-            <UiInput
-              v-model="formData.proxyUrl"
-              label="代理 URL"
-              placeholder="如：http://proxy.example.com:8080"
-              help-text="如果需要通过代理访问，请填写代理地址"
-            />
+            <div class="space-y-4">
+              <!-- 代理开关 -->
+              <div class="flex items-center justify-between">
+                <div>
+                  <div class="text-sm font-medium text-gray-900">启用代理</div>
+                  <div class="text-sm text-gray-500">通过代理服务器访问</div>
+                </div>
+                <UiSwitch
+                  v-model="formData.proxyEnabled"
+                  :disabled="!formData.proxyUrl"
+                />
+              </div>
+
+              <!-- 代理 URL -->
+              <UiInput
+                v-model="formData.proxyUrl"
+                label="代理 URL"
+                placeholder="如：http://proxy.example.com:8080"
+                :disabled="!formData.proxyEnabled"
+                help-text="如果需要通过代理访问，请填写代理地址"
+              />
+
+              <p v-if="!formData.proxyUrl && formData.proxyEnabled" class="text-sm text-orange-600">
+                请先填写代理 URL
+              </p>
+            </div>
           </div>
 
           <!-- 操作按钮 -->

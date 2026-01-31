@@ -62,4 +62,6 @@ export interface AdapterConfig {
   plat_type?: string;
   /** 代理 URL（可选） */
   proxyUrl?: string;
+  /** 是否启用代理（"1" 或 "0"） */
+  proxyEnabled?: '1' | '0';
 }

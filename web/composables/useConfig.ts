@@ -19,6 +19,7 @@ export const useConfig = () => {
     version_name: '',
     wx_version_name: '',
     proxyUrl: '',
+    proxyEnabled: '0',
   })
 
   // 表单错误

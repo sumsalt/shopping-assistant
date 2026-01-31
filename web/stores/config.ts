@@ -9,10 +9,10 @@ const DEFAULT_CONFIG: UserConfig = {
   uid: '',
   token: '',
   openid: '',
-  model: 'iPhone 14 Pro Max',
-  version: '5.11.0',
-  version_name: '5.11.0',
-  wx_version_name: '8.0.43',
+  model: 'iPhone 14 Pro<iPhone15,2>',
+  version: '8.0.60',
+  version_name: '4.9.0',
+  wx_version_name: '3.5.34',
   proxyUrl: '',
 }
 
