@@ -113,8 +113,8 @@ export default defineEventHandler(async (event) => {
 
     // 构建监控配置
     const config: StockMonitorConfig = {
-      interval: body.config?.interval || 60,
-      duration: body.config?.duration || 3600,
+      interval: body.config?.interval || 1,
+      duration: body.config?.duration || 3 * 60 * 60,
       adapterConfig: body.config?.adapterConfig || {},
     }
 

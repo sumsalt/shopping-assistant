@@ -36,11 +36,6 @@ export default defineEventHandler(async (event) => {
       return createErrorResponse('FORBIDDEN', '无权操作此任务')
     }
 
-    // 检查任务状态（只有已完成或已停止的任务可以重新发起）
-    if (originalTask.status === 'running') {
-      return createErrorResponse('INVALID_STATE', '任务正在运行中，无法重新发起')
-    }
-
     // 生成新任务 ID
     const newTaskId = `task_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`
 

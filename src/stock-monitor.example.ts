@@ -26,8 +26,8 @@ const main = async () => {
       },
     ],
     {
-      interval: 2,
-      duration: 3600,
+      interval: 1,
+      duration: 3 * 60 * 60,
       adapterConfig: {},
     },
     progress => console.log(`进度: ${progress.progress}%`),

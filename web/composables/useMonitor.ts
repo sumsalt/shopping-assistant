@@ -97,7 +97,7 @@ export const useMonitor = () => {
       // 构建监控配置
       const monitorConfig: MonitorConfig = {
         interval: config?.interval || 1,
-        duration: config?.duration || 3600,
+        duration: config?.duration || 3 * 60 * 60,
         adapterConfig: {
           // 暂时不使用登录态
           // uid: userConfig.uid || '',

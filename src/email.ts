@@ -289,8 +289,11 @@ export function createBackInStockTemplate(
           max-width: 300px;
           height: auto;
           border-radius: 8px;
-          margin: 15px auto;
           object-fit: cover;
+        }
+        .image-container {
+          text-align: center;
+          margin: 15px 0;
         }
         .price {
           font-size: 24px;
@@ -314,7 +317,15 @@ export function createBackInStockTemplate(
         <div class="content">
           <p>您好！</p>
           <p>您关注的商品已到货，快去看看吧！</p>
-          ${productImage ? `<img src="${productImage}" alt="${productName}" class="product-image" />` : ''}
+          ${productImage ? `
+          <table width="100%" cellpadding="0" cellspacing="0" border="0">
+            <tr>
+              <td align="center" class="image-container">
+                <img src="${productImage}" alt="${productName}" class="product-image" />
+              </td>
+            </tr>
+          </table>
+          ` : ''}
           <div class="product-name">${productName}</div>
           <div class="price">¥${price.toFixed(2)}</div>
         </div>

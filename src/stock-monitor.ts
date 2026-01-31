@@ -430,6 +430,10 @@ export const createCancellableMonitor = (
             resultCallback(status);
           }
         }
+
+        // 添加随机延迟 0.7-1.2 秒
+        const randomDelay = Math.random() * 0.5 + 0.7;
+        await sleep(interval * 1000 + randomDelay * 1000);
       }
 
       const detectedCount = Array.from(taskStatus.values()).filter(s => s.detected).length;
@@ -452,10 +456,6 @@ export const createCancellableMonitor = (
       if (duration && elapsedTime + interval >= duration) {
         break;
       }
-
-      // 添加随机延迟 0.7-1.2 秒
-      const randomDelay = Math.random() * 0.5 + 0.7;
-      await sleep(interval * 1000 + randomDelay * 1000);
     }
 
     return Array.from(taskStatus.values());

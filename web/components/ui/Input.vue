@@ -131,8 +131,8 @@ const emit = defineEmits<{
   clear: []
 }>()
 
-// 生成唯一 ID
-const inputId = computed(() => `input-${Math.random().toString(36).substring(2, 9)}`)
+// 生成唯一 ID (使用 Nuxt 的 useId 以保证 SSR 兼容性)
+const inputId = computed(() => `input-${useId()}`)
 
 // 尺寸样式映射
 const sizeClasses: Record<string, string> = {

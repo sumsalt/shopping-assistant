@@ -99,9 +99,8 @@
 
             <!-- 操作按钮组 -->
             <div class="flex items-center gap-2 ml-4">
-              <!-- 重新发起按钮（仅对已完成的任务显示） -->
+              <!-- 重新发起按钮 -->
               <UiButton
-                v-if="task.status === 'completed' || task.status === 'stopped'"
                 variant="ghost"
                 size="sm"
                 :loading="isRestarting(task.id)"

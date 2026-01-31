@@ -118,10 +118,18 @@ export const useConfig = () => {
     return true
   }
 
-  // 初始化
-  onMounted(() => {
-    initFormData()
-  })
+  // 初始化：在客户端显式加载配置，然后初始化表单
+  if (import.meta.client) {
+    // 确保在客户端加载配置
+    configStore.loadConfig()
+
+    initFormData();
+
+    // 额外保障：在 mounted 时再次初始化（响应式延迟）
+    onMounted(() => {
+      initFormData()
+    })
+  }
 
   return {
     formData,
