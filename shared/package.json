@@ -1,0 +1,13 @@
+{
+  "name": "@shopping-assistant/shared",
+  "version": "1.0.0",
+  "description": "Shared algorithms for shopping assistant",
+  "main": "OrderPoolingSolver.ts",
+  "types": "OrderPoolingSolver.ts",
+  "scripts": {
+    "compile": "tsc OrderPoolingSolver.ts --target es6 --module es6 --outDir ../miniprogram"
+  },
+  "keywords": ["calculator", "algorithm"],
+  "author": "",
+  "license": "MIT"
+}

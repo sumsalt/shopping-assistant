@@ -1,0 +1,13 @@
+{
+  "pages": [
+    "pages/calculator/index"
+  ],
+  "window": {
+    "navigationBarTitleText": "凑单计算器",
+    "navigationBarBackgroundColor": "#ffffff",
+    "navigationBarTextStyle": "black"
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json",
+  "compileType": "miniprogram"
+}

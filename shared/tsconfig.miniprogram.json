@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "ES2019",
+    "module": "ES6",
+    "lib": ["ES2019"],
+    "moduleResolution": "node",
+    "outDir": "../miniprogram",
+    "rootDir": ".",
+    "strict": false,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": false,
+    "noEmit": false,
+    "declaration": false,
+    "sourceMap": false,
+    "types": []
+  },
+  "include": ["OrderPoolingSolver.ts"],
+  "exclude": ["node_modules"]
+}

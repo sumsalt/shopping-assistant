@@ -1,0 +1,1 @@
+{"root":["./src/email.ts","./src/index.ts","./src/stock-check.ts","./src/stock-monitor.example.ts","./src/stock-monitor.ts","./src/types.ts","./src/adapters/base-adapter.ts","./src/adapters/index.ts","./src/adapters/types.ts","./src/adapters/yishou/index.ts","./src/utils/crypto.ts","./src/utils/http.ts","./src/utils/index.ts"],"errors":true,"version":"5.9.3"}

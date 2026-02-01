@@ -1,0 +1,21 @@
+{
+  "name": "shopping-calculator-miniprogram",
+  "version": "1.0.0",
+  "description": "凑单计算器小程序 - TypeScript 版本",
+  "main": "app.js",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch"
+  },
+  "keywords": [
+    "calculator",
+    "miniprogram",
+    "typescript"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/wechat-miniprogram": "^3.4.7",
+    "typescript": "^5.3.3"
+  }
+}

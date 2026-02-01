@@ -1,0 +1,264 @@
+<view class="container">
+  <!-- 页面标题 -->
+  <view class="card">
+    <view class="card-title">凑单计算器</view>
+    <view class="card-desc">输入商品价格和优惠券满减条件，计算最优凑单方案</view>
+  </view>
+
+  <!-- 输入区域 -->
+  <view class="card">
+    <view class="section-title">商品价格（元）</view>
+
+    <!-- 快速输入 -->
+    <view class="input-group">
+      <input
+        class="input"
+        placeholder="快速输入：多个价格用逗号分隔，例如：59.9,88,129.5"
+        value="{{bulkInput}}"
+        bindinput="onBulkInputChange"
+      />
+      <view class="input-hint">支持批量输入多个价格，用逗号或空格分隔</view>
+    </view>
+
+    <!-- 分隔线 -->
+    <view class="divider">
+      <view class="divider-line"></view>
+      <view class="divider-text">或手动添加</view>
+      <view class="divider-line"></view>
+    </view>
+
+    <!-- 手动输入 -->
+    <view class="input-group" wx:for="{{items}}" wx:key="index">
+      <view class="item-row">
+        <input
+          class="input item-input"
+          type="digit"
+          placeholder="输入价格"
+          value="{{item.price}}"
+          data-index="{{index}}"
+          bindinput="onItemPriceChange"
+        />
+        <view class="checkbox-wrapper" bindtap="toggleRequired" data-index="{{index}}">
+          <view class="checkbox {{item.required ? 'checked' : ''}}"></view>
+          <text class="checkbox-label">必选</text>
+        </view>
+        <button
+          wx:if="{{items.length > 1}}"
+          class="btn btn-outline btn-sm btn-remove"
+          bindtap="removeItem"
+          data-index="{{index}}"
+        >
+          <text>−</text>
+        </button>
+      </view>
+    </view>
+
+    <button class="btn btn-outline" bindtap="addItem">
+      <text>+ 添加商品</text>
+    </button>
+
+    <!-- 凑单价格和数量 -->
+    <view class="input-group">
+      <view class="label">凑单价格（元）</view>
+      <input
+        class="input"
+        type="digit"
+        placeholder="输入凑单价格，例如：200"
+        value="{{targetPrice}}"
+        bindinput="onTargetPriceChange"
+      />
+      <view class="input-hint">优惠券满减条件，例如满200减50，请输入200</view>
+    </view>
+
+    <view class="input-group">
+      <view class="label">凑单数量（订单数）</view>
+      <input
+        class="input"
+        type="number"
+        placeholder="输入凑单数量，默认为1"
+        value="{{targetQuantity}}"
+        bindinput="onTargetQuantityChange"
+      />
+      <view class="input-hint">需要凑单的订单数量，默认为1</view>
+    </view>
+
+    <!-- 商品总价格展示 -->
+    <view
+      class="stat-card {{meetsRequirements ? 'green' : 'blue'}}"
+      wx:if="{{validItemCount > 0}}"
+    >
+      <view class="stat-header">
+        <view>
+          <view class="stat-label">已输入商品</view>
+          <view class="stat-value">{{validItemCount}} 件</view>
+        </view>
+        <view>
+          <view class="stat-label">商品总价</view>
+          <view class="stat-value {{meetsRequirements ? 'green' : 'blue'}}">
+            ¥{{totalPrice}}
+          </view>
+        </view>
+      </view>
+      <view class="stat-grid" wx:if="{{targetPrice}}">
+        <view class="stat-item">
+          <text class="stat-item-label">单订单目标</text>
+          <text class="stat-item-value">¥{{targetPrice}}</text>
+        </view>
+        <view class="stat-item">
+          <text class="stat-item-label">订单数目标</text>
+          <text class="stat-item-value">{{targetQuantity || 1}} 单</text>
+        </view>
+        <view class="stat-item">
+          <text class="stat-item-label">价格差额</text>
+          <text class="stat-item-value {{priceDiff >= 0 ? 'positive' : 'negative'}}">
+            ¥{{Math.abs(priceDiff)}} {{priceDiff >= 0 ? '超出' : '相差'}}
+          </text>
+        </view>
+        <view class="stat-item">
+          <text class="stat-item-label">数量差额</text>
+          <text class="stat-item-value {{quantityDiff >= 0 ? 'positive' : 'negative'}}">
+            {{Math.abs(quantityDiff)}} 件 {{quantityDiff >= 0 ? '超出' : '相差'}}
+          </text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 计算按钮 -->
+    <button
+      class="btn btn-primary"
+      disabled="{{validItemCount === 0}}"
+      bindtap="calculate"
+    >
+      计算凑单方案
+    </button>
+  </view>
+
+  <!-- 计算结果 -->
+  <view wx:if="{{result}}" class="card">
+    <view class="section-title">最优凑单方案</view>
+
+    <!-- 总览 -->
+    <view class="stat-card green">
+      <view class="stat-header">
+        <view>
+          <view class="stat-label">选中的商品</view>
+          <view class="stat-value">{{result.selectedItems.length}} 件</view>
+        </view>
+        <view>
+          <view class="stat-label">总价</view>
+          <view class="stat-value green">¥{{result.totalPrice}}</view>
+        </view>
+      </view>
+    </view>
+
+    <!-- 订单分配详情 -->
+    <view class="section-title">订单分配详情</view>
+    <view wx:for="{{result.orders}}" wx:key="index" wx:for-item="order" wx:for-index="orderIndex">
+      <view class="order-card">
+        <view class="order-header">
+          <view class="order-index">
+            <view class="order-index-badge">{{orderIndex + 1}}</view>
+            <text class="order-index-text">订单 {{orderIndex + 1}}</text>
+          </view>
+          <view class="order-total">
+            订单总价: <text class="order-total-price">¥{{order.total}}</text>
+          </view>
+        </view>
+        <view wx:for="{{order.items}}" wx:key="id" wx:for-item="orderItem" wx:for-index="itemIndex">
+          <view class="order-item {{orderItem.required ? 'required' : ''}}">
+            <view class="order-item-name">
+              <text>{{orderItem.name}}</text>
+              <text wx:if="{{orderItem.required}}" class="order-item-badge">必选</text>
+            </view>
+            <text class="order-item-price">¥{{orderItem.price}}</text>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <!-- 统计信息 -->
+    <view class="result-summary {{result.unusedItems > 0 ? 'has-unused' : 'no-unused'}}">
+      <view class="result-item">
+        <text class="result-item-label">单个订单目标</text>
+        <text class="result-item-value">¥{{targetPrice}}</text>
+      </view>
+      <view class="result-item">
+        <text class="result-item-label">订单数量</text>
+        <text class="result-item-value">{{result.orderCount}} 单</text>
+      </view>
+      <view class="result-item" wx:if="{{result.unusedItems > 0}}">
+        <text class="result-item-label">未使用商品</text>
+        <text class="result-item-value">{{result.unusedItems}} 件</text>
+      </view>
+      <view class="result-item">
+        <text class="result-item-label">超出价格目标</text>
+        <text class="result-item-value orange">
+          ¥{{(result.totalPrice - targetPrice * result.orderCount).toFixed(2)}}
+        </text>
+      </view>
+      <view class="result-item">
+        <text class="result-item-label">超出数量目标</text>
+        <text class="result-item-value orange">
+          {{result.selectedItems.length - result.orderCount}} 件
+        </text>
+      </view>
+    </view>
+  </view>
+
+  <!-- 其他方案 -->
+  <view wx:if="{{result && result.allSolutions.length > 1}}" class="card">
+    <view class="section-title">其他可选方案</view>
+    <view wx:for="{{result.allSolutions.slice(1, 6)}}" wx:key="index" wx:for-item="solution" wx:for-index="solutionIndex">
+      <view class="solution-card">
+        <view class="solution-header">
+          <text class="solution-info">{{solution.items.length}} 件商品 / {{solution.orderCount}} 单</text>
+          <text class="solution-total">¥{{solution.totalPrice}}</text>
+        </view>
+        <view wx:for="{{solution.orders}}" wx:key="orderIndex" wx:for-item="order" wx:for-index="orderIdx">
+          <view class="order-card">
+            <view class="order-header">
+              <view class="order-index">
+                <view class="order-index-badge">{{orderIdx + 1}}</view>
+                <text class="order-index-text">订单 {{orderIdx + 1}}</text>
+              </view>
+              <text class="order-total-price">¥{{order.total}}</text>
+            </view>
+            <view class="order-item" wx:for="{{order.items}}" wx:key="id" wx:for-item="orderItem">
+              <view class="order-item-name">
+                <text>{{orderItem.name}}</text>
+                <text wx:if="{{orderItem.required}}" class="order-item-badge">必选</text>
+              </view>
+              <text class="order-item-price">¥{{orderItem.price}}</text>
+            </view>
+          </view>
+        </view>
+        <view class="input-hint">超出目标: ¥{{(solution.totalPrice - targetPrice * solution.orderCount).toFixed(2)}}</view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 空状态 -->
+  <view wx:elif="{{!hasCalculated}}" class="card empty-state">
+    <view class="empty-icon">📝</view>
+    <view class="empty-title">等待计算</view>
+    <view class="empty-desc">在上方输入商品价格和凑单目标价格，点击计算按钮获取最优凑单方案</view>
+  </view>
+
+  <!-- 无解状态 -->
+  <view wx:elif="{{hasCalculated && !result}}" class="alert-card">
+    <view class="alert-icon">⚠️</view>
+    <view class="alert-title">无法凑单</view>
+    <view class="alert-desc">当前商品组合无法达到凑单目标，请添加更多商品或调整凑单价格</view>
+  </view>
+
+  <!-- 使用说明 -->
+  <view class="hint-card">
+    <view class="hint-title">使用说明</view>
+    <view class="hint-list">
+      <view class="hint-list-item">• 输入多个商品的价格，点击"添加商品"增加更多商品</view>
+      <view class="hint-list-item">• 勾选"必选"标记必须包含的商品</view>
+      <view class="hint-list-item">• 输入凑单价格（优惠券满减条件）</view>
+      <view class="hint-list-item">• 系统会自动计算出达到凑单价格的最优商品组合</view>
+    </view>
+  </view>
+</view>

@@ -18,7 +18,10 @@
     "format": "prettier --write \"src/**/*.ts\"",
     "web:dev": "npm run dev -w web",
     "web:build": "npm run build -w web",
-    "web:preview": "npm run preview -w web"
+    "web:preview": "npm run preview -w web",
+    "shared:build": "cd shared && npx tsc --project tsconfig.miniprogram.json",
+    "miniprogram:build": "cd miniprogram && ./build.sh",
+    "miniprogram:dev": "npm run miniprogram:build"
   },
   "keywords": [
     "shopping",

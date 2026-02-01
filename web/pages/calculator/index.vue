@@ -404,6 +404,8 @@
 </template>
 
 <script setup lang="ts">
+import { OrderPoolingSolver } from '../../../shared/OrderPoolingSolver';
+
 // 页面元信息
 definePageMeta({
   title: '凑单计算器',
@@ -544,9 +546,6 @@ const calculate = async () => {
   }
 
   hasCalculated.value = true
-
-  // 动态导入算法类
-  const { OrderPoolingSolver } = await import('./OrderPoolingSolver')
 
   // 使用算法类计算
   const solver = new OrderPoolingSolver(validItems, target, targetQty)
