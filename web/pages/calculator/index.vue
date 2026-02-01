@@ -148,41 +148,39 @@
             </div>
           </div>
           <div v-if="targetPrice" class="mt-3 pt-3 border-t border-gray-200">
-            <div class="grid grid-cols-2 gap-4">
-              <div class="flex items-center justify-between text-sm">
-                <span class="text-gray-600">单个订单目标</span>
+            <div class="grid grid-cols-2 gap-x-4 gap-y-3">
+              <div class="flex flex-col sm:flex-row sm:items-center justify-between text-sm gap-1 sm:gap-0">
+                <span class="text-gray-600 whitespace-nowrap">单订单目标</span>
                 <span class="font-semibold text-gray-900">
                   ¥{{ parseFloat(targetPrice).toFixed(2) }}
                 </span>
               </div>
-              <div class="flex items-center justify-between text-sm">
-                <span class="text-gray-600">订单数量目标</span>
+              <div class="flex flex-col sm:flex-row sm:items-center justify-between text-sm gap-1 sm:gap-0">
+                <span class="text-gray-600 whitespace-nowrap">订单数目标</span>
                 <span class="font-semibold text-gray-900">
                   {{ targetQuantity || 1 }} 单
                 </span>
               </div>
-              <div class="flex items-center justify-between text-sm">
-                <span class="text-gray-600">价格差额</span>
+              <div class="flex flex-col sm:flex-row sm:items-center justify-between text-sm gap-1 sm:gap-0">
+                <span class="text-gray-600 whitespace-nowrap">价格差额</span>
                 <span
                   :class="[
                     'font-semibold',
                     priceDiff >= 0 ? 'text-green-600' : 'text-orange-600'
                   ]"
                 >
-                  ¥{{ Math.abs(priceDiff).toFixed(2) }}
-                  {{ priceDiff >= 0 ? '超出' : '相差' }}
+                  ¥{{ Math.abs(priceDiff).toFixed(2) }} {{ priceDiff >= 0 ? '超出' : '相差' }}
                 </span>
               </div>
-              <div class="flex items-center justify-between text-sm">
-                <span class="text-gray-600">数量差额</span>
+              <div class="flex flex-col sm:flex-row sm:items-center justify-between text-sm gap-1 sm:gap-0">
+                <span class="text-gray-600 whitespace-nowrap">数量差额</span>
                 <span
                   :class="[
                     'font-semibold',
                     quantityDiff >= 0 ? 'text-green-600' : 'text-orange-600'
                   ]"
                 >
-                  {{ Math.abs(quantityDiff) }} 件
-                  {{ quantityDiff >= 0 ? '超出' : '相差' }}
+                  {{ Math.abs(quantityDiff) }} 件 {{ quantityDiff >= 0 ? '超出' : '相差' }}
                 </span>
               </div>
             </div>
@@ -224,8 +222,8 @@
             </div>
           </div>
 
-          <!-- 订单详情（多订单模式） -->
-          <div v-if="result.orders && result.orders.length > 1" class="space-y-3">
+          <!-- 订单分配详情 -->
+          <div class="space-y-3">
             <h4 class="text-sm font-medium text-gray-700">订单分配详情</h4>
             <div
               v-for="(order, orderIndex) in result.orders"
@@ -263,38 +261,6 @@
                   <span class="font-medium text-gray-900">¥{{ item.price.toFixed(2) }}</span>
                 </div>
               </div>
-            </div>
-          </div>
-
-          <!-- 商品详情（单订单模式） -->
-          <div v-else class="space-y-2">
-            <h4 class="text-sm font-medium text-gray-700">商品详情</h4>
-            <div
-              v-for="(item, index) in result.selectedItems"
-              :key="index"
-              class="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
-              :class="item.required ? 'border-l-4 border-orange-500' : ''"
-            >
-              <div class="flex items-center gap-3">
-                <div
-                  :class="[
-                    'w-8 h-8 rounded-full flex items-center justify-center font-medium',
-                    item.required ? 'bg-orange-100 text-orange-600' : 'bg-blue-100 text-blue-600'
-                  ]"
-                >
-                  {{ index + 1 }}
-                </div>
-                <div class="flex items-center gap-2">
-                  <span class="font-medium text-gray-900">{{ item.name }}</span>
-                  <span
-                    v-if="item.required"
-                    class="px-2 py-0.5 text-xs bg-orange-100 text-orange-700 rounded-full"
-                  >
-                    必选
-                  </span>
-                </div>
-              </div>
-              <span class="font-semibold text-gray-900">¥{{ item.price.toFixed(2) }}</span>
             </div>
           </div>
 
@@ -341,13 +307,13 @@
       <!-- 所有方案（按价格排序） -->
       <div v-if="result.allSolutions.length > 1" class="bg-white rounded-lg border border-gray-200 p-6">
         <h3 class="text-lg font-medium text-gray-900 mb-4">其他可选方案</h3>
-        <div class="space-y-3">
+        <div class="space-y-4">
           <div
-            v-for="(solution, index) in result.allSolutions.slice(1, 6)"
-            :key="index"
+            v-for="(solution, solutionIndex) in result.allSolutions.slice(1, 6)"
+            :key="solutionIndex"
             class="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
           >
-            <div class="flex items-center justify-between mb-2">
+            <div class="flex items-center justify-between mb-3">
               <div class="text-sm text-gray-600">
                 {{ solution.items.length }} 件商品 / {{ solution.orderCount }} 单
               </div>
@@ -355,17 +321,37 @@
                 ¥{{ solution.totalPrice.toFixed(2) }}
               </div>
             </div>
-            <div class="flex flex-wrap gap-1">
-              <span
-                v-for="(item, itemIndex) in solution.items"
-                :key="itemIndex"
-                class="px-2 py-1 text-xs rounded"
-                :class="item.required ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'"
+
+            <!-- 订单详情 -->
+            <div class="space-y-2 mb-3">
+              <div
+                v-for="(order, orderIndex) in solution.orders"
+                :key="orderIndex"
+                class="p-2 bg-gray-50 rounded border border-gray-200"
               >
-                {{ item.name }} (¥{{ item.price.toFixed(2) }})
-              </span>
+                <div class="flex items-center justify-between mb-2">
+                  <div class="flex items-center gap-2">
+                    <div class="w-5 h-5 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-medium text-xs">
+                      {{ orderIndex + 1 }}
+                    </div>
+                    <span class="text-xs font-medium text-gray-700">订单 {{ orderIndex + 1 }}</span>
+                  </div>
+                  <span class="text-xs font-medium text-green-600">¥{{ order.total.toFixed(2) }}</span>
+                </div>
+                <div class="flex flex-wrap gap-1">
+                  <span
+                    v-for="(item, itemIndex) in order.items"
+                    :key="itemIndex"
+                    class="px-1.5 py-0.5 text-xs rounded"
+                    :class="item.required ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'"
+                  >
+                    {{ item.name }} (¥{{ item.price.toFixed(2) }})
+                  </span>
+                </div>
+              </div>
             </div>
-            <div class="mt-2 text-sm text-gray-500">
+
+            <div class="text-sm text-gray-500">
               超出目标: ¥{{ (solution.totalPrice - parseFloat(targetPrice) * solution.orderCount).toFixed(2) }}
             </div>
           </div>
@@ -594,6 +580,10 @@ const calculate = async () => {
     unusedItems: bestSolution.unusedItems.length,
     allSolutions: allSolutions.map(sol => ({
       items: sol.orders.flatMap(order => order.items),
+      orders: sol.orders.map(order => ({
+        items: order.items,
+        total: order.subtotal
+      })),
       totalPrice: sol.totalPrice,
       orderCount: sol.orders.length
     }))
