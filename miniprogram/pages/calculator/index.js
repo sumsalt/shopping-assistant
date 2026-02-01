@@ -1,5 +1,7 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
 // pages/calculator/index.ts
-import { OrderPoolingSolver } from '@shared/OrderPoolingSolver';
+const OrderPoolingSolver_1 = require("../../OrderPoolingSolver");
 Page({
     data: {
         bulkInput: '',
@@ -16,15 +18,22 @@ Page({
         totalPrice: '0.00',
         meetsRequirements: false,
         priceDiff: 0,
-        quantityDiff: 0
+        quantityDiff: 0,
+        priceDiffAbs: 0,
+        quantityDiffAbs: 0,
+        priceDiffText: '相差',
+        quantityDiffText: '相差'
     },
     // 批量输入变化
     onBulkInputChange(e) {
         const value = e.detail.value;
-        this.data.bulkInput = value;
+        this.setData({
+            bulkInput: value
+        });
         // 处理批量输入
         const input = value.trim();
         if (!input) {
+            // 如果输入为空，保持商品列表不变
             return;
         }
         // 支持逗号（中英文）和空格分隔
@@ -33,23 +42,22 @@ Page({
             .map(p => parseFloat(p))
             .filter(p => !isNaN(p) && p > 0);
         if (prices.length > 0) {
-            // 将解析出的价格填充到 items
+            // 将解析出的价格完全替换 items
+            const newItems = prices.map(price => ({ price: price.toString(), required: false }));
             this.setData({
-                items: prices.map(price => ({ price: price.toString(), required: false })),
-                bulkInput: ''
+                items: newItems
             });
             this.updateStats();
-            wx.showToast({
-                title: `已添加 ${prices.length} 个商品`,
-                icon: 'success'
-            });
+            // 不显示 toast，避免频繁提示
         }
     },
     // 商品价格变化
     onItemPriceChange(e) {
         const index = Number(e.currentTarget.dataset.index);
-        const value = e.detail.toString();
-        this.data.items[index].price = value;
+        const value = e.detail.value;
+        const items = [...this.data.items];
+        items[index].price = value;
+        this.setData({ items });
         this.updateStats();
     },
     // 切换必选状态
@@ -101,12 +109,20 @@ Page({
         const meetsRequirements = target > 0 && totalPrice >= target * qty && validItemCount >= qty;
         const priceDiff = target > 0 ? totalPrice - target * qty : 0;
         const quantityDiff = validItemCount - qty;
+        const priceDiffAbs = Math.abs(priceDiff);
+        const quantityDiffAbs = Math.abs(quantityDiff);
+        const priceDiffText = priceDiff >= 0 ? '超出' : '相差';
+        const quantityDiffText = quantityDiff >= 0 ? '超出' : '相差';
         this.setData({
             validItemCount,
             totalPrice: totalPrice.toFixed(2),
             meetsRequirements,
             priceDiff,
-            quantityDiff
+            quantityDiff,
+            priceDiffAbs,
+            quantityDiffAbs,
+            priceDiffText,
+            quantityDiffText
         });
     },
     // 计算凑单方案
@@ -157,7 +173,7 @@ Page({
         setTimeout(() => {
             try {
                 // 使用算法类计算
-                const solver = new OrderPoolingSolver(validItems, target, targetQty);
+                const solver = new OrderPoolingSolver_1.OrderPoolingSolver(validItems, target, targetQty);
                 const calculationResult = solver.solve();
                 if (!calculationResult.best) {
                     const requiredItems = validItems.filter(item => item.required);
@@ -185,6 +201,25 @@ Page({
                 // 转换结果格式
                 const bestSolution = calculationResult.best;
                 const allSolutions = [bestSolution, ...calculationResult.alternatives];
+                // 计算超出目标的价格
+                const targetTotal = target * targetQty;
+                const priceDiff = (bestSolution.totalPrice - targetTotal).toFixed(2);
+                // 计算超出目标的数量
+                const selectedItemCount = bestSolution.orders.flatMap(order => order.items).length;
+                const quantityDiff = selectedItemCount - bestSolution.orders.length;
+                // 提取其他方案（排除最优解，最多显示 5 个）
+                const otherSolutions = allSolutions
+                    .slice(1, 6)
+                    .map(sol => ({
+                    items: sol.orders.flatMap(order => order.items),
+                    orders: sol.orders.map(order => ({
+                        items: order.items,
+                        total: order.subtotal.toFixed(2)
+                    })),
+                    totalPrice: sol.totalPrice.toFixed(2),
+                    orderCount: sol.orders.length,
+                    priceDiff: (sol.totalPrice - target * sol.orders.length).toFixed(2)
+                }));
                 const result = {
                     selectedItems: bestSolution.orders.flatMap(order => order.items),
                     totalPrice: bestSolution.totalPrice.toFixed(2),
@@ -194,15 +229,9 @@ Page({
                         total: order.subtotal.toFixed(2)
                     })),
                     unusedItems: bestSolution.unusedItems.length,
-                    allSolutions: allSolutions.map(sol => ({
-                        items: sol.orders.flatMap(order => order.items),
-                        orders: sol.orders.map(order => ({
-                            items: order.items,
-                            total: order.subtotal.toFixed(2)
-                        })),
-                        totalPrice: sol.totalPrice.toFixed(2),
-                        orderCount: sol.orders.length
-                    }))
+                    priceDiff,
+                    quantityDiff,
+                    otherSolutions
                 };
                 this.setData({
                     result,

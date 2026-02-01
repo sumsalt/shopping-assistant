@@ -35,6 +35,14 @@ page {
   margin-bottom: 16rpx;
 }
 
+.section-title-spaced {
+  margin-top: 24rpx;
+}
+
+.btn-calculate {
+  margin-top: 24rpx;
+}
+
 .input-group {
   margin-bottom: 32rpx;
 }
@@ -81,7 +89,7 @@ page {
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
+  background: #3b82f6;
   color: #fff;
 }
 
@@ -93,6 +101,10 @@ page {
 
 .btn-outline:active {
   background: #f9fafb;
+}
+
+.btn-outline.add-item {
+  margin-bottom: 32rpx;
 }
 
 .btn-sm {
@@ -148,8 +160,8 @@ page {
 }
 
 .checkbox.checked {
-  background: #f97316;
-  border-color: #f97316;
+  background: #2563eb;
+  border-color: #2563eb;
   position: relative;
 }
 
@@ -169,8 +181,8 @@ page {
   color: #4b5563;
 }
 
-.btn-remove {
-  width: 64rpx;
+.btn.btn-remove {
+  width: 80rpx;
   height: 64rpx;
   padding: 0;
   flex-shrink: 0;

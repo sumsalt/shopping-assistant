@@ -1,10 +1,21 @@
 // pages/calculator/index.ts
-import { OrderPoolingSolver } from '@shared/OrderPoolingSolver'
-import type { OrderItem } from '@shared/OrderPoolingSolver'
+import { OrderPoolingSolver } from '../../OrderPoolingSolver'
+import type { OrderItem } from '../../OrderPoolingSolver'
 
 interface ItemData {
   price: string
   required: boolean
+}
+
+interface Solution {
+  items: OrderItem[]
+  orders: Array<{
+    items: OrderItem[]
+    total: string
+  }>
+  totalPrice: string
+  orderCount: number
+  priceDiff: string
 }
 
 interface ResultData {
@@ -16,15 +27,9 @@ interface ResultData {
     total: string
   }>
   unusedItems: number
-  allSolutions: Array<{
-    items: OrderItem[]
-    orders: Array<{
-      items: OrderItem[]
-      total: string
-    }>
-    totalPrice: string
-    orderCount: number
-  }>
+  priceDiff: string
+  quantityDiff: number
+  otherSolutions: Solution[]
 }
 
 interface PageData {
@@ -39,6 +44,10 @@ interface PageData {
   meetsRequirements: boolean
   priceDiff: number
   quantityDiff: number
+  priceDiffAbs: number
+  quantityDiffAbs: number
+  priceDiffText: string
+  quantityDiffText: string
 }
 
 Page<PageData, WechatMiniprogram.Page.CustomOption>({
@@ -57,17 +66,24 @@ Page<PageData, WechatMiniprogram.Page.CustomOption>({
     totalPrice: '0.00',
     meetsRequirements: false,
     priceDiff: 0,
-    quantityDiff: 0
+    quantityDiff: 0,
+    priceDiffAbs: 0,
+    quantityDiffAbs: 0,
+    priceDiffText: '相差',
+    quantityDiffText: '相差'
   },
 
   // 批量输入变化
   onBulkInputChange(e: WechatMiniprogram.Input) {
     const value = e.detail.value
-    this.data.bulkInput = value
+    this.setData({
+      bulkInput: value
+    })
 
     // 处理批量输入
     const input = value.trim()
     if (!input) {
+      // 如果输入为空，保持商品列表不变
       return
     }
 
@@ -78,24 +94,23 @@ Page<PageData, WechatMiniprogram.Page.CustomOption>({
       .filter(p => !isNaN(p) && p > 0)
 
     if (prices.length > 0) {
-      // 将解析出的价格填充到 items
+      // 将解析出的价格完全替换 items
+      const newItems = prices.map(price => ({ price: price.toString(), required: false }))
       this.setData({
-        items: prices.map(price => ({ price: price.toString(), required: false })),
-        bulkInput: ''
+        items: newItems
       })
       this.updateStats()
-      wx.showToast({
-        title: `已添加 ${prices.length} 个商品`,
-        icon: 'success'
-      })
+      // 不显示 toast，避免频繁提示
     }
   },
 
   // 商品价格变化
-  onItemPriceChange(e: WechatMiniprogram.CustomEvent) {
+  onItemPriceChange(e: WechatMiniprogram.Input) {
     const index = Number((e.currentTarget as any).dataset.index)
-    const value = (e.detail as string).toString()
-    this.data.items[index].price = value
+    const value = e.detail.value
+    const items = [...this.data.items]
+    items[index].price = value
+    this.setData({ items })
     this.updateStats()
   },
 
@@ -156,12 +171,21 @@ Page<PageData, WechatMiniprogram.Page.CustomOption>({
     const priceDiff = target > 0 ? totalPrice - target * qty : 0
     const quantityDiff = validItemCount - qty
 
+    const priceDiffAbs = Math.abs(priceDiff)
+    const quantityDiffAbs = Math.abs(quantityDiff)
+    const priceDiffText = priceDiff >= 0 ? '超出' : '相差'
+    const quantityDiffText = quantityDiff >= 0 ? '超出' : '相差'
+
     this.setData({
       validItemCount,
       totalPrice: totalPrice.toFixed(2),
       meetsRequirements,
       priceDiff,
-      quantityDiff
+      quantityDiff,
+      priceDiffAbs,
+      quantityDiffAbs,
+      priceDiffText,
+      quantityDiffText
     })
   },
 
@@ -248,29 +272,45 @@ Page<PageData, WechatMiniprogram.Page.CustomOption>({
           return
         }
 
-        // 转换结果格式
-        const bestSolution = calculationResult.best
-        const allSolutions = [bestSolution, ...calculationResult.alternatives]
+                // 转换结果格式
+                const bestSolution = calculationResult.best
+                const allSolutions = [bestSolution, ...calculationResult.alternatives]
 
-        const result: ResultData = {
-          selectedItems: bestSolution.orders.flatMap(order => order.items),
-          totalPrice: bestSolution.totalPrice.toFixed(2),
-          orderCount: bestSolution.orders.length,
-          orders: bestSolution.orders.map(order => ({
-            items: order.items,
-            total: order.subtotal.toFixed(2)
-          })),
-          unusedItems: bestSolution.unusedItems.length,
-          allSolutions: allSolutions.map(sol => ({
-            items: sol.orders.flatMap(order => order.items),
-            orders: sol.orders.map(order => ({
-              items: order.items,
-              total: order.subtotal.toFixed(2)
-            })),
-            totalPrice: sol.totalPrice.toFixed(2),
-            orderCount: sol.orders.length
-          }))
-        }
+                // 计算超出目标的价格
+                const targetTotal = target * targetQty
+                const priceDiff = (bestSolution.totalPrice - targetTotal).toFixed(2)
+
+                // 计算超出目标的数量
+                const selectedItemCount = bestSolution.orders.flatMap(order => order.items).length
+                const quantityDiff = selectedItemCount - bestSolution.orders.length
+
+                // 提取其他方案（排除最优解，最多显示 5 个）
+                const otherSolutions = allSolutions
+                  .slice(1, 6)
+                  .map(sol => ({
+                    items: sol.orders.flatMap(order => order.items),
+                    orders: sol.orders.map(order => ({
+                      items: order.items,
+                      total: order.subtotal.toFixed(2)
+                    })),
+                    totalPrice: sol.totalPrice.toFixed(2),
+                    orderCount: sol.orders.length,
+                    priceDiff: (sol.totalPrice - target * sol.orders.length).toFixed(2)
+                  }))
+
+                const result: ResultData = {
+                  selectedItems: bestSolution.orders.flatMap(order => order.items),
+                  totalPrice: bestSolution.totalPrice.toFixed(2),
+                  orderCount: bestSolution.orders.length,
+                  orders: bestSolution.orders.map(order => ({
+                    items: order.items,
+                    total: order.subtotal.toFixed(2)
+                  })),
+                  unusedItems: bestSolution.unusedItems.length,
+                  priceDiff,
+                  quantityDiff,
+                  otherSolutions
+                }
 
         this.setData({
           result,

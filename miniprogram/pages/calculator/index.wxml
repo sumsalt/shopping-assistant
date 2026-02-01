@@ -13,7 +13,7 @@
     <view class="input-group">
       <input
         class="input"
-        placeholder="快速输入：多个价格用逗号分隔，例如：59.9,88,129.5"
+        placeholder="快速输入：多个价格用逗号或空格分隔"
         value="{{bulkInput}}"
         bindinput="onBulkInputChange"
       />
@@ -53,7 +53,7 @@
       </view>
     </view>
 
-    <button class="btn btn-outline" bindtap="addItem">
+    <button class="btn btn-outline add-item" bindtap="addItem">
       <text>+ 添加商品</text>
     </button>
 
@@ -111,13 +111,13 @@
         <view class="stat-item">
           <text class="stat-item-label">价格差额</text>
           <text class="stat-item-value {{priceDiff >= 0 ? 'positive' : 'negative'}}">
-            ¥{{Math.abs(priceDiff)}} {{priceDiff >= 0 ? '超出' : '相差'}}
+            ¥{{priceDiffAbs}} {{priceDiffText}}
           </text>
         </view>
         <view class="stat-item">
           <text class="stat-item-label">数量差额</text>
           <text class="stat-item-value {{quantityDiff >= 0 ? 'positive' : 'negative'}}">
-            {{Math.abs(quantityDiff)}} 件 {{quantityDiff >= 0 ? '超出' : '相差'}}
+            {{quantityDiffAbs}} 件 {{quantityDiffText}}
           </text>
         </view>
       </view>
@@ -125,8 +125,7 @@
 
     <!-- 计算按钮 -->
     <button
-      class="btn btn-primary"
-      disabled="{{validItemCount === 0}}"
+      class="btn btn-primary btn-calculate"
       bindtap="calculate"
     >
       计算凑单方案
@@ -152,7 +151,7 @@
     </view>
 
     <!-- 订单分配详情 -->
-    <view class="section-title">订单分配详情</view>
+    <view class="section-title section-title-spaced">订单分配详情</view>
     <view wx:for="{{result.orders}}" wx:key="index" wx:for-item="order" wx:for-index="orderIndex">
       <view class="order-card">
         <view class="order-header">
@@ -193,22 +192,22 @@
       <view class="result-item">
         <text class="result-item-label">超出价格目标</text>
         <text class="result-item-value orange">
-          ¥{{(result.totalPrice - targetPrice * result.orderCount).toFixed(2)}}
+          ¥{{result.priceDiff}}
         </text>
       </view>
       <view class="result-item">
         <text class="result-item-label">超出数量目标</text>
         <text class="result-item-value orange">
-          {{result.selectedItems.length - result.orderCount}} 件
+          {{result.quantityDiff}} 件
         </text>
       </view>
     </view>
   </view>
 
   <!-- 其他方案 -->
-  <view wx:if="{{result && result.allSolutions.length > 1}}" class="card">
+  <view wx:if="{{result && result.otherSolutions.length > 0}}" class="card">
     <view class="section-title">其他可选方案</view>
-    <view wx:for="{{result.allSolutions.slice(1, 6)}}" wx:key="index" wx:for-item="solution" wx:for-index="solutionIndex">
+    <view wx:for="{{result.otherSolutions}}" wx:key="index" wx:for-item="solution" wx:for-index="solutionIndex">
       <view class="solution-card">
         <view class="solution-header">
           <text class="solution-info">{{solution.items.length}} 件商品 / {{solution.orderCount}} 单</text>
@@ -232,14 +231,14 @@
             </view>
           </view>
         </view>
-        <view class="input-hint">超出目标: ¥{{(solution.totalPrice - targetPrice * solution.orderCount).toFixed(2)}}</view>
+        <view class="input-hint">超出目标: ¥{{solution.priceDiff}}</view>
       </view>
     </view>
   </view>
 
   <!-- 空状态 -->
   <view wx:elif="{{!hasCalculated}}" class="card empty-state">
-    <view class="empty-icon">📝</view>
+    <view class="empty-icon">∑</view>
     <view class="empty-title">等待计算</view>
     <view class="empty-desc">在上方输入商品价格和凑单目标价格，点击计算按钮获取最优凑单方案</view>
   </view>

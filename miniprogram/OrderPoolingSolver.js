@@ -1,10 +1,13 @@
+"use strict";
 // ==========================================
 // 1. 类型定义 (Type Definitions)
 // ==========================================
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.OrderPoolingSolver = void 0;
 // ==========================================
 // 2. 核心算法类 (Solver Class)
 // ==========================================
-export class OrderPoolingSolver {
+class OrderPoolingSolver {
     constructor(items, targetPrice, orderCount) {
         // 状态记录
         this.minTotal = Infinity;
@@ -160,3 +163,4 @@ export class OrderPoolingSolver {
         };
     }
 }
+exports.OrderPoolingSolver = OrderPoolingSolver;
