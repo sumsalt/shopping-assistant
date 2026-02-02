@@ -55,7 +55,7 @@
           <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-4">
             <!-- 左侧：状态和时间 -->
             <div class="flex flex-wrap items-center gap-3">
-              <UiBadge :variant="getStatusColor(task.status) as any" size="md">
+              <UiBadge :variant="getStatusColor(task.status) as 'default' | 'success' | 'warning' | 'danger' | 'info' | 'stock-available' | 'stock-unavailable'" size="md">
                 {{ getStatusText(task.status) }}
               </UiBadge>
               <span class="text-sm text-gray-500">

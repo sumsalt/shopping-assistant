@@ -194,11 +194,11 @@ export const useMonitorTasks = () => {
    */
   const getStatusColor = (status: string): string => {
     const colorMap: Record<string, string> = {
-      running: 'blue',
-      stopped: 'gray',
-      completed: 'green',
+      running: 'info',
+      stopped: 'default',
+      completed: 'success',
     }
-    return colorMap[status] || 'gray'
+    return colorMap[status] || 'default'
   }
 
   /**
