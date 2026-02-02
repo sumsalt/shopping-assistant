@@ -127,6 +127,10 @@ export const useConfigStore = defineStore('config', () => {
     return `${visible}${masked}`
   }
 
+  onMounted(() => {
+    loadConfig()
+  })
+
   // 使用 Pinia 的 $onAction 确保在 store 完全初始化后再加载配置
   // 移除初始化时的直接调用，避免响应式引用问题
   return {
