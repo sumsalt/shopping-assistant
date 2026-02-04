@@ -45,7 +45,7 @@
     </div>
 
     <!-- 快捷入口 -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 mb-8">
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mb-8">
       <!-- 库存查询 -->
       <NuxtLink
         to="/stock/check"
@@ -108,6 +108,22 @@
         </div>
         <h3 class="text-lg font-semibold text-gray-900 mb-1">监控任务</h3>
         <p class="text-sm text-gray-500">管理到货监控任务，设置通知提醒</p>
+      </NuxtLink>
+
+      <!-- Tab 监控 -->
+      <NuxtLink
+        to="/tab-monitor"
+        class="block p-6 bg-white rounded-lg border border-gray-200 hover:shadow-md hover:border-teal-300 transition-all group"
+      >
+        <div class="flex items-center mb-4">
+          <div class="w-12 h-12 rounded-lg bg-teal-100 flex items-center justify-center group-hover:bg-teal-200 transition-colors">
+            <svg class="w-6 h-6 text-teal-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+            </svg>
+          </div>
+        </div>
+        <h3 class="text-lg font-semibold text-gray-900 mb-1">Tab 监控</h3>
+        <p class="text-sm text-gray-500">监控 Tab 商品列表变化</p>
       </NuxtLink>
 
       <!-- 系统配置 -->

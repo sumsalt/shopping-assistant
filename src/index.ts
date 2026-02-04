@@ -53,3 +53,18 @@ export type {
   ProgressCallback,
   ResultCallback,
 } from './stock-monitor';
+
+// 导出Tab商品列表监控
+export {
+  monitorTabList,
+  createCancellableTabMonitor,
+} from './tab-list-monitor';
+export type {
+  TabMonitorConfig,
+  TabMonitorTask,
+  TabMonitorResult,
+  TabMonitorProgress,
+  TabChangeInfo,
+  TabProgressCallback,
+  TabResultCallback,
+} from './tab-list-monitor';

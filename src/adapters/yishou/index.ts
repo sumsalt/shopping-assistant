@@ -3,7 +3,7 @@
  */
 
 import { StockCheckError, StockCheckErrorType } from '../../types';
-import type { Platform, StockCheckResult, YishouGoodsData, YishouGoodsResponse, YishouCollectionGoodsData, YishouCollectionResponse, CollectionStockResult, CollectionStockCheckResult, YishouCartDetailResponse, YishouCartDetailData, ProductSkuResult, SkuInfo } from '../../types';
+import type { Platform, StockCheckResult, YishouGoodsData, YishouGoodsResponse, YishouCollectionGoodsData, YishouCollectionResponse, CollectionStockResult, CollectionStockCheckResult, YishouCartDetailResponse, YishouCartDetailData, ProductSkuResult, SkuInfo, YishouTabListResponse, YishouTabGoodsData } from '../../types';
 import { BaseAdapter } from '../base-adapter';
 import type { AdapterConfig } from '../types';
 import { httpPost } from '../../utils/http';
@@ -17,6 +17,9 @@ const YISHOU_COLLECTION_API_URL = 'https://api.yishouapp.com/users/get_goods_col
 
 /** 一手商品详情 API 地址（获取 SKU） */
 const YISHOU_CART_DETAIL_API_URL = 'https://api.yishouapp.com/wechat/add_cart_goods_info';
+
+/** 一手 H5 Tab 商品列表 API 地址 */
+const YISHOU_TAB_LIST_API_URL = 'https://api.yishouapp.com/template/getNewTemplateH5Tab';
 
 /** 一手商品链接前缀 */
 const YISHOU_GOODS_URL_PREFIX = 'https://www.yishouapp.com/goods/';
@@ -154,7 +157,7 @@ export const mapCollectionItemToResult = (data: YishouCollectionGoodsData): Coll
     marketName: data.one_market_name,
     salesOf7: data.sales_of_7 || 0,
     message: getCollectionItemMessage(data, inStock),
-    collectId: data.collect_id,
+    collectId: data.collect_id || '',
   };
 };
 
@@ -209,6 +212,31 @@ export const mapCartDetailToSkuResult = (data: YishouCartDetailData): ProductSku
     inStockSkuCount,
     totalSkuCount: skuList.length,
     restrictionNumber: data.restriction_number,
+  };
+};
+
+/**
+ * 将一手 H5 Tab 商品数据转换为库存查询结果
+ * @param data H5 Tab 商品数据
+ * @returns 库存查询结果
+ */
+export const mapTabItemToResult = (data: YishouTabGoodsData): CollectionStockResult => {
+  const inStock = isCollectionItemInStock(data);
+  
+  return {
+    platform: 'yishou',
+    productId: data.goods_id,
+    productName: data.goods_name,
+    brandName: data.brand_name,
+    productNo: data.goods_no,
+    inStock,
+    price: parseFloat(data.shop_price) || 0,
+    productUrl: `${YISHOU_GOODS_URL_PREFIX}${data.goods_id}`,
+    productImage: data.goods_img || data.goods_thumb,
+    marketName: data.one_market_name,
+    salesOf7: data.sales_of_7 || 0,
+    message: getCollectionItemMessage(data, inStock),
+    collectId: '0', // Tab 商品无收藏ID，设为默认值
   };
 };
 
@@ -423,6 +451,87 @@ export class YishouAdapter extends BaseAdapter {
       throw new StockCheckError(
         StockCheckErrorType.UNKNOWN_ERROR,
         `查询收藏夹库存失败: ${error instanceof Error ? error.message : '未知错误'}`,
+        error
+      );
+    }
+  }
+
+  /**
+   * 获取 H5 Tab 商品列表
+   * @param tabId Tab ID
+   * @param page 页码，默认为1
+   * @param pageSize 每页数量，默认为20
+   * @param sort 排序方式，默认为1
+   * @param minPrice 最低价格，默认为0
+   * @param maxPrice 最高价格，默认为0
+   * @returns Tab 商品列表查询结果
+   */
+  async getTabGoodsList(
+    tabId: string,
+    page: number = 1,
+    pageSize: number = 20,
+    sort: number = 1,
+    minPrice: number = 0,
+    maxPrice: number = 0
+  ): Promise<CollectionStockCheckResult> {
+    // 校验必要的配置参数
+    this.validateConfig();
+
+    // 生成签名和时间戳
+    const { sign, t_t } = this.generateSignature();
+
+    // 构建请求参数
+    const requestBody: Record<string, string> = {
+      ...this.buildBaseRequestBody(t_t),
+      version_name: '7.65.0',
+      tabId,
+      sort: `${sort}`,
+      my_collection_supply: '',
+      min_price: `${minPrice}`,
+      max_price: `${maxPrice}`,
+      page: `${page}`,
+      page_size: `${pageSize}`,
+    };
+
+    // 构建请求头
+    const headers = this.buildHeaders(sign);
+
+    try {
+      // 调用一手 H5 Tab 商品列表 API
+      const response = await httpPost<{ data: { list: YishouTabGoodsData[] } }>(
+        YISHOU_TAB_LIST_API_URL,
+        requestBody,
+        headers,
+        this.getProxyConfig()
+      );
+
+      // 检查是否有商品数据
+      const items = response.data?.list || [];
+      
+      // 转换商品数据
+      const results = items.map(mapTabItemToResult);
+      
+      // 分类有货和无货商品
+      const inStockItems = results.filter(item => item.inStock);
+      const outOfStockItems = results.filter(item => !item.inStock);
+
+      return {
+        inStockItems,
+        outOfStockItems,
+        total: results.length,
+        inStockCount: inStockItems.length,
+        outOfStockCount: outOfStockItems.length,
+      };
+    } catch (error) {
+      // 如果已经是 StockCheckError，直接抛出
+      if (error instanceof StockCheckError) {
+        throw error;
+      }
+
+      // 其他错误
+      throw new StockCheckError(
+        StockCheckErrorType.UNKNOWN_ERROR,
+        `获取 Tab 商品列表失败: ${error instanceof Error ? error.message : '未知错误'}`,
         error
       );
     }

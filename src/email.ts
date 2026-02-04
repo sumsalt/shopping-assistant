@@ -339,6 +339,194 @@ export function createBackInStockTemplate(
 }
 
 /**
+ * 创建邮件模板 - Tab商品列表变化
+ * @param tabName Tab名称
+ * @param changeInfo 变化信息
+ * @param tabId Tab ID
+ * @returns HTML 邮件内容
+ */
+export function createTabChangeTemplate(
+  tabName: string,
+  changeInfo: {
+    changeType: 'list_changed' | 'count_changed' | 'both';
+    previousTotal: number;
+    currentTotal: number;
+    newProducts: Array<{ productId: string; productName: string; price: number; productUrl: string; productImage: string }>;
+    removedProducts: Array<{ productId: string; productName: string; price: number; productUrl: string; productImage: string }>;
+  },
+  tabId: string
+): string {
+  const changeTypeText = {
+    list_changed: '商品列表变化',
+    count_changed: '商品总数变化',
+    both: '商品列表和总数变化',
+  }[changeInfo.changeType];
+
+  const newProductsHtml = changeInfo.newProducts.length > 0 ? `
+    <div style="margin-top: 20px;">
+      <h3 style="color: #4CAF50; margin-bottom: 15px;">✨ 新增商品 (${changeInfo.newProducts.length})</h3>
+      ${changeInfo.newProducts.slice(0, 10).map(product => `
+        <div style="background: #f0fdf4; padding: 15px; margin-bottom: 10px; border-radius: 6px; border-left: 4px solid #4CAF50;">
+          <table width="100%" cellpadding="0" cellspacing="0">
+            <tr>
+              <td width="60">
+                <img src="${product.productImage}" alt="${product.productName}" style="width: 60px; height: 60px; object-fit: cover; border-radius: 4px;" />
+              </td>
+              <td style="padding-left: 15px;">
+                <div style="font-weight: bold; color: #333; margin-bottom: 5px;">${product.productName}</div>
+                <div style="color: #e53935; font-weight: bold;">¥${product.price.toFixed(2)}</div>
+              </td>
+            </tr>
+          </table>
+          <a href="${product.productUrl}" style="display: inline-block; margin-top: 10px; padding: 6px 12px; background: #4CAF50; color: white; text-decoration: none; border-radius: 4px; font-size: 12px;">查看商品</a>
+        </div>
+      `).join('')}
+      ${changeInfo.newProducts.length > 10 ? `<p style="color: #999; font-size: 12px; text-align: center;">... 还有 ${changeInfo.newProducts.length - 10} 个新增商品</p>` : ''}
+    </div>
+  ` : '';
+
+  const removedProductsHtml = changeInfo.removedProducts.length > 0 ? `
+    <div style="margin-top: 20px;">
+      <h3 style="color: #f44336; margin-bottom: 15px;">❌ 删除商品 (${changeInfo.removedProducts.length})</h3>
+      ${changeInfo.removedProducts.slice(0, 10).map(product => `
+        <div style="background: #fef2f2; padding: 15px; margin-bottom: 10px; border-radius: 6px; border-left: 4px solid #f44336;">
+          <table width="100%" cellpadding="0" cellspacing="0">
+            <tr>
+              <td width="60">
+                <img src="${product.productImage}" alt="${product.productName}" style="width: 60px; height: 60px; object-fit: cover; border-radius: 4px; opacity: 0.6;" />
+              </td>
+              <td style="padding-left: 15px;">
+                <div style="font-weight: bold; color: #333; margin-bottom: 5px;">${product.productName}</div>
+                <div style="color: #666;">¥${product.price.toFixed(2)}</div>
+              </td>
+            </tr>
+          </table>
+        </div>
+      `).join('')}
+      ${changeInfo.removedProducts.length > 10 ? `<p style="color: #999; font-size: 12px; text-align: center;">... 还有 ${changeInfo.removedProducts.length - 10} 个删除商品</p>` : ''}
+    </div>
+  ` : '';
+
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <style>
+        body {
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+          line-height: 1.6;
+          color: #333;
+          max-width: 800px;
+          margin: 0 auto;
+          padding: 20px;
+        }
+        .container {
+          background: #f9f9f9;
+          border-radius: 8px;
+          padding: 30px;
+        }
+        .header {
+          text-align: center;
+          margin-bottom: 30px;
+          border-bottom: 2px solid #e0e0e0;
+          padding-bottom: 20px;
+        }
+        .header h1 {
+          color: #FF9800;
+          margin: 0;
+        }
+        .summary {
+          background: white;
+          padding: 20px;
+          border-radius: 6px;
+          margin-bottom: 20px;
+          display: flex;
+          justify-content: space-around;
+        }
+        .summary-item {
+          text-align: center;
+        }
+        .summary-number {
+          font-size: 32px;
+          font-weight: bold;
+        }
+        .summary-previous {
+          color: #2196F3;
+        }
+        .summary-current {
+          color: #4CAF50;
+        }
+        .summary-diff {
+          color: #FF9800;
+        }
+        .summary-label {
+          color: #666;
+          margin-top: 5px;
+        }
+        .change-type {
+          background: #FFF3E0;
+          padding: 15px;
+          border-radius: 6px;
+          margin-bottom: 20px;
+          text-align: center;
+          font-weight: bold;
+          color: #FF6F00;
+        }
+        .footer {
+          text-align: center;
+          margin-top: 30px;
+          color: #999;
+          font-size: 12px;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>🔔 Tab商品列表变化提醒</h1>
+        </div>
+        
+        <div style="background: white; padding: 20px; border-radius: 6px; margin-bottom: 20px;">
+          <h3 style="margin-top: 0;">${tabName}</h3>
+          <p style="color: #666; font-size: 14px;">Tab ID: ${tabId}</p>
+        </div>
+
+        <div class="change-type">
+          变化类型: ${changeTypeText}
+        </div>
+
+        <div class="summary">
+          <div class="summary-item">
+            <div class="summary-number summary-previous">${changeInfo.previousTotal}</div>
+            <div class="summary-label">变化前</div>
+          </div>
+          <div class="summary-item">
+            <div class="summary-number summary-diff">
+              ${changeInfo.currentTotal > changeInfo.previousTotal ? '+' : ''}${changeInfo.currentTotal - changeInfo.previousTotal}
+            </div>
+            <div class="summary-label">变化量</div>
+          </div>
+          <div class="summary-item">
+            <div class="summary-number summary-current">${changeInfo.currentTotal}</div>
+            <div class="summary-label">变化后</div>
+          </div>
+        </div>
+
+        ${newProductsHtml}
+        ${removedProductsHtml}
+
+        <div class="footer">
+          <p>检测时间: ${new Date().toLocaleString('zh-CN')}</p>
+          <p>这是一封自动发送的邮件，请勿直接回复。</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+}
+
+/**
  * 创建邮件模板 - 库存查询报告
  * @param inStockCount 有货数量
  * @param outOfStockCount 无货数量

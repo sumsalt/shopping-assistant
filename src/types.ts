@@ -153,7 +153,7 @@ export interface YishouCollectionGoodsData {
   /** 是否补货：1-补货中，2-未补货 */
   is_replenish: string;
   /** 收藏ID */
-  collect_id: string;
+  collect_id?: string;
   /** 市场名称 */
   one_market_name: string;
   /** 7日销量 */
@@ -174,6 +174,74 @@ export interface YishouCollectionResponse {
   total_page: number;
   /** 当前页码 */
   page: number;
+}
+
+/**
+ * 一手 H5 Tab 商品列表数据
+ */
+export interface YishouTabGoodsData {
+  /** 商品ID */
+  goods_id: string;
+  /** 商品货号 */
+  goods_no: string;
+  /** 商品名称 */
+  goods_name: string;
+  /** 品牌名称 */
+  brand_name: string;
+  /** 拿货价 */
+  shop_price: string;
+  /** 商品缩略图 */
+  goods_thumb: string;
+  /** 商品主图 */
+  goods_img: string;
+  /** 商品状态：1-正常，2-下架 */
+  goods_status: string;
+  /** 是否在售：1-在售，0-停售 */
+  is_on_sale: string;
+  /** 是否缺货：1-缺货，0-有货 */
+  is_stockout: string;
+  /** 是否补货：1-补货中，2-未补货 */
+  is_replenish: string;
+  /** 商品货号 */
+  goods_kh: string;
+  /** 市场ID */
+  market_id: string;
+  /** 一级市场ID */
+  market_one_id: string;
+  /** 市场名称 */
+  one_market_name: string;
+  /** 供应商标识 */
+  supply_id: string;
+  /** 7日销量 */
+  sales_of_7: number;
+  /** 总销量 */
+  sales: number;
+  /** 商品视频URL */
+  video_url: string;
+  /** 商品类型 */
+  goods_type: string;
+  /** 是否新品 */
+  is_new: string;
+  /** 是否24H发货 */
+  is_shipping_in_24h: string;
+  /** 首次销售时间 */
+  first_sale_period: string;
+  /** 首次销售时间格式化 */
+  format_first_sale_time: string;
+}
+
+/**
+ * 一手 H5 Tab 商品列表 API 响应
+ */
+export interface YishouTabListResponse {
+  /** 商品数据列表 */
+  list: YishouTabGoodsData[];
+  /** 总数量 */
+  total: number;
+  /** 当前页码 */
+  page: number;
+  /** 每页数量 */
+  page_size: number;
 }
 
 /**
