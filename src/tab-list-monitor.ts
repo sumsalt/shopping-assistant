@@ -20,7 +20,7 @@ configureEmailService({
  * Tab监控配置
  */
 export interface TabMonitorConfig {
-  /** 循环间隔时间（秒），默认 300 秒（5分钟） */
+  /** 循环间隔时间（秒），默认 60 秒（1分钟） */
   interval?: number;
   /** 循环总时长（秒），不传则无限循环 */
   duration?: number;
@@ -38,6 +38,8 @@ export interface TabMonitorConfig {
   minPrice?: number;
   /** 最高价格，默认为0 */
   maxPrice?: number;
+  /** 触发变化的最少商品数量，默认10 */
+  minChangeCount?: number;
 }
 
 /**
@@ -275,6 +277,7 @@ export const createCancellableTabMonitor = (
       sort = 1,
       minPrice = 0,
       maxPrice = 0,
+      minChangeCount = 10,
     } = config;
 
     // 校验参数
@@ -362,7 +365,10 @@ export const createCancellableTabMonitor = (
         // 比较商品列表差异
         const comparison = compareProductLists(previousList, currentList);
 
-        if (comparison) {
+        // 只有当变化的商品个数大于等于 minChangeCount 时才算变化
+        const hasEnoughChanges = comparison && (comparison.newProducts.length + comparison.removedProducts.length) >= minChangeCount;
+
+        if (hasEnoughChanges) {
           detected = true;
           detectedCount++;
           changeInfo = comparison;
@@ -406,7 +412,12 @@ export const createCancellableTabMonitor = (
             errorCount++;
           }
         } else {
-          console.log(`[Tab监控] 未检测到变化，Tab ID: ${tabId}, 当前商品数: ${currentList.length}`);
+          const changeCount = comparison ? (comparison.newProducts.length + comparison.removedProducts.length) : 0;
+          if (comparison && changeCount > 0) {
+            console.log(`[Tab监控] 检测到变化但数量不足（${changeCount}/${minChangeCount}），Tab ID: ${tabId}, 当前商品数: ${currentList.length}`);
+          } else {
+            console.log(`[Tab监控] 未检测到变化，Tab ID: ${tabId}, 当前商品数: ${currentList.length}`);
+          }
 
           // 触发结果回调（即使没有变化）
           const monitorResult: TabMonitorResult = {

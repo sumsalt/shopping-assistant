@@ -1,23 +1,31 @@
 <template>
   <div class="max-w-6xl mx-auto">
     <!-- 页面标题 -->
-    <div class="flex items-center justify-between mb-6">
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
       <div>
-        <h1 class="text-2xl font-bold text-gray-900">Tab 监控任务</h1>
+        <h1 class="text-xl sm:text-2xl font-bold text-gray-900">Tab 监控任务</h1>
         <p class="mt-1 text-sm text-gray-500">管理 Tab 商品列表监控任务</p>
       </div>
-      <div class="flex items-center gap-3">
+      <div class="flex items-center gap-2 sm:gap-3">
         <UiButton
           variant="outline"
+          size="sm"
+          class="flex-1 sm:flex-none"
+          :loading="isRefreshing"
+          :disabled="isRefreshing"
           @click="handleRefresh"
         >
-          <svg class="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg class="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
           </svg>
           刷新
         </UiButton>
-        <UiButton @click="showAddDialog = true">
-          <svg class="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <UiButton
+          size="sm"
+          class="flex-1 sm:flex-none"
+          @click="showAddDialog = true"
+        >
+          <svg class="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
           </svg>
           新增监控
@@ -190,6 +198,25 @@
     <UiDialog v-model:open="showAddDialog" title="新增 Tab 监控">
       <form @submit.prevent="handleAddTask">
         <div class="space-y-4">
+          <!-- Tab 选择（快速选择） -->
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1.5">
+              快速选择
+            </label>
+            <div class="flex flex-wrap gap-2">
+              <UiButton
+                v-for="option in tabOptions"
+                :key="option.id"
+                type="button"
+                variant="outline"
+                size="sm"
+                @click="handleSelectTab(option.id)"
+              >
+                {{ option.name }}
+              </UiButton>
+            </div>
+          </div>
+
           <!-- Tab ID -->
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1.5">
@@ -329,6 +356,12 @@ const { danger: confirmDelete, warning: confirmRestart } = useConfirmDialog()
 // 对话框显示状态
 const showAddDialog = ref(false)
 
+// Tab 选项
+const tabOptions = [
+  { id: '146453', name: '羽绒服' },
+  { id: '133353', name: '外套' },
+]
+
 // 表单数据
 const formData = ref({
   tabId: '',
@@ -338,6 +371,15 @@ const formData = ref({
   minPrice: 0,
   maxPrice: 0,
 })
+
+// 选择 Tab 时的处理
+const handleSelectTab = (tabId: string) => {
+  const selectedTab = tabOptions.find(t => t.id === tabId)
+  if (selectedTab) {
+    formData.value.tabId = selectedTab.id
+    formData.value.tabName = selectedTab.name
+  }
+}
 
 // 正在添加
 const isAdding = computed(() => isCreating.value)
@@ -349,8 +391,11 @@ const deletingTaskIds = ref<Set<string>>(new Set())
 const restartingTaskIds = ref<Set<string>>(new Set())
 
 // 刷新处理
-const handleRefresh = () => {
-  refresh()
+const isRefreshing = ref(false)
+const handleRefresh = async () => {
+  isRefreshing.value = true
+  await fetchTasks()
+  isRefreshing.value = false
 }
 
 // 判断任务是否正在删除
