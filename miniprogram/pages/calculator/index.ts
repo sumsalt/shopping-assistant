@@ -3,6 +3,7 @@ import { OrderPoolingSolver } from '../../OrderPoolingSolver'
 import type { OrderItem } from '../../OrderPoolingSolver'
 
 interface ItemData {
+  name: string
   price: string
   required: boolean
 }
@@ -54,9 +55,9 @@ Page<PageData, WechatMiniprogram.Page.CustomOption>({
   data: {
     bulkInput: '',
     items: [
-      { price: '', required: false },
-      { price: '', required: false },
-      { price: '', required: false }
+      { name: '', price: '', required: false },
+      { name: '', price: '', required: false },
+      { name: '', price: '', required: false }
     ],
     targetPrice: '',
     targetQuantity: '1',
@@ -83,25 +84,91 @@ Page<PageData, WechatMiniprogram.Page.CustomOption>({
     // 处理批量输入
     const input = value.trim()
     if (!input) {
-      // 如果输入为空，保持商品列表不变
       return
     }
 
-    // 支持逗号（中英文）和空格分隔
-    const prices = input
-      .split(/[,，\s]+/)
-      .map(p => parseFloat(p))
-      .filter(p => !isNaN(p) && p > 0)
+    const parsedItems = this.parseJielongInput(input)
 
-    if (prices.length > 0) {
-      // 将解析出的价格完全替换 items
-      const newItems = prices.map(price => ({ price: price.toString(), required: false }))
-      this.setData({
-        items: newItems
-      })
+    if (parsedItems.length > 0) {
+      const newItems = parsedItems.map(item => ({
+        name: item.name || '',
+        price: item.price.toString(),
+        required: false
+      }))
+      this.setData({ items: newItems })
       this.updateStats()
-      // 不显示 toast，避免频繁提示
+      wx.showToast({
+        title: `已添加 ${parsedItems.length} 个商品`,
+        icon: 'success'
+      })
     }
+  },
+
+  /**
+   * 解析接龙输入格式
+   * 支持两种格式：
+   * 1. 接龙格式："名称 价格"，如 "张三 123.45"
+   * 2. 纯数字格式：逗号或空格分隔的数字，如 "59.9,88,129.5"
+   */
+  parseJielongInput(input: string): Array<{ name: string; price: number }> {
+    const result: Array<{ name: string; price: number }> = []
+
+    // 按行分割，处理多行接龙
+    const lines = input.split(/\n/).filter(line => line.trim())
+
+    for (const line of lines) {
+      const trimmedLine = line.trim()
+
+      // 跳过空行和标题行
+      if (!trimmedLine ||
+          trimmedLine.includes('接龙标题') ||
+          trimmedLine.includes('接龙描述') ||
+          trimmedLine.includes('例 接龙例子')) {
+        continue
+      }
+
+      // 检查是否是编号行，如 "1. 张三 123.45"
+      const numberedMatch = trimmedLine.match(/^\d+[\.、]\s*(.+?)\s+([\d\.]+)$/)
+      if (numberedMatch) {
+        const name = numberedMatch[1].trim()
+        const price = parseFloat(numberedMatch[2])
+        if (!isNaN(price) && price > 0) {
+          result.push({ name, price })
+          continue
+        }
+      }
+
+      // 检查是否是"名称 价格"格式
+      const namePriceMatch = trimmedLine.match(/^(.+?)\s+([\d\.]+)$/)
+      if (namePriceMatch) {
+        const name = namePriceMatch[1].trim()
+        const price = parseFloat(namePriceMatch[2])
+        if (!isNaN(price) && price > 0) {
+          result.push({ name, price })
+          continue
+        }
+      }
+
+      // 检查是否是纯数字格式
+      const prices = trimmedLine.split(/[,，\s]+/)
+      for (const p of prices) {
+        const price = parseFloat(p)
+        if (!isNaN(price) && price > 0) {
+          result.push({ name: '', price })
+        }
+      }
+    }
+
+    return result
+  },
+
+  // 商品名称变化
+  onItemNameChange(e: WechatMiniprogram.Input) {
+    const index = Number((e.currentTarget as any).dataset.index)
+    const value = e.detail.value
+    const items = [...this.data.items]
+    items[index].name = value
+    this.setData({ items })
   },
 
   // 商品价格变化
@@ -141,7 +208,7 @@ Page<PageData, WechatMiniprogram.Page.CustomOption>({
 
   // 添加商品
   addItem() {
-    const items = [...this.data.items, { price: '', required: false }]
+    const items = [...this.data.items, { name: '', price: '', required: false }]
     this.setData({ items })
   },
 
@@ -195,7 +262,7 @@ Page<PageData, WechatMiniprogram.Page.CustomOption>({
     const validItems: OrderItem[] = this.data.items
       .map((item, index) => ({
         id: index,
-        name: `商品 ${index + 1}`,
+        name: item.name || `商品 ${index + 1}`,
         price: parseFloat(item.price),
         required: item.required
       }))
