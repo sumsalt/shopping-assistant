@@ -369,16 +369,13 @@ export function createTabChangeTemplate(
         <div style="background: #f0fdf4; padding: 15px; margin-bottom: 10px; border-radius: 6px; border-left: 4px solid #4CAF50;">
           <table width="100%" cellpadding="0" cellspacing="0">
             <tr>
-              <td width="60">
-                <img src="${product.productImage}" alt="${product.productName}" style="width: 60px; height: 60px; object-fit: cover; border-radius: 4px;" />
-              </td>
-              <td style="padding-left: 15px;">
-                <div style="font-weight: bold; color: #333; margin-bottom: 5px;">${product.productName}</div>
-                <div style="color: #e53935; font-weight: bold;">¥${product.price.toFixed(2)}</div>
+              <td align="center" style="text-align: center;">
+                <img src="${product.productImage}" alt="${product.productName}" width="400" style="width: 100%; max-width: 400px; height: auto; object-fit: cover; border-radius: 4px; display: block;" />
               </td>
             </tr>
           </table>
-          <a href="${product.productUrl}" style="display: inline-block; margin-top: 10px; padding: 6px 12px; background: #4CAF50; color: white; text-decoration: none; border-radius: 4px; font-size: 12px;">查看商品</a>
+          <div style="font-weight: bold; color: #333; margin-bottom: 5px; text-align: center;">${product.productName}</div>
+          <div style="color: #e53935; font-weight: bold; text-align: center;">¥${product.price.toFixed(2)}</div>
         </div>
       `).join('')}
       ${changeInfo.newProducts.length > 10 ? `<p style="color: #999; font-size: 12px; text-align: center;">... 还有 ${changeInfo.newProducts.length - 10} 个新增商品</p>` : ''}
@@ -392,15 +389,13 @@ export function createTabChangeTemplate(
         <div style="background: #fef2f2; padding: 15px; margin-bottom: 10px; border-radius: 6px; border-left: 4px solid #f44336;">
           <table width="100%" cellpadding="0" cellspacing="0">
             <tr>
-              <td width="60">
-                <img src="${product.productImage}" alt="${product.productName}" style="width: 60px; height: 60px; object-fit: cover; border-radius: 4px; opacity: 0.6;" />
-              </td>
-              <td style="padding-left: 15px;">
-                <div style="font-weight: bold; color: #333; margin-bottom: 5px;">${product.productName}</div>
-                <div style="color: #666;">¥${product.price.toFixed(2)}</div>
+              <td align="center" style="text-align: center;">
+                <img src="${product.productImage}" alt="${product.productName}" width="400" style="width: 100%; max-width: 400px; height: auto; object-fit: cover; border-radius: 4px; display: block; opacity: 0.6;" />
               </td>
             </tr>
           </table>
+          <div style="font-weight: bold; color: #333; margin-bottom: 5px; text-align: center;">${product.productName}</div>
+          <div style="color: #666; text-align: center;">¥${product.price.toFixed(2)}</div>
         </div>
       `).join('')}
       ${changeInfo.removedProducts.length > 10 ? `<p style="color: #999; font-size: 12px; text-align: center;">... 还有 ${changeInfo.removedProducts.length - 10} 个删除商品</p>` : ''}
