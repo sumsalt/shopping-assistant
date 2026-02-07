@@ -17,13 +17,21 @@
           <div class="space-y-4">
             <!-- 快速输入方式 -->
             <div>
-              <UiInput
+              <UiTextarea
                 v-model="bulkInput"
-                placeholder="快速输入：多个价格用逗号分隔，例如：59.9,88,129.5"
+                placeholder="支持接龙格式粘贴：名称 价格，或多个价格用逗号分隔
+
+示例：
+1. 夏言 123.45
+2. 张三 23.45
+3. 李四 89.99
+
+或纯数字：59.9,88,129.5"
+                :rows="6"
                 @input="handleBulkInput"
               />
               <p class="mt-1 text-xs text-gray-500">
-                支持批量输入多个价格，用逗号或空格分隔
+                支持批量输入，格式如："张三 123.45" 或 "59.9,88,129.5"
               </p>
             </div>
 
@@ -39,17 +47,22 @@
               <div
                 v-for="(item, index) in items"
                 :key="index"
-                class="flex gap-2"
+                class="flex gap-2 items-center"
               >
+                <UiInput
+                  v-model="item.name"
+                  placeholder="名称"
+                  class="w-16 sm:w-24"
+                />
                 <UiInput
                   v-model="item.price"
                   type="number"
                   step="0.01"
                   min="0"
-                  placeholder="输入价格"
-                  class="flex-1"
+                  placeholder="价格"
+                  class="flex-1 min-w-[100px]"
                 />
-                <div class="flex items-center gap-2">
+                <div class="flex items-center gap-2 flex-shrink-0">
                   <label class="flex items-center gap-1 cursor-pointer">
                     <input
                       v-model="item.required"
@@ -64,6 +77,7 @@
                   variant="outline"
                   size="sm"
                   @click="removeItem(index)"
+                  class="flex-shrink-0"
                 >
                   <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4" />
@@ -419,9 +433,9 @@ const bulkInput = ref('')
 
 // 商品列表
 const items = ref([
-  { price: '', required: false },
-  { price: '', required: false },
-  { price: '', required: false },
+  { name: '', price: '', required: false },
+  { name: '', price: '', required: false },
+  { name: '', price: '', required: false },
 ])
 
 // 凑单价格
@@ -484,22 +498,78 @@ const handleBulkInput = () => {
     return
   }
 
-  // 支持逗号（中英文）和空格分隔
-  const prices = input
-    .split(/[,，\s]+/)
-    .map(p => parseFloat(p))
-    .filter(p => !isNaN(p) && p > 0)
+  // 尝试解析接龙格式：识别名称和价格
+  const parsedItems = parseJielongInput(input)
 
-  if (prices.length > 0) {
-    // 将解析出的价格填充到 items
-    items.value = prices.map(price => ({ price: price.toString(), required: false }))
-    toast.success(`已添加 ${prices.length} 个商品`)
+  if (parsedItems.length > 0) {
+    // 将解析出的商品填充到 items
+    items.value = parsedItems.map(item => ({
+      name: item.name || '',
+      price: item.price.toString(),
+      required: false
+    }))
+    toast.success(`已添加 ${parsedItems.length} 个商品`)
   }
+}
+
+/**
+ * 解析接龙输入格式
+ * 支持两种格式：
+ * 1. 接龙格式："名称 价格"，如 "张三 123.45"
+ * 2. 纯数字格式：逗号或空格分隔的数字，如 "59.9,88,129.5"
+ */
+function parseJielongInput(input: string): Array<{ name: string; price: number }> {
+  const result: Array<{ name: string; price: number }> = []
+
+  // 按行分割，处理多行接龙
+  const lines = input.split(/\n/).filter(line => line.trim())
+
+  for (const line of lines) {
+    const trimmedLine = line.trim()
+
+    // 跳过空行和标题行
+    if (!trimmedLine || trimmedLine.includes('接龙标题') || trimmedLine.includes('接龙描述') || trimmedLine.includes('例 接龙例子')) {
+      continue
+    }
+
+    // 检查是否是编号行，如 "1. 张三 123.45"
+    const numberedMatch = trimmedLine.match(/^\d+[\.、]\s*(.+?)\s+([\d\.]+)$/)
+    if (numberedMatch) {
+      const name = numberedMatch[1].trim()
+      const price = parseFloat(numberedMatch[2])
+      if (!isNaN(price) && price > 0) {
+        result.push({ name, price })
+        continue
+      }
+    }
+
+    // 检查是否是"名称 价格"格式
+    const namePriceMatch = trimmedLine.match(/^(.+?)\s+([\d\.]+)$/)
+    if (namePriceMatch) {
+      const name = namePriceMatch[1].trim()
+      const price = parseFloat(namePriceMatch[2])
+      if (!isNaN(price) && price > 0) {
+        result.push({ name, price })
+        continue
+      }
+    }
+
+    // 检查是否是纯数字格式
+    const prices = trimmedLine.split(/[,，\s]+/)
+    for (const p of prices) {
+      const price = parseFloat(p)
+      if (!isNaN(price) && price > 0) {
+        result.push({ name: '', price })
+      }
+    }
+  }
+
+  return result
 }
 
 // 添加商品
 const addItem = () => {
-  items.value.push({ price: '', required: false })
+  items.value.push({ name: '', price: '', required: false })
 }
 
 // 移除商品
@@ -516,7 +586,7 @@ const calculate = async () => {
   const validItems = items.value
     .map((item, index) => ({
       id: index,
-      name: `商品 ${index + 1}`,
+      name: item.name || `商品 ${index + 1}`,
       price: parseFloat(item.price),
       required: item.required,
     }))

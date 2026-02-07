@@ -11,13 +11,21 @@
 
     <!-- 快速输入 -->
     <view class="input-group">
-      <input
-        class="input"
-        placeholder="快速输入：多个价格用逗号或空格分隔"
+      <textarea
+        class="textarea"
+        placeholder="支持接龙格式粘贴：名称 价格，或多个价格用逗号分隔
+
+示例：
+1. 夏言 123.45
+2. 张三 23.45
+3. 李四 89.99
+
+或纯数字：59.9,88,129.5"
         value="{{bulkInput}}"
         bindinput="onBulkInputChange"
+        auto-height
       />
-      <view class="input-hint">支持批量输入多个价格，用逗号或空格分隔</view>
+      <view class="input-hint">支持批量输入，格式如："张三 123.45" 或 "59.9,88,129.5"</view>
     </view>
 
     <!-- 分隔线 -->
@@ -31,9 +39,17 @@
     <view class="input-group" wx:for="{{items}}" wx:key="index">
       <view class="item-row">
         <input
+          class="input item-name-input"
+          type="text"
+          placeholder="名称"
+          value="{{item.name}}"
+          data-index="{{index}}"
+          bindinput="onItemNameChange"
+        />
+        <input
           class="input item-input"
           type="digit"
-          placeholder="输入价格"
+          placeholder="价格"
           value="{{item.price}}"
           data-index="{{index}}"
           bindinput="onItemPriceChange"
@@ -250,14 +266,15 @@
     <view class="alert-desc">当前商品组合无法达到凑单目标，请添加更多商品或调整凑单价格</view>
   </view>
 
-  <!-- 使用说明 -->
-  <view class="hint-card">
-    <view class="hint-title">使用说明</view>
-    <view class="hint-list">
-      <view class="hint-list-item">• 输入多个商品的价格，点击"添加商品"增加更多商品</view>
-      <view class="hint-list-item">• 勾选"必选"标记必须包含的商品</view>
-      <view class="hint-list-item">• 输入凑单价格（优惠券满减条件）</view>
-      <view class="hint-list-item">• 系统会自动计算出达到凑单价格的最优商品组合</view>
+    <!-- 使用说明 -->
+    <view class="hint-card">
+      <view class="hint-title">使用说明</view>
+      <view class="hint-list">
+        <view class="hint-list-item">• 输入多个商品的价格，点击"添加商品"增加更多商品</view>
+        <view class="hint-list-item">• 勾选"必选"标记必须包含的商品，计算结果将强制包含这些商品</view>
+        <view class="hint-list-item">• 输入凑单价格（优惠券满减条件）</view>
+        <view class="hint-list-item">• 系统会自动计算出达到凑单价格的最优商品组合</view>
+        <view class="hint-list-item">• 如果有多个方案，会显示所有可选方案供您选择</view>
+      </view>
     </view>
-  </view>
 </view>
