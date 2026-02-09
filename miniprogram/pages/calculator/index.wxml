@@ -13,14 +13,7 @@
     <view class="input-group">
       <textarea
         class="textarea"
-        placeholder="支持接龙格式粘贴：名称 价格，或多个价格用逗号分隔
-
-示例：
-1. 夏言 123.45
-2. 张三 23.45
-3. 李四 89.99
-
-或纯数字：59.9,88,129.5"
+        placeholder="支持接龙格式粘贴：名称 价格，或多个价格用逗号分隔。示例：1. 夏言 123.45 或纯数字：59.9,88,129.5"
         value="{{bulkInput}}"
         bindinput="onBulkInputChange"
         auto-height
