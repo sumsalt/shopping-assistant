@@ -556,38 +556,45 @@ function parseJielongInput(input: string): Array<{ name: string; price: number }
         // 优先尝试找到小数作为价格（价格通常带小数点）
         // 从后向前查找，优先选择小数
         let price = 0
-        let priceIndex = -1
+          let priceIndex = -1
 
-        // 第一步：优先查找小数
-        for (let i = numbers.length - 1; i >= 0; i--) {
-          const match = numbers[i]
-          const candidatePrice = parseFloat(match[1])
+          // 第一步：优先查找小数
+          for (let i = numbers.length - 1; i >= 0; i--) {
+            const match = numbers[i]
+            const candidatePrice = parseFloat(match[1])
 
-          // 检查是否是小数（包含小数点）
-          const isDecimal = match[0].includes('.')
+            // 检查是否是小数（包含小数点）
+            const isDecimal = match[0].includes('.')
 
-          if (!isNaN(candidatePrice) && candidatePrice > 0 && isDecimal) {
-            price = candidatePrice
-            priceIndex = match.index
-            break
+            if (!isNaN(candidatePrice) && candidatePrice > 0 && isDecimal) {
+              price = candidatePrice
+              priceIndex = match.index
+              break
+            }
+          }
+
+          // 第二步：如果没找到小数，使用最大的数字
+          if (price === 0) {
+            let maxPrice = 0
+            for (let i = 0; i < numbers.length; i++) {
+              const match = numbers[i]
+              const candidatePrice = parseFloat(match[1])
+              if (!isNaN(candidatePrice) && candidatePrice > maxPrice) {
+                maxPrice = candidatePrice
+                price = maxPrice
+                priceIndex = match.index
+              }
+            }
+          }
+
+          if (!isNaN(price) && price > 0 && priceIndex >= 0) {
+            const name = content.substring(0, priceIndex).trim()
+            result.push({ name, price })
+            continue
           }
         }
-
-        // 第二步：如果没找到小数，使用最后一个数字
-        if (price === 0) {
-          const lastMatch = numbers[numbers.length - 1]
-          price = parseFloat(lastMatch[1])
-          priceIndex = lastMatch.index
-        }
-
-        if (!isNaN(price) && price > 0 && priceIndex >= 0) {
-          const name = content.substring(0, priceIndex).trim()
-          result.push({ name, price })
-          continue
-        }
       }
-    }
-  } else {
+    } else {
     // 纯数字格式：按逗号、空格、中文逗号分隔
     const prices = input.split(/[,，\s]+/).filter(p => p.trim())
     for (const p of prices) {

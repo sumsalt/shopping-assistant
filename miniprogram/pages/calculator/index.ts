@@ -182,11 +182,18 @@ Page<PageData, WechatMiniprogram.Page.CustomOption>({
             }
           }
 
-          // 第二步：如果没找到小数，使用最后一个数字
+          // 第二步：如果没找到小数，使用最大的数字
           if (price === 0) {
-            const lastMatch = numbers[numbers.length - 1]
-            price = parseFloat(lastMatch[1])
-            priceIndex = lastMatch.index
+            let maxPrice = 0
+            for (let i = 0; i < numbers.length; i++) {
+              const match = numbers[i]
+              const candidatePrice = parseFloat(match[1])
+              if (!isNaN(candidatePrice) && candidatePrice > maxPrice) {
+                maxPrice = candidatePrice
+                price = maxPrice
+                priceIndex = match.index
+              }
+            }
           }
 
           if (!isNaN(price) && price > 0 && priceIndex >= 0) {
