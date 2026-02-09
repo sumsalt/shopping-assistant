@@ -74,6 +74,23 @@ Page<PageData, WechatMiniprogram.Page.CustomOption>({
     quantityDiffText: '相差'
   },
 
+  // 分享功能
+  onShareAppMessage() {
+    return {
+      title: '凑单计算器 - 智能计算最优凑单方案',
+      path: '/pages/calculator/index',
+      imageUrl: ''
+    }
+  },
+
+  onShareTimeline() {
+    return {
+      title: '凑单计算器 - 智能计算最优凑单方案',
+      query: '',
+      imageUrl: ''
+    }
+  },
+
   // 批量输入变化
   onBulkInputChange(e: WechatMiniprogram.Input) {
     const value = e.detail.value
@@ -106,51 +123,82 @@ Page<PageData, WechatMiniprogram.Page.CustomOption>({
 
   /**
    * 解析接龙输入格式
-   * 支持两种格式：
-   * 1. 接龙格式："名称 价格"，如 "张三 123.45"
+   * 支持多种格式：
+   * 1. 接龙格式：以 #接龙 开头，如 "#接龙\n1. 张三 123.45"
    * 2. 纯数字格式：逗号或空格分隔的数字，如 "59.9,88,129.5"
    */
   parseJielongInput(input: string): Array<{ name: string; price: number }> {
     const result: Array<{ name: string; price: number }> = []
 
-    // 按行分割，处理多行接龙
-    const lines = input.split(/\n/).filter(line => line.trim())
+    // 判断是否是接龙格式（以 #接龙 开头）
+    const isJielongFormat = input.includes('#接龙')
 
-    for (const line of lines) {
-      const trimmedLine = line.trim()
+    if (isJielongFormat) {
+      // 接龙格式：按行解析
+      const lines = input.split(/\n/).filter(line => line.trim())
 
-      // 跳过空行和标题行
-      if (!trimmedLine ||
-          trimmedLine.includes('接龙标题') ||
-          trimmedLine.includes('接龙描述') ||
-          trimmedLine.includes('例 接龙例子')) {
-        continue
-      }
+      for (const line of lines) {
+        const trimmedLine = line.trim()
 
-      // 检查是否是编号行，如 "1. 张三 123.45"
-      const numberedMatch = trimmedLine.match(/^\d+[\.、]\s*(.+?)\s+([\d\.]+)$/)
-      if (numberedMatch) {
-        const name = numberedMatch[1].trim()
-        const price = parseFloat(numberedMatch[2])
-        if (!isNaN(price) && price > 0) {
-          result.push({ name, price })
+        // 跳过空行和标题行
+        if (!trimmedLine ||
+            trimmedLine.startsWith('#') ||
+            trimmedLine.startsWith('例') ||
+            trimmedLine.includes('接龙标题') ||
+            trimmedLine.includes('接龙描述') ||
+            trimmedLine.includes('接龙例子')) {
           continue
         }
-      }
 
-      // 检查是否是"名称 价格"格式
-      const namePriceMatch = trimmedLine.match(/^(.+?)\s+([\d\.]+)$/)
-      if (namePriceMatch) {
-        const name = namePriceMatch[1].trim()
-        const price = parseFloat(namePriceMatch[2])
-        if (!isNaN(price) && price > 0) {
-          result.push({ name, price })
-          continue
+        // 先移除序号前缀（如 "1. "、"2. " 等）
+        let content = trimmedLine
+        const numberedPrefixMatch = content.match(/^\d+[\.、]\s*/)
+        if (numberedPrefixMatch) {
+          content = content.substring(numberedPrefixMatch[0].length)
+        }
+
+        // 查找所有数字（包括整数和小数）
+        const allNumbers = content.matchAll(/(\d+\.?\d*)/g)
+        const numbers = Array.from(allNumbers)
+
+        if (numbers.length > 0) {
+          // 优先尝试找到小数作为价格（价格通常带小数点）
+          // 从后向前查找，优先选择小数
+          let price = 0
+          let priceIndex = -1
+
+          // 第一步：优先查找小数
+          for (let i = numbers.length - 1; i >= 0; i--) {
+            const match = numbers[i]
+            const candidatePrice = parseFloat(match[1])
+
+            // 检查是否是小数（包含小数点）
+            const isDecimal = match[0].includes('.')
+
+            if (!isNaN(candidatePrice) && candidatePrice > 0 && isDecimal) {
+              price = candidatePrice
+              priceIndex = match.index
+              break
+            }
+          }
+
+          // 第二步：如果没找到小数，使用最后一个数字
+          if (price === 0) {
+            const lastMatch = numbers[numbers.length - 1]
+            price = parseFloat(lastMatch[1])
+            priceIndex = lastMatch.index
+          }
+
+          if (!isNaN(price) && price > 0 && priceIndex >= 0) {
+            const name = content.substring(0, priceIndex).trim()
+            result.push({ name, price })
+            continue
+          }
         }
       }
-
-      // 检查是否是纯数字格式
-      const prices = trimmedLine.split(/[,，\s]+/)
+    } else {
+      // 纯数字格式：按逗号、空格、中文逗号分隔
+      const prices = input.split(/[,，\s]+/).filter(p => p.trim())
       for (const p of prices) {
         const price = parseFloat(p)
         if (!isNaN(price) && price > 0) {

@@ -6,9 +6,9 @@ Page({
     data: {
         bulkInput: '',
         items: [
-            { price: '', required: false },
-            { price: '', required: false },
-            { price: '', required: false }
+            { name: '', price: '', required: false },
+            { name: '', price: '', required: false },
+            { name: '', price: '', required: false }
         ],
         targetPrice: '',
         targetQuantity: '1',
@@ -24,6 +24,21 @@ Page({
         priceDiffText: '相差',
         quantityDiffText: '相差'
     },
+    // 分享功能
+    onShareAppMessage() {
+        return {
+            title: '凑单计算器 - 智能计算最优凑单方案',
+            path: '/pages/calculator/index',
+            imageUrl: ''
+        };
+    },
+    onShareTimeline() {
+        return {
+            title: '凑单计算器 - 智能计算最优凑单方案',
+            query: '',
+            imageUrl: ''
+        };
+    },
     // 批量输入变化
     onBulkInputChange(e) {
         const value = e.detail.value;
@@ -33,23 +48,74 @@ Page({
         // 处理批量输入
         const input = value.trim();
         if (!input) {
-            // 如果输入为空，保持商品列表不变
             return;
         }
-        // 支持逗号（中英文）和空格分隔
-        const prices = input
-            .split(/[,，\s]+/)
-            .map(p => parseFloat(p))
-            .filter(p => !isNaN(p) && p > 0);
-        if (prices.length > 0) {
-            // 将解析出的价格完全替换 items
-            const newItems = prices.map(price => ({ price: price.toString(), required: false }));
-            this.setData({
-                items: newItems
-            });
+        const parsedItems = this.parseJielongInput(input);
+        if (parsedItems.length > 0) {
+            const newItems = parsedItems.map(item => ({
+                name: item.name || '',
+                price: item.price.toString(),
+                required: false
+            }));
+            this.setData({ items: newItems });
             this.updateStats();
-            // 不显示 toast，避免频繁提示
+            wx.showToast({
+                title: `已添加 ${parsedItems.length} 个商品`,
+                icon: 'success'
+            });
         }
+    },
+    /**
+     * 解析接龙输入格式
+     * 支持多种格式：
+     * 1. 编号行：如 "1. 张三 123.45"
+     * 2. 名称价格行：如 "张三 123.45" 或 "张三 123.45 运费6开"
+     * 3. 纯数字格式：逗号或空格分隔的数字，如 "59.9,88,129.5"
+     * 4. 混合格式：名称中包含特殊字符或价格后有注释
+     */
+    parseJielongInput(input) {
+        const result = [];
+        // 按行分割，处理多行接龙
+        const lines = input.split(/\n/).filter(line => line.trim());
+        for (const line of lines) {
+            const trimmedLine = line.trim();
+            // 跳过空行和标题行
+            if (!trimmedLine ||
+                trimmedLine.startsWith('#') ||
+                trimmedLine.startsWith('例') ||
+                trimmedLine.includes('接龙标题') ||
+                trimmedLine.includes('接龙描述') ||
+                trimmedLine.includes('接龙例子')) {
+                continue;
+            }
+            // 尝试从行中提取价格（找到第一个数字）
+            // 匹配：整数或小数（如 245, 191.76, 307.56）
+            const priceMatch = trimmedLine.match(/(\d+\.?\d*)/);
+            if (priceMatch) {
+                const price = parseFloat(priceMatch[1]);
+                if (!isNaN(price) && price > 0) {
+                    // 提取价格前的所有内容作为名称
+                    const priceIndex = trimmedLine.indexOf(priceMatch[0]);
+                    let name = trimmedLine.substring(0, priceIndex).trim();
+                    // 如果有编号，移除编号
+                    const numberedPrefixMatch = name.match(/^\d+[\.、]\s*/);
+                    if (numberedPrefixMatch) {
+                        name = name.substring(numberedPrefixMatch[0].length).trim();
+                    }
+                    result.push({ name, price });
+                    continue;
+                }
+            }
+        }
+        return result;
+    },
+    // 商品名称变化
+    onItemNameChange(e) {
+        const index = Number(e.currentTarget.dataset.index);
+        const value = e.detail.value;
+        const items = [...this.data.items];
+        items[index].name = value;
+        this.setData({ items });
     },
     // 商品价格变化
     onItemPriceChange(e) {
@@ -84,7 +150,7 @@ Page({
     },
     // 添加商品
     addItem() {
-        const items = [...this.data.items, { price: '', required: false }];
+        const items = [...this.data.items, { name: '', price: '', required: false }];
         this.setData({ items });
     },
     // 移除商品
@@ -131,7 +197,7 @@ Page({
         const validItems = this.data.items
             .map((item, index) => ({
             id: index,
-            name: `商品 ${index + 1}`,
+            name: item.name || `商品 ${index + 1}`,
             price: parseFloat(item.price),
             required: item.required
         }))
