@@ -133,12 +133,64 @@
     </view>
 
     <!-- 计算按钮 -->
-    <button
-      class="btn btn-primary btn-calculate"
-      bindtap="calculate"
-    >
-      计算凑单方案
-    </button>
+    <view class="btn-group">
+      <button
+        class="btn btn-outline btn-calculate btn-history"
+        bindtap="showHistoryDialog"
+      >
+        历史记录
+      </button>
+      <button
+        class="btn btn-primary btn-calculate btn-calculate-main"
+        bindtap="calculate"
+      >
+        计算凑单方案
+      </button>
+    </view>
+  </view>
+
+  <!-- 历史记录弹窗 -->
+  <view class="modal {{showHistory ? 'show' : ''}}" wx:if="{{showHistory}}" catchtap="hideHistoryDialog">
+    <view class="modal-content" catchtap="{{true}}">
+      <view class="modal-header">
+        <view class="modal-title">历史记录</view>
+        <view class="modal-close" bindtap="hideHistoryDialog">✕</view>
+      </view>
+      <view class="modal-body">
+        <view wx:if="{{historyList.length === 0}}" class="empty-history">暂无历史记录</view>
+        <scroll-view wx:else scroll-y class="history-list">
+          <view
+            wx:for="{{historyList}}"
+            wx:key="index"
+            wx:for-item="record"
+            class="history-item"
+            bindtap="restoreFromHistory"
+            data-index="{{index}}"
+          >
+            <view class="history-item-header">
+              <text class="history-time">{{record.timestamp}}</text>
+              <text class="history-delete" catchtap="deleteHistoryItem" data-index="{{index}}">✕</text>
+            </view>
+            <view class="history-item-title">{{record.items.length}} 件商品，凑单 ¥{{record.targetPrice}}</view>
+            <view class="history-item-price">商品总价: ¥{{record.totalPrice}}</view>
+            <view class="history-item-tags" wx:if="{{record.itemsPreview.length > 0}}">
+              <view
+                wx:for="{{record.itemsPreview}}"
+                wx:key="index"
+                wx:for-item="item"
+                class="history-tag"
+              >
+                {{item.name || '商品'}}: ¥{{item.price}}
+              </view>
+              <view wx:if="{{record.items.length > 5}}" class="history-tag">+{{record.items.length - 5}} 件</view>
+            </view>
+          </view>
+        </scroll-view>
+        <view wx:if="{{historyList.length > 0}}" class="modal-footer">
+          <button class="btn btn-outline btn-danger" bindtap="clearHistory">清空历史记录</button>
+        </view>
+      </view>
+    </view>
   </view>
 
   <!-- 计算结果 -->

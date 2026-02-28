@@ -202,15 +202,107 @@
         </div>
 
         <!-- 计算按钮 -->
-        <UiButton
-          variant="primary"
-          size="lg"
-          class="w-full"
-          :disabled="validItemCount === 0"
-          @click="calculate"
-        >
-          计算凑单方案
-        </UiButton>
+        <div class="flex gap-2">
+          <UiButton
+            variant="outline"
+            size="lg"
+            @click="showHistory = true"
+          >
+            <svg class="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            历史记录
+          </UiButton>
+          <UiButton
+            variant="primary"
+            size="lg"
+            class="flex-1"
+            :disabled="validItemCount === 0"
+            @click="calculate"
+          >
+            计算凑单方案
+          </UiButton>
+        </div>
+      </div>
+    </div>
+
+    <!-- 历史记录弹窗 -->
+    <div
+      v-if="showHistory"
+      class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+      @click.self="showHistory = false"
+    >
+      <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[80vh] flex flex-col">
+        <div class="p-4 border-b border-gray-200 flex items-center justify-between">
+          <h3 class="text-lg font-medium text-gray-900">历史记录</h3>
+          <button
+            @click="showHistory = false"
+            class="text-gray-400 hover:text-gray-600"
+          >
+            <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <div class="p-4 overflow-y-auto flex-1">
+          <div v-if="historyList.length === 0" class="text-center py-8 text-gray-500">
+            暂无历史记录
+          </div>
+          <div v-else class="space-y-3">
+            <div
+              v-for="(record, index) in historyList"
+              :key="index"
+              class="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
+              @click="restoreFromHistory(record)"
+            >
+              <div class="flex items-start justify-between mb-2">
+                <div class="text-sm text-gray-500">
+                  {{ record.timestamp }}
+                </div>
+                <button
+                  @click.stop="deleteHistoryItem(index)"
+                  class="text-gray-400 hover:text-red-500 p-1"
+                >
+                  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                </button>
+              </div>
+              <div class="text-sm font-medium text-gray-900 mb-1">
+                {{ record.items.length }} 件商品，凑单 ¥{{ record.targetPrice }}
+              </div>
+              <div class="text-xs text-gray-500">
+                商品总价: ¥{{ record.totalPrice.toFixed(2) }}
+              </div>
+              <div class="mt-2 flex flex-wrap gap-1">
+                <span
+                  v-for="(item, itemIndex) in record.items.slice(0, 5)"
+                  :key="itemIndex"
+                  class="px-2 py-1 text-xs bg-gray-100 rounded"
+                >
+                  {{ item.name || `商品${itemIndex + 1}` }}: ¥{{ item.price }}
+                </span>
+                <span
+                  v-if="record.items.length > 5"
+                  class="px-2 py-1 text-xs bg-gray-100 rounded"
+                >
+                  +{{ record.items.length - 5 }} 件
+                </span>
+              </div>
+            </div>
+          </div>
+          <div
+            v-if="historyList.length > 0"
+            class="mt-4 pt-4 border-t border-gray-200"
+          >
+            <button
+              @click="clearHistory"
+              class="w-full text-sm text-red-600 hover:text-red-700 py-2"
+            >
+              清空历史记录
+            </button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -449,6 +541,92 @@ const result = ref<any>(null)
 
 // 是否已经计算过
 const hasCalculated = ref(false)
+
+// 历史记录
+const showHistory = ref(false)
+const historyList = ref<Array<{
+  timestamp: string
+  items: Array<{ name: string; price: string; required: boolean }>
+  targetPrice: string
+  targetQuantity: string
+  totalPrice: number
+}>>([])
+
+// 初始化时加载历史记录
+onMounted(() => {
+  loadHistory()
+})
+
+// 加载历史记录
+const loadHistory = () => {
+  try {
+    const saved = localStorage.getItem('calculator-history')
+    if (saved) {
+      historyList.value = JSON.parse(saved)
+    }
+  } catch (error) {
+    console.error('加载历史记录失败:', error)
+  }
+}
+
+// 保存历史记录
+const saveHistory = () => {
+  const totalPrice = items.value.reduce((sum, item) => {
+    const price = parseFloat(item.price)
+    return sum + (isNaN(price) ? 0 : price)
+  }, 0)
+
+  const record = {
+    timestamp: new Date().toLocaleString('zh-CN'),
+    items: items.value.filter(item => {
+      const price = parseFloat(item.price)
+      return !isNaN(price) && price > 0
+    }).map(item => ({ ...item })),
+    targetPrice: targetPrice.value,
+    targetQuantity: targetQuantity.value,
+    totalPrice
+  }
+
+  // 只保存有效的记录
+  if (record.items.length > 0 && record.targetPrice) {
+    // 添加到开头
+    historyList.value.unshift(record)
+    // 限制最多保存 20 条
+    if (historyList.value.length > 20) {
+      historyList.value = historyList.value.slice(0, 20)
+    }
+    // 保存到 localStorage
+    localStorage.setItem('calculator-history', JSON.stringify(historyList.value))
+  }
+}
+
+// 从历史记录恢复
+const restoreFromHistory = (record: any) => {
+  items.value = record.items.map((item: any) => ({
+    name: item.name,
+    price: item.price,
+    required: item.required
+  }))
+  targetPrice.value = record.targetPrice
+  targetQuantity.value = record.targetQuantity
+  showHistory.value = false
+  toast.success('已恢复历史记录')
+}
+
+// 删除单条历史记录
+const deleteHistoryItem = (index: number) => {
+  historyList.value.splice(index, 1)
+  localStorage.setItem('calculator-history', JSON.stringify(historyList.value))
+}
+
+// 清空历史记录
+const clearHistory = () => {
+  if (confirm('确定要清空所有历史记录吗？')) {
+    historyList.value = []
+    localStorage.removeItem('calculator-history')
+    showHistory.value = false
+  }
+}
 
 // 计算有效商品数量
 const validItemCount = computed(() => {
@@ -700,5 +878,8 @@ const calculate = async () => {
   }
 
   toast.success(`找到 ${allSolutions.length} 种凑单方案（${targetQty} 单）`)
+
+  // 保存到历史记录
+  saveHistory()
 }
 </script>

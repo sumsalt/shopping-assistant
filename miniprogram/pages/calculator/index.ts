@@ -33,6 +33,15 @@ interface ResultData {
   otherSolutions: Solution[]
 }
 
+interface HistoryItem {
+  timestamp: string
+  items: ItemData[]
+  itemsPreview: ItemData[]
+  targetPrice: string
+  targetQuantity: string
+  totalPrice: string
+}
+
 interface PageData {
   bulkInput: string
   items: ItemData[]
@@ -49,6 +58,8 @@ interface PageData {
   quantityDiffAbs: number
   priceDiffText: string
   quantityDiffText: string
+  showHistory: boolean
+  historyList: HistoryItem[]
 }
 
 Page<PageData, WechatMiniprogram.Page.CustomOption>({
@@ -71,7 +82,13 @@ Page<PageData, WechatMiniprogram.Page.CustomOption>({
     priceDiffAbs: 0,
     quantityDiffAbs: 0,
     priceDiffText: '相差',
-    quantityDiffText: '相差'
+    quantityDiffText: '相差',
+    showHistory: false,
+    historyList: []
+  },
+
+  onLoad() {
+    this.loadHistory()
   },
 
   // 分享功能
@@ -114,10 +131,6 @@ Page<PageData, WechatMiniprogram.Page.CustomOption>({
       }))
       this.setData({ items: newItems })
       this.updateStats()
-      wx.showToast({
-        title: `已添加 ${parsedItems.length} 个商品`,
-        icon: 'success'
-      })
     }
   },
 
@@ -394,6 +407,9 @@ Page<PageData, WechatMiniprogram.Page.CustomOption>({
           return
         }
 
+        // 保存到历史记录
+        this.saveHistory()
+
                 // 转换结果格式
                 const bestSolution = calculationResult.best
                 const allSolutions = [bestSolution, ...calculationResult.alternatives]
@@ -453,5 +469,140 @@ Page<PageData, WechatMiniprogram.Page.CustomOption>({
 
       wx.hideLoading()
     }, 100)
+  },
+
+  // 加载历史记录
+  loadHistory() {
+    try {
+      const history = wx.getStorageSync('calculator-history')
+      if (history) {
+        this.setData({
+          historyList: history
+        })
+      }
+    } catch (error) {
+      console.error('加载历史记录失败:', error)
+    }
+  },
+
+  // 保存历史记录
+  saveHistory() {
+    const validItems = this.data.items.filter(item => {
+      const price = parseFloat(item.price)
+      return !isNaN(price) && price > 0
+    })
+
+    const totalPrice = validItems.reduce((sum, item) => {
+      return sum + parseFloat(item.price)
+    }, 0)
+
+    const record: HistoryItem = {
+      timestamp: new Date().toLocaleString('zh-CN'),
+      items: validItems.map(item => ({ ...item })),
+      itemsPreview: validItems.slice(0, 5).map(item => ({ ...item })),
+      targetPrice: this.data.targetPrice,
+      targetQuantity: this.data.targetQuantity,
+      totalPrice: totalPrice.toFixed(2)
+    }
+
+    if (validItems.length > 0 && this.data.targetPrice) {
+      const historyList = [...this.data.historyList]
+      // 添加到开头
+      historyList.unshift(record)
+      // 限制最多保存 20 条
+      if (historyList.length > 20) {
+        historyList.length = 20
+      }
+
+      this.setData({
+        historyList
+      })
+
+      try {
+        wx.setStorageSync('calculator-history', historyList)
+      } catch (error) {
+        console.error('保存历史记录失败:', error)
+      }
+    }
+  },
+
+  // 显示历史记录
+  showHistoryDialog() {
+    this.setData({
+      showHistory: true
+    })
+  },
+
+  // 隐藏历史记录
+  hideHistoryDialog() {
+    this.setData({
+      showHistory: false
+    })
+  },
+
+  // 从历史记录恢复
+  restoreFromHistory(e: WechatMiniprogram.CustomEvent) {
+    const index = Number(e.currentTarget.dataset.index)
+    const record = this.data.historyList[index]
+
+    // 恢复商品列表（直接恢复历史记录的商品，不添加空输入框）
+    const restoredItems: ItemData[] = record.items.map(item => ({
+      name: item.name,
+      price: item.price,
+      required: item.required
+    }))
+
+    this.setData({
+      items: restoredItems,
+      targetPrice: record.targetPrice,
+      targetQuantity: record.targetQuantity,
+      showHistory: false
+    })
+
+    this.updateStats()
+
+    wx.showToast({
+      title: '已恢复历史记录',
+      icon: 'success'
+    })
+  },
+
+  // 删除单条历史记录
+  deleteHistoryItem(e: WechatMiniprogram.CustomEvent) {
+    const index = Number(e.currentTarget.dataset.index)
+    const historyList = [...this.data.historyList]
+    historyList.splice(index, 1)
+
+    this.setData({
+      historyList
+    })
+
+    try {
+      wx.setStorageSync('calculator-history', historyList)
+    } catch (error) {
+      console.error('删除历史记录失败:', error)
+    }
+  },
+
+  // 清空历史记录
+  clearHistory() {
+    wx.showModal({
+      title: '确认',
+      content: '确定要清空所有历史记录吗？',
+      success: (res) => {
+        if (res.confirm) {
+          this.setData({
+            historyList: [],
+            showHistory: false
+          })
+
+          try {
+            wx.removeStorageSync('calculator-history')
+          } catch (error) {
+            console.error('清空历史记录失败:', error)
+          }
+        }
+      }
+    })
   }
 })
