@@ -150,8 +150,8 @@
   </view>
 
   <!-- 历史记录弹窗 -->
-  <view class="modal {{showHistory ? 'show' : ''}}" wx:if="{{showHistory}}" catchtap="hideHistoryDialog">
-    <view class="modal-content" catchtap="{{true}}">
+  <view class="modal-mask {{showHistory ? 'show' : ''}}" wx:if="{{showHistory}}" catchtap="hideHistoryDialog">
+    <view class="modal" catchtap="{{true}}">
       <view class="modal-header">
         <view class="modal-title">历史记录</view>
         <view class="modal-close" bindtap="hideHistoryDialog">✕</view>
