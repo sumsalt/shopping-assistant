@@ -345,6 +345,17 @@
   font-weight: 600;
 }
 
+.order-item-prices {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.order-item-actual-price {
+  font-size: 22rpx;
+  color: #9333ea;
+}
+
 .order-item {
   display: flex;
   justify-content: space-between;
@@ -380,6 +391,15 @@
   font-weight: 500;
   color: #111827;
 }
+
+.order-footer {
+  margin-top: 16rpx;
+  padding-top: 16rpx;
+  border-top: 2rpx solid #e5e7eb;
+  display: flex;
+  justify-content: center;
+}
+
 
 .result-summary {
   display: grid;
@@ -533,27 +553,20 @@
 }
 
 /* Modal styles */
-.modal {
+.modal-mask {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
   background: rgba(0, 0, 0, 0.5);
-  z-index: 1000;
+  z-index: 9999;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 32rpx;
-  opacity: 0;
-  transition: opacity 0.3s;
 }
 
-.modal.show {
-  opacity: 1;
-}
-
-.modal-content {
+.modal {
   width: 100%;
   max-width: 640rpx;
   background: #fff;
@@ -564,11 +577,25 @@
   box-sizing: border-box;
 }
 
+.modal-mask.show {
+  opacity: 1;
+}
+
+.modal-content {
+  width: 600rpx;
+  max-height: 80vh;
+  background: #fff;
+  border-radius: 16rpx;
+  padding: 32rpx;
+  box-sizing: border-box;
+}
+
 .modal-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 32rpx;
+  margin-bottom: 32rpx;
+  padding-bottom: 24rpx;
   border-bottom: 2rpx solid #e5e7eb;
 }
 
@@ -693,4 +720,48 @@
 
 .btn-danger:active {
   background: #fef2f2 !important;
+=======
+  margin-bottom: 32rpx;
+}
+
+.form-item {
+  margin-bottom: 24rpx;
+}
+
+.form-label {
+  display: block;
+  font-size: 28rpx;
+  color: #374151;
+  margin-bottom: 12rpx;
+}
+
+.form-input {
+  width: 100%;
+  height: 88rpx;
+  padding: 0 24rpx;
+  font-size: 28rpx;
+  border: 2rpx solid #e5e7eb;
+  border-radius: 12rpx;
+  background: #fff;
+  box-sizing: border-box;
+}
+
+.form-input:focus {
+  border-color: #3b82f6;
+}
+
+.form-hint {
+  font-size: 24rpx;
+  color: #9ca3af;
+  margin-top: 8rpx;
+}
+
+.modal-footer {
+  display: flex;
+  gap: 16rpx;
+}
+
+.modal-btn {
+  flex: 1;
+>>>>>>> b394e7f413bd9bb06af56895c748d4213a3ea803
 }

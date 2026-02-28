@@ -364,8 +364,22 @@
                       必选
                     </span>
                   </div>
-                  <span class="font-medium text-gray-900">¥{{ item.price.toFixed(2) }}</span>
+                  <div class="flex items-center gap-2">
+                    <span v-if="getActualPrice(item, -1)" class="text-xs text-purple-600">
+                      实付: ¥{{ getActualPrice(item, -1)?.toFixed(2) }}
+                    </span>
+                    <span class="font-medium text-gray-900">¥{{ item.price.toFixed(2) }}</span>
+                  </div>
                 </div>
+              </div>
+              <div class="mt-3 pt-3 border-t border-gray-200 flex justify-center">
+                <UiButton
+                  variant="outline"
+                  size="sm"
+                  @click="openActualPriceDialog(orderIndex, -1)"
+                >
+                  计算实付
+                </UiButton>
               </div>
             </div>
           </div>
@@ -415,8 +429,8 @@
         <h3 class="text-lg font-medium text-gray-900 mb-4">其他可选方案</h3>
         <div class="space-y-4">
           <div
-            v-for="(solution, solutionIndex) in result.allSolutions.slice(1, 6)"
-            :key="solutionIndex"
+            v-for="(solution, idx) in result.allSolutions.slice(1, 6)"
+            :key="idx"
             class="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
           >
             <div class="flex items-center justify-between mb-3">
@@ -429,7 +443,7 @@
             </div>
 
             <!-- 订单详情 -->
-            <div class="space-y-2 mb-3">
+            <div class="space-y-2">
               <div
                 v-for="(order, orderIndex) in solution.orders"
                 :key="orderIndex"
@@ -444,15 +458,34 @@
                   </div>
                   <span class="text-xs font-medium text-green-600">¥{{ order.total.toFixed(2) }}</span>
                 </div>
-                <div class="flex flex-wrap gap-1">
-                  <span
+                <div class="space-y-1">
+                  <div
                     v-for="(item, itemIndex) in order.items"
                     :key="itemIndex"
-                    class="px-1.5 py-0.5 text-xs rounded"
-                    :class="item.required ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'"
+                    class="flex items-center justify-between px-2 py-1 bg-white rounded"
                   >
-                    {{ item.name }} (¥{{ item.price.toFixed(2) }})
-                  </span>
+                    <div class="flex items-center gap-1">
+                      <span class="text-xs" :class="item.required ? 'bg-orange-100 text-orange-700 px-1 py-0.5 rounded' : ''">
+                        {{ item.name }}
+                      </span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <span v-if="getActualPrice(item, idx + 1)" class="text-xs text-purple-600">
+                        实付: ¥{{ getActualPrice(item, idx + 1)?.toFixed(2) }}
+                      </span>
+                      <span class="text-xs">¥{{ item.price.toFixed(2) }}</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="mt-2 pt-2 border-t border-gray-200 flex justify-center">
+                  <UiButton
+                    variant="outline"
+                    size="sm"
+                    class="text-xs"
+                    @click="openActualPriceDialog(orderIndex, idx + 1)"
+                  >
+                    计算实付
+                  </UiButton>
                 </div>
               </div>
             </div>
@@ -504,8 +537,53 @@
         <li>输入凑单价格（优惠券满减条件）</li>
         <li>系统会自动计算出达到凑单价格的最优商品组合</li>
         <li>如果有多个方案，会显示所有可选方案供您选择</li>
+        <li>点击"计算实际价格"按钮，输入实际支付价格，系统将计算每个商品的实际支付金额</li>
       </ul>
     </div>
+
+    <!-- 实际价格弹窗 -->
+    <UiDialog :open="actualPriceDialog.show" @update:open="actualPriceDialog.show = $event" title="输入实际支付价格">
+      <div class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">
+            实际支付价格（元）
+          </label>
+          <UiInput
+            v-model="actualPriceDialog.actualPrice"
+            type="number"
+            step="0.01"
+            min="0"
+            placeholder="输入实际支付的价格"
+            class="w-full"
+          />
+          <p class="mt-1 text-xs text-gray-500">
+            输入实际支付的价格，系统将按比例计算每个商品的实际支付金额
+          </p>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">
+            额外费用（元，可选）
+          </label>
+          <UiInput
+            v-model="actualPriceDialog.extraFee"
+            type="number"
+            step="0.01"
+            min="0"
+            placeholder="例如：运费"
+            class="w-full"
+          />
+          <p class="mt-1 text-xs text-gray-500">
+            额外费用（如运费）将平均分配给每个商品
+          </p>
+        </div>
+      </div>
+      <template #footer>
+        <div class="flex gap-2">
+          <UiButton variant="outline" @click="closeActualPriceDialog">取消</UiButton>
+          <UiButton variant="primary" @click="calculateActualPrices">计算</UiButton>
+        </div>
+      </template>
+    </UiDialog>
   </div>
 </template>
 
@@ -627,6 +705,19 @@ const clearHistory = () => {
     showHistory.value = false
   }
 }
+
+// 实际支付弹窗状态
+const actualPriceDialog = ref({
+  show: false,
+  orderIndex: -1,
+  solutionIndex: -1,
+  actualPrice: '',
+  extraFee: ''
+})
+
+// 计算后的商品实际价格映射
+const actualItemPrices = ref<Map<string, Map<number, number>>>(new Map())
+
 
 // 计算有效商品数量
 const validItemCount = computed(() => {
@@ -801,6 +892,8 @@ const removeItem = (index: number) => {
 // 计算凑单方案
 // 计算凑单方案
 const calculate = async () => {
+  // 清空之前的实际价格计算结果
+  actualItemPrices.value.clear()
   // 获取有效的商品价格
   const validItems = items.value
     .map((item, index) => ({
@@ -881,5 +974,90 @@ const calculate = async () => {
 
   // 保存到历史记录
   saveHistory()
+}
+
+// 打开实际支付价格弹窗
+const openActualPriceDialog = (orderIndex: number, solutionIndex: number = -1) => {
+  actualPriceDialog.value = {
+    show: true,
+    orderIndex,
+    solutionIndex,
+    actualPrice: '',
+    extraFee: ''
+  }
+}
+
+// 关闭弹窗
+const closeActualPriceDialog = () => {
+  actualPriceDialog.value.show = false
+  actualPriceDialog.value.actualPrice = ''
+  actualPriceDialog.value.extraFee = ''
+}
+
+// 计算商品实际价格
+const calculateActualPrices = () => {
+  const { orderIndex, solutionIndex, actualPrice, extraFee } = actualPriceDialog.value
+  const actualPayPrice = parseFloat(actualPrice)
+  const feeAmount = parseFloat(extraFee) || 0
+
+  if (isNaN(actualPayPrice) || actualPayPrice <= 0) {
+    toast.error('请输入有效的实际支付价格')
+    return
+  }
+
+  if (feeAmount < 0) {
+    toast.error('额外费用不能为负数')
+    return
+  }
+
+  // 获取对应方案的订单
+  let order: any
+  if (solutionIndex === -1) {
+    // 最优方案
+    order = result.value.orders[orderIndex]
+  } else {
+    // 备选方案
+    order = result.value.allSolutions[solutionIndex].orders[orderIndex]
+  }
+
+  if (!order) {
+    toast.error('订单信息不存在')
+    return
+  }
+
+  // 计算每个商品的实际价格
+  const orderOriginalTotal = order.items.reduce((sum: number, item: any) => sum + item.price, 0)
+  const ratio = actualPayPrice / orderOriginalTotal
+
+  // 计算每个商品的额外费用分配（均摊）
+  const itemCount = order.items.length
+  const feePerItem = feeAmount / itemCount
+
+  // 存储每个商品的实际价格
+  const solutionKey = solutionIndex === -1 ? 'best' : `alt-${solutionIndex}`
+  if (!actualItemPrices.value.has(solutionKey)) {
+    actualItemPrices.value.set(solutionKey, new Map())
+  }
+
+  const solutionPrices = actualItemPrices.value.get(solutionKey)!
+  order.items.forEach((item: any) => {
+    // 商品实际价格 = 商品原价 × 比例 + 额外费用均摊
+    const itemActualPrice = item.price * ratio + feePerItem
+    solutionPrices.set(item.id, itemActualPrice)
+  })
+
+  const message = feeAmount > 0
+    ? `已计算完成，实际支付 ¥${actualPayPrice.toFixed(2)}，额外费用 ¥${feeAmount.toFixed(2)}`
+    : `已计算完成，实际支付 ¥${actualPayPrice.toFixed(2)}`
+  toast.success(message)
+  closeActualPriceDialog()
+}
+
+// 获取商品的实际价格
+const getActualPrice = (item: any, solutionIndex: number = -1) => {
+  const solutionKey = solutionIndex === -1 ? 'best' : `alt-${solutionIndex}`
+  const solutionPrices = actualItemPrices.value.get(solutionKey)
+  if (!solutionPrices) return null
+  return solutionPrices.get(item.id) || null
 }
 </script>

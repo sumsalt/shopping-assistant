@@ -60,6 +60,14 @@ interface PageData {
   quantityDiffText: string
   showHistory: boolean
   historyList: HistoryItem[]
+  actualPriceDialog: {
+    show: boolean
+    orderIndex: number
+    solutionIndex: number
+    actualPrice: string
+    extraFee: string
+  }
+  actualItemPrices: Record<string, Record<string, string>>
 }
 
 Page<PageData, WechatMiniprogram.Page.CustomOption>({
@@ -84,7 +92,15 @@ Page<PageData, WechatMiniprogram.Page.CustomOption>({
     priceDiffText: '相差',
     quantityDiffText: '相差',
     showHistory: false,
-    historyList: []
+    historyList: [],
+    actualPriceDialog: {
+      show: false,
+      orderIndex: -1,
+      solutionIndex: -1,
+      actualPrice: '',
+      extraFee: ''
+    },
+    actualItemPrices: {}
   },
 
   onLoad() {
@@ -326,6 +342,11 @@ Page<PageData, WechatMiniprogram.Page.CustomOption>({
 
   // 计算凑单方案
   calculate() {
+    // 清空之前的实际价格计算结果
+    this.setData({
+      actualItemPrices: {}
+    })
+
     // 获取有效的商品价格
     const validItems: OrderItem[] = this.data.items
       .map((item, index) => ({
@@ -604,5 +625,133 @@ Page<PageData, WechatMiniprogram.Page.CustomOption>({
         }
       }
     })
+  },
+
+  // 打开实际支付价格弹窗
+  openActualPriceDialog(e: WechatMiniprogram.CustomEvent) {
+    const { orderIndex, solutionIndex } = e.currentTarget.dataset
+    this.setData({
+      'actualPriceDialog.show': true,
+      'actualPriceDialog.orderIndex': Number(orderIndex),
+      'actualPriceDialog.solutionIndex': Number(solutionIndex),
+      'actualPriceDialog.actualPrice': '',
+      'actualPriceDialog.extraFee': ''
+    })
+  },
+
+  // 关闭弹窗
+  closeActualPriceDialog() {
+    this.setData({
+      'actualPriceDialog.show': false,
+      'actualPriceDialog.actualPrice': '',
+      'actualPriceDialog.extraFee': ''
+    })
+  },
+
+  // 输入实际支付价格
+  onActualPriceInput(e: WechatMiniprogram.Input) {
+    this.setData({
+      'actualPriceDialog.actualPrice': e.detail.value
+    })
+  },
+
+  // 输入额外费用
+  onExtraFeeInput(e: WechatMiniprogram.Input) {
+    this.setData({
+      'actualPriceDialog.extraFee': e.detail.value
+    })
+  },
+
+  // 计算商品实际价格
+  calculateActualPrices() {
+    const { orderIndex, solutionIndex, actualPrice, extraFee } = this.data.actualPriceDialog
+    const actualPayPrice = parseFloat(actualPrice)
+    const feeAmount = parseFloat(extraFee) || 0
+
+    if (isNaN(actualPayPrice) || actualPayPrice <= 0) {
+      wx.showToast({
+        title: '请输入有效的实际支付价格',
+        icon: 'none'
+      })
+      return
+    }
+
+    if (feeAmount < 0) {
+      wx.showToast({
+        title: '额外费用不能为负数',
+        icon: 'none'
+      })
+      return
+    }
+
+    // 获取对应方案的订单
+    let order: any
+    if (solutionIndex === -1) {
+      // 最优方案
+      order = this.data.result!.orders[orderIndex]
+    } else {
+      // 备选方案
+      order = this.data.result!.otherSolutions[solutionIndex].orders[orderIndex]
+    }
+
+    if (!order) {
+      wx.showToast({
+        title: '订单信息不存在',
+        icon: 'none'
+      })
+      return
+    }
+
+    // 计算每个商品的实际价格
+    const orderOriginalTotal = order.items.reduce((sum: number, item: OrderItem) => sum + item.price, 0)
+    const ratio = actualPayPrice / orderOriginalTotal
+
+    // 计算每个商品的额外费用分配（均摊）
+    const itemCount = order.items.length
+    const feePerItem = feeAmount / itemCount
+
+    // 存储每个商品的实际价格
+    const solutionKey = solutionIndex === -1 ? 'best' : `alt-${solutionIndex}`
+    const prices: Record<string, string> = {}
+    order.items.forEach((item: OrderItem) => {
+      // 商品实际价格 = 商品原价 × 比例 + 额外费用均摊
+      const itemActualPrice = item.price * ratio + feePerItem
+      prices[String(item.id)] = itemActualPrice.toFixed(2)
+    })
+
+    this.setData({
+      [`actualItemPrices.${solutionKey}`]: prices
+    })
+
+    const message = feeAmount > 0
+      ? `已计算完成，实际支付 ¥${actualPayPrice.toFixed(2)}，额外费用 ¥${feeAmount.toFixed(2)}`
+      : `已计算完成，实际支付 ¥${actualPayPrice.toFixed(2)}`
+
+    wx.showToast({
+      title: message,
+      icon: 'success'
+    })
+
+    this.closeActualPriceDialog()
+  },
+
+  // 获取商品的实际价格（用于wxml）
+  getActualPrice(itemId: number, solutionIndex: number = -1): number | null {
+    const solutionKey = solutionIndex === -1 ? 'best' : `alt-${solutionIndex}`
+    const prices = this.data.actualItemPrices[solutionKey]
+    if (!prices) return null
+    return prices[itemId] || null
+  },
+
+  // 格式化实际价格（用于wxml）
+  formatActualPrice(itemId: number, solutionIndex: number = -1): string {
+    const actualPrice = this.getActualPrice(itemId, solutionIndex)
+    if (!actualPrice) return ''
+    return `实付: ¥${actualPrice.toFixed(2)}`
+  },
+
+  // 阻止事件冒泡
+  stopPropagation() {
+    // 空函数，仅用于阻止事件冒泡
   }
 })
