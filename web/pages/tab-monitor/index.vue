@@ -224,62 +224,62 @@
             </div>
           </div>
 
-          <!-- Tab ID -->
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1.5">
-              Tab ID <span class="text-red-500">*</span>
-            </label>
-            <input
-              v-model="formData.tabId"
-              type="text"
-              placeholder="请输入 Tab ID"
-              class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
-              required
-            />
+          <!-- Tab ID 和 Tab 名称 -->
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1.5">
+                Tab ID <span class="text-red-500">*</span>
+              </label>
+              <input
+                v-model="formData.tabId"
+                type="text"
+                placeholder="请输入 Tab ID"
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                required
+              />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1.5">
+                Tab 名称 <span class="text-red-500">*</span>
+              </label>
+              <input
+                v-model="formData.tabName"
+                type="text"
+                placeholder="例如：羽绒服专区"
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                required
+              />
+            </div>
           </div>
 
-          <!-- Tab 名称 -->
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1.5">
-              Tab 名称 <span class="text-red-500">*</span>
-            </label>
-            <input
-              v-model="formData.tabName"
-              type="text"
-              placeholder="例如：羽绒服专区"
-              class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
-              required
-            />
-          </div>
-
-          <!-- 检测间隔 -->
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1.5">
-              检测间隔（秒）
-            </label>
-            <input
-              v-model.number="formData.interval"
-              type="number"
-              min="10"
-              placeholder="默认 60 秒（1 分钟）"
-              class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
-            />
-            <p class="mt-1 text-xs text-gray-500">建议设置为 60 秒以上，避免频繁请求</p>
-          </div>
-
-          <!-- 监控时长 -->
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1.5">
-              监控时长（秒）
-            </label>
-            <input
-              v-model.number="formData.duration"
-              type="number"
-              min="60"
-              placeholder="默认 86400 秒（24 小时）"
-              class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
-            />
-            <p class="mt-1 text-xs text-gray-500">设置为 0 表示无限监控</p>
+          <!-- 检测间隔和监控时长 -->
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1.5">
+                检测间隔（秒）
+              </label>
+              <input
+                v-model.number="formData.interval"
+                type="number"
+                min="10"
+                placeholder="默认 60 秒（1 分钟）"
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+              />
+              <p class="mt-1 text-xs text-gray-500">建议设置为 60 秒以上，避免频繁请求</p>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1.5">
+                监控时长（秒）
+              </label>
+              <input
+                v-model.number="formData.duration"
+                type="number"
+                min="60"
+                placeholder="默认 86400 秒（24 小时）"
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+              />
+              <p class="mt-1 text-xs text-gray-500">设置为 0 表示无限监控</p>
+            </div>
           </div>
 
           <!-- 排序方式 -->
