@@ -203,17 +203,24 @@
             <label class="block text-sm font-medium text-gray-700 mb-1.5">
               快速选择
             </label>
-            <div class="flex flex-wrap gap-2">
-              <UiButton
-                v-for="option in tabOptions"
-                :key="option.id"
-                type="button"
-                variant="outline"
-                size="sm"
-                @click="handleSelectTab(option.id)"
+            <div class="relative">
+              <select
+                v-model="selectedTabOption"
+                @change="handleSelectTabFromDropdown"
+                class="w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-white appearance-none"
               >
-                {{ option.name }}
-              </UiButton>
+                <option value="">-- 请选择 --</option>
+                <option
+                  v-for="option in tabOptions"
+                  :key="option.id"
+                  :value="option.id"
+                >
+                  {{ option.name }} (ID: {{ option.id }})
+                </option>
+              </select>
+              <svg class="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+              </svg>
             </div>
           </div>
 
@@ -275,31 +282,23 @@
             <p class="mt-1 text-xs text-gray-500">设置为 0 表示无限监控</p>
           </div>
 
-          <!-- 价格筛选 -->
-          <div class="grid grid-cols-2 gap-4">
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1.5">
-                最低价格
-              </label>
-              <input
-                v-model.number="formData.minPrice"
-                type="number"
-                min="0"
-                placeholder="0"
-                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
-              />
-            </div>
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1.5">
-                最高价格
-              </label>
-              <input
-                v-model.number="formData.maxPrice"
-                type="number"
-                min="0"
-                placeholder="0（不限）"
-                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
-              />
+          <!-- 排序方式 -->
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1.5">
+              价格排序方式
+            </label>
+            <div class="relative">
+              <select
+                v-model.number="formData.sort"
+                class="w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-white appearance-none"
+              >
+                <option :value="1">默认排序</option>
+                <option :value="3">从高到低</option>
+                <option :value="4">从低到高</option>
+              </select>
+              <svg class="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+              </svg>
             </div>
           </div>
         </div>
@@ -365,14 +364,16 @@ const tabOptions = [
   { id: '91342', name: '800-400-上装预告' },
 ]
 
+// 下拉选择的值
+const selectedTabOption = ref('')
+
 // 表单数据
 const formData = ref({
   tabId: '',
   tabName: '',
   interval: 60,
   duration: 86400,
-  minPrice: 0,
-  maxPrice: 0,
+  sort: 1,
 })
 
 // 选择 Tab 时的处理
@@ -381,6 +382,13 @@ const handleSelectTab = (tabId: string) => {
   if (selectedTab) {
     formData.value.tabId = selectedTab.id
     formData.value.tabName = selectedTab.name
+  }
+}
+
+// 下拉选择处理
+const handleSelectTabFromDropdown = () => {
+  if (selectedTabOption.value) {
+    handleSelectTab(selectedTabOption.value)
   }
 }
 
@@ -426,8 +434,7 @@ const handleAddTask = async () => {
       tabName: '',
       interval: 60,
       duration: 86400,
-      minPrice: 0,
-      maxPrice: 0,
+      sort: 1,
     }
     // 刷新任务列表
     await fetchTasks()
