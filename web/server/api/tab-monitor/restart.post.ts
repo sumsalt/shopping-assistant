@@ -46,16 +46,9 @@ export default defineEventHandler(async (event) => {
       tabName: originalTask.tabName,
     }
 
-    // 使用原任务的配置
+    // 使用原任务的配置（深度复制所有参数）
     const config: TabMonitorConfig = {
-      tabId: originalTask.tabId,
-      interval: originalTask.config.interval,
-      duration: originalTask.config.duration,
-      page: originalTask.config.page,
-      pageSize: originalTask.config.pageSize,
-      sort: originalTask.config.sort,
-      minPrice: originalTask.config.minPrice,
-      maxPrice: originalTask.config.maxPrice,
+      ...originalTask.config,
       adapterConfig: {
         ...originalTask.config.adapterConfig,
       },
