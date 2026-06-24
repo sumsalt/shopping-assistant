@@ -1,14 +1,14 @@
 {
   "users": [
     {
-      "username": "admin",
-      "password": "$2a$10$rdc9Bk42Zz6dGwlZQsanPOQO2QUWWnsDde6H9bp7GL7NtUMEQgx2m",
-      "email": "admin@example.com"
+      "username": "sumsalt",
+      "password": "$2a$10$gHJGa7TU/d9tsWYiOMHjwOieX.6dtFjA7GK/nBcBk8zQmuMYfqgya",
+      "email": "527013774@qq.com"
     },
     {
-      "username": "user",
-      "password": "$2a$10$rdc9Bk42Zz6dGwlZQsanPOQO2QUWWnsDde6H9bp7GL7NtUMEQgx2m",
-      "email": "user@example.com"
+      "username": "wxt",
+      "password": "$2a$10$gTM3YXw1qoYA1q..uk4bIe0MqIHKxZ1gF.Kks0fWrWVtE0qycLflq",
+      "email": "473149942@qq.com"
     }
   ]
 }

@@ -137,6 +137,7 @@ export default defineEventHandler(async (event) => {
       sort: body.config?.sort || 1,
       minPrice: body.config?.minPrice || 0,
       maxPrice: body.config?.maxPrice || 0,
+      minChangeCount: body.config?.minChangeCount || 10,
       adapterConfig: body.config?.adapterConfig || {},
     }
 
