@@ -83,6 +83,22 @@
         </svg>
         {{ isMonitoring ? '创建中' : '监控到货' }}
       </UiButton>
+
+      <!-- 价格监控按钮 -->
+      <UiButton
+        v-if="showPriceMonitorButton"
+        variant="outline"
+        size="xs"
+        :loading="isPriceMonitoring"
+        :disabled="isPriceMonitoring"
+        class="w-full mt-1 text-emerald-600 border-emerald-200 hover:bg-emerald-50 hover:border-emerald-300"
+        @click.stop="handlePriceMonitorClick"
+      >
+        <svg v-if="!isPriceMonitoring" class="w-3 h-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+        </svg>
+        {{ isPriceMonitoring ? '创建中' : '价格监控' }}
+      </UiButton>
     </div>
   </div>
 </template>
@@ -101,6 +117,10 @@ interface Props {
   clickable?: boolean
   showMonitorButton?: boolean
   isMonitoring?: boolean
+  /** 是否显示价格监控按钮 */
+  showPriceMonitorButton?: boolean
+  /** 是否正在创建价格监控 */
+  isPriceMonitoring?: boolean
 }
 
 // 默认属性
@@ -113,12 +133,15 @@ const props = withDefaults(defineProps<Props>(), {
   clickable: true,
   showMonitorButton: false,
   isMonitoring: false,
+  showPriceMonitorButton: false,
+  isPriceMonitoring: false,
 })
 
 // 定义事件
 const emit = defineEmits<{
   click: [event: MouseEvent]
   monitor: []
+  'price-monitor': []
 }>()
 
 // 图片加载失败处理
@@ -173,5 +196,10 @@ const handleKeyDown = (event: KeyboardEvent) => {
 // 监控按钮点击事件
 const handleMonitorClick = () => {
   emit('monitor')
+}
+
+// 价格监控按钮点击事件
+const handlePriceMonitorClick = () => {
+  emit('price-monitor')
 }
 </script>

@@ -56,6 +56,7 @@ describe('checkStock - 库存查询主函数', () => {
       }),
       checkCollectionStock: vi.fn(),
       getProductSkus: vi.fn(),
+      getPriceInfo: vi.fn(),
     };
     
     vi.mocked(getAdapter).mockReturnValue(mockAdapter);
@@ -88,6 +89,7 @@ describe('checkStock - 库存查询主函数', () => {
       }),
       checkCollectionStock: vi.fn(),
       getProductSkus: vi.fn(),
+      getPriceInfo: vi.fn(),
     };
     
     vi.mocked(getAdapter).mockReturnValue(mockAdapter);

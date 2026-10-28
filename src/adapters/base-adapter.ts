@@ -2,7 +2,7 @@
  * 平台适配器 - 基础抽象类
  */
 
-import type { Platform, StockCheckResult, CollectionStockCheckResult, ProductSkuResult } from '../types';
+import type { Platform, StockCheckResult, CollectionStockCheckResult, ProductSkuResult, PriceSnapshot } from '../types';
 import type { PlatformAdapter, AdapterConfig } from './types';
 
 /**
@@ -39,4 +39,9 @@ export abstract class BaseAdapter implements PlatformAdapter {
    * 获取商品的所有 SKU 信息（抽象方法，子类必须实现）
    */
   abstract getProductSkus(productNo: string): Promise<ProductSkuResult>;
+
+  /**
+   * 获取商品价格快照（抽象方法，子类必须实现）
+   */
+  abstract getPriceInfo(productId: string): Promise<PriceSnapshot>;
 }

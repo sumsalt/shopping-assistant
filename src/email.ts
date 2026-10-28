@@ -522,6 +522,157 @@ export function createTabChangeTemplate(
 }
 
 /**
+ * 创建邮件模板 - 价格变动提醒
+ *
+ * @param productName 商品名称
+ * @param change 价格变化信息
+ * @param productImage 商品图片 URL（可选）
+ * @param productUrl 商品链接（可选）
+ * @returns HTML 邮件内容
+ */
+export function createPriceChangeTemplate(
+  productName: string,
+  change: {
+    previousPrice: number;
+    currentPrice: number;
+    delta: number;
+    deltaPercent: number;
+    direction: 'up' | 'down';
+    detectedAt: number;
+  },
+  productImage?: string,
+  productUrl?: string
+): string {
+  const isDrop = change.direction === 'down';
+  const accentColor = isDrop ? '#4CAF50' : '#f44336';
+  const title = isDrop ? '价格下降提醒' : '价格上涨提醒';
+  const sign = change.delta > 0 ? '+' : '';
+  const percentSign = change.deltaPercent > 0 ? '+' : '';
+
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <style>
+        body {
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+          line-height: 1.6;
+          color: #333;
+          max-width: 600px;
+          margin: 0 auto;
+          padding: 20px;
+        }
+        .container {
+          background: #f9f9f9;
+          border-radius: 8px;
+          padding: 30px;
+        }
+        .header {
+          text-align: center;
+          margin-bottom: 30px;
+          border-bottom: 2px solid #e0e0e0;
+          padding-bottom: 20px;
+        }
+        .header h1 {
+          color: ${accentColor};
+          margin: 0;
+          font-size: 22px;
+        }
+        .content {
+          background: white;
+          padding: 25px;
+          border-radius: 6px;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .product-name {
+          font-size: 16px;
+          font-weight: bold;
+          color: #333;
+          margin: 15px 0;
+        }
+        .product-image {
+          display: block;
+          width: 100%;
+          max-width: 300px;
+          height: auto;
+          border-radius: 8px;
+          object-fit: cover;
+          margin: 0 auto 15px;
+        }
+        .price-row {
+          text-align: center;
+          margin: 20px 0;
+        }
+        .price-old {
+          color: #999;
+          font-size: 18px;
+          text-decoration: line-through;
+        }
+        .price-arrow {
+          color: #999;
+          margin: 0 10px;
+        }
+        .price-new {
+          color: ${accentColor};
+          font-size: 28px;
+          font-weight: bold;
+        }
+        .price-delta {
+          text-align: center;
+          color: ${accentColor};
+          font-size: 16px;
+          font-weight: bold;
+        }
+        .link {
+          display: block;
+          text-align: center;
+          margin-top: 20px;
+        }
+        .link a {
+          color: #2196F3;
+          text-decoration: none;
+          font-size: 14px;
+        }
+        .footer {
+          text-align: center;
+          margin-top: 30px;
+          color: #999;
+          font-size: 12px;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>${title}</h1>
+        </div>
+        <div class="content">
+          <p>您好！</p>
+          <p>您监控的商品${isDrop ? '价格下降' : '价格上涨'}了。</p>
+          ${productImage ? `<img src="${productImage}" alt="${productName}" class="product-image" />` : ''}
+          <div class="product-name">${productName}</div>
+          <div class="price-row">
+            <span class="price-old">¥${change.previousPrice.toFixed(2)}</span>
+            <span class="price-arrow">→</span>
+            <span class="price-new">¥${change.currentPrice.toFixed(2)}</span>
+          </div>
+          <div class="price-delta">
+            ${sign}${change.delta.toFixed(2)} 元（${percentSign}${change.deltaPercent.toFixed(2)}%）
+          </div>
+          ${productUrl ? `<div class="link"><a href="${productUrl}">查看商品详情</a></div>` : ''}
+        </div>
+        <div class="footer">
+          <p>检测时间: ${new Date(change.detectedAt).toLocaleString('zh-CN')}</p>
+          <p>这是一封自动发送的邮件，请勿直接回复。</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+}
+
+/**
  * 创建邮件模板 - 库存查询报告
  * @param inStockCount 有货数量
  * @param outOfStockCount 无货数量

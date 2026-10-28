@@ -27,21 +27,21 @@
         >
           <div
             v-if="open"
-            class="relative bg-white rounded-lg shadow-xl max-w-md w-full"
+            class="relative bg-white rounded-lg shadow-xl max-w-md w-full max-h-[90vh] flex flex-col"
             @click.stop
           >
             <!-- 标题 -->
-            <div v-if="title" class="px-6 py-4 border-b border-gray-200">
+            <div v-if="title" class="px-6 py-4 border-b border-gray-200 flex-shrink-0">
               <h3 class="text-lg font-semibold text-gray-900">{{ title }}</h3>
             </div>
 
-            <!-- 内容 -->
-            <div class="px-6 py-4">
+            <!-- 内容（小屏可滚动） -->
+            <div class="px-6 py-4 overflow-y-auto">
               <slot />
             </div>
 
             <!-- 底部按钮 -->
-            <div v-if="$slots.footer" class="px-6 py-4 border-t border-gray-200">
+            <div v-if="$slots.footer" class="px-6 py-4 border-t border-gray-200 flex-shrink-0">
               <slot name="footer" />
             </div>
           </div>

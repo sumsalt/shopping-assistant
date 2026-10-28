@@ -124,6 +124,44 @@ export interface YishouGoodsData {
   size: string;
   /** 下架提示信息 */
   remind_off_sale: string;
+  /** 价格说明（如"拿货价"） */
+  shop_price_note?: string;
+  /** 单独购买价 */
+  alone_price?: string;
+  /** 门市价/零售价（仅登录态返回） */
+  shoppe_price?: string;
+  /** 可领红包列表（仅登录态返回） */
+  coupons?: YishouCoupon[];
+  /** 新版满减券列表（仅登录态返回） */
+  coupons_new?: YishouCouponNew[];
+  /** 登录态检查标记（仅登录态返回） */
+  check_status?: string;
+}
+
+/**
+ * 一手红包数据
+ */
+export interface YishouCoupon {
+  /** 红包 ID */
+  coupon_id?: string;
+  /** 红包类型名称 */
+  coupon_type_title?: string;
+  /** 红包描述 */
+  coupon_title?: string;
+}
+
+/**
+ * 一手新版满减券数据
+ */
+export interface YishouCouponNew {
+  /** 券 ID */
+  coupon_id?: string;
+  /** 满减门槛金额 */
+  condition_goods_amount?: string;
+  /** 减免金额 */
+  reduce_amount?: string;
+  /** 是否已领取 */
+  is_receive?: boolean;
 }
 
 /**
@@ -434,6 +472,66 @@ export interface ProductSkuResult {
   restrictionNumber: number;
 }
 
+// ==================== 价格相关类型 ====================
+
+/**
+ * 归一化后的红包信息
+ */
+export interface CouponInfo {
+  /** 红包 ID */
+  couponId: string;
+  /** 红包类型名称 */
+  typeTitle: string;
+  /** 红包描述 */
+  title: string;
+}
+
+/**
+ * 归一化后的满减券信息
+ */
+export interface CouponNewInfo {
+  /** 券 ID */
+  couponId: string;
+  /** 满减门槛金额 */
+  threshold: number;
+  /** 减免金额 */
+  reduce: number;
+}
+
+/**
+ * 商品价格快照
+ */
+export interface PriceSnapshot {
+  /** 平台类型 */
+  platform: Platform;
+  /** 商品 ID */
+  productId: string;
+  /** 商品名称 */
+  productName: string;
+  /** 商品货号 */
+  productNo: string;
+  /** 商品主图 */
+  productImage: string;
+  /** 商品链接 */
+  productUrl: string;
+  /** 拿货价（登录态 shop_price） */
+  shopPrice: number;
+  /** 价格说明 */
+  shopPriceNote?: string;
+  /** 单独购买价 */
+  alonePrice?: number;
+  /** 门市价/零售价（仅登录态返回） */
+  shoppePrice?: number;
+  /** 登录态是否有效（由 coupons_new / check_status 判断） */
+  authState: 'logged_in' | 'guest';
+  /** 红包列表 */
+  coupons: CouponInfo[];
+  /** 满减券列表 */
+  couponsNew: CouponNewInfo[];
+  /** 采集时间（毫秒时间戳） */
+  capturedAt: number;
+}
+
 // ==================== 错误类型 ====================
 
 /**
@@ -448,6 +546,8 @@ export enum StockCheckErrorType {
   NETWORK_ERROR = 'NETWORK_ERROR',
   /** API 响应错误 */
   API_ERROR = 'API_ERROR',
+  /** 登录态缺失或已失效 */
+  AUTH_REQUIRED = 'AUTH_REQUIRED',
   /** 未知错误 */
   UNKNOWN_ERROR = 'UNKNOWN_ERROR',
 }

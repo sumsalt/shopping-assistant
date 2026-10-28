@@ -8,7 +8,7 @@ set -e  # 遇到错误时退出
 
 # ============= 配置变量（请根据实际情况修改） =============
 VPS_USER="ubuntu"                              # VPS 用户名
-VPS_HOST="182.254.157.209"
+VPS_HOST="43.143.118.204"
 VPS_PORT="22"                                # SSH 端口
 REMOTE_PATH="/var/www/shopping-assistant"   # 远程部署路径
 APP_NAME="shopping-assistant"                # PM2 应用名称

@@ -137,6 +137,14 @@ const GridIcon = defineComponent({
   }
 })
 
+const TrendingIcon = defineComponent({
+  render() {
+    return h('svg', { fill: 'none', viewBox: '0 0 24 24', stroke: 'currentColor' }, [
+      h('path', { 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-width': '2', d: 'M13 7h8m0 0v8m0-8l-8 8-4-4-6 6' })
+    ])
+  }
+})
+
 const SettingsIcon = defineComponent({
   render() {
     return h('svg', { fill: 'none', viewBox: '0 0 24 24', stroke: 'currentColor' }, [
@@ -177,6 +185,11 @@ const menuItems = [
     path: '/tab-monitor',
     label: 'Tab 监控',
     icon: GridIcon,
+  },
+  {
+    path: '/price-monitor',
+    label: '价格监控',
+    icon: TrendingIcon,
   },
   {
     path: '/settings',

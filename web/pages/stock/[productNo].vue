@@ -108,9 +108,10 @@
               </div>
             </div>
 
-            <!-- 监控按钮 -->
-            <div v-if="skuResult.inStockSkuCount < skuResult.totalSkuCount" class="pt-2">
+            <!-- 操作按钮 -->
+            <div class="flex flex-wrap gap-2 pt-2">
               <UiButton
+                v-if="skuResult.inStockSkuCount < skuResult.totalSkuCount"
                 variant="primary"
                 size="sm"
                 :loading="isCreatingMonitor && monitoringProductId === skuResult.productId"
@@ -121,6 +122,18 @@
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
                 </svg>
                 {{ isCreatingMonitor && monitoringProductId === skuResult.productId ? '创建中' : '监控到货通知' }}
+              </UiButton>
+
+              <UiButton
+                variant="outline"
+                size="sm"
+                class="text-emerald-600 border-emerald-200 hover:bg-emerald-50 hover:border-emerald-300"
+                @click="openPriceMonitor"
+              >
+                <svg class="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                </svg>
+                价格监控
               </UiButton>
             </div>
           </div>
@@ -136,6 +149,12 @@
         />
       </div>
     </div>
+
+    <!-- 价格监控弹窗 -->
+    <PriceMonitorDialog
+      v-model:open="showPriceDialog"
+      :products="priceMonitorProducts"
+    />
   </div>
 </template>
 
@@ -166,6 +185,30 @@ const toast = useToast()
 
 // 正在监控的商品 ID
 const monitoringProductId = ref<string | null>(null)
+
+// 价格监控弹窗
+const showPriceDialog = ref(false)
+const priceMonitorProducts = ref<Array<{
+  productId: string
+  productName?: string
+  productImage?: string
+}>>([])
+
+// 打开价格监控弹窗
+const openPriceMonitor = () => {
+  if (!skuResult.value) {
+    return
+  }
+
+  priceMonitorProducts.value = [
+    {
+      productId: skuResult.value.productId,
+      productName: skuResult.value.productName,
+      productImage: skuResult.value.productImage,
+    },
+  ]
+  showPriceDialog.value = true
+}
 
 // 格式化销量
 const formatSales = (sales: number): string => {

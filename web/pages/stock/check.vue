@@ -133,8 +133,10 @@
               :message="item.message"
               :show-monitor-button="!item.inStock"
               :is-monitoring="isCreatingMonitor && monitoringProductId === item.productId"
+              show-price-monitor-button
               @click="handleProductClick(item)"
               @monitor="handleMonitor(item)"
+              @price-monitor="openPriceMonitor(item)"
             />
           </div>
         </div>
@@ -177,8 +179,10 @@
           :message="stockResult.message"
           :show-monitor-button="!stockResult.inStock"
           :is-monitoring="isCreatingMonitor && monitoringProductId === stockResult.productId"
+          show-price-monitor-button
           @click="handleProductClick(stockResult)"
           @monitor="handleMonitor(stockResult)"
+          @price-monitor="openPriceMonitor(stockResult)"
         />
 
         <!-- 详细信息卡片 -->
@@ -228,6 +232,18 @@
                 </svg>
                 {{ isCreatingMonitor && monitoringProductId === stockResult.productId ? '创建中' : '监控到货' }}
               </UiButton>
+              <!-- 价格监控按钮 -->
+              <UiButton
+                variant="outline"
+                size="sm"
+                class="flex-1 text-emerald-600 border-emerald-200 hover:bg-emerald-50 hover:border-emerald-300"
+                @click="openPriceMonitor(stockResult)"
+              >
+                <svg class="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                </svg>
+                价格监控
+              </UiButton>
               <!-- 查看详情按钮 -->
               <UiButton
                 variant="outline"
@@ -266,8 +282,15 @@
         <li>批量查询时，会显示成功和失败的商品列表及统计信息</li>
         <li>查询结果显示商品基本信息和库存状态</li>
         <li>点击商品卡片或"查看 SKU 详情"按钮可查看所有颜色尺码的库存</li>
+        <li>点击"价格监控"可监控该商品拿货价的涨跌变化</li>
       </ul>
     </div>
+
+    <!-- 价格监控弹窗 -->
+    <PriceMonitorDialog
+      v-model:open="showPriceDialog"
+      :products="priceMonitorProducts"
+    />
   </div>
 </template>
 
@@ -302,6 +325,30 @@ const searchQuery = ref('')
 
 // 正在监控的商品 ID
 const monitoringProductId = ref<string | null>(null)
+
+// 价格监控弹窗
+const showPriceDialog = ref(false)
+const priceMonitorProducts = ref<Array<{
+  productId: string
+  productName?: string
+  productImage?: string
+}>>([])
+
+// 打开价格监控弹窗
+const openPriceMonitor = (item: any) => {
+  if (!item?.productId) {
+    return
+  }
+
+  priceMonitorProducts.value = [
+    {
+      productId: item.productId,
+      productName: item.productName,
+      productImage: item.productImage,
+    },
+  ]
+  showPriceDialog.value = true
+}
 
 // 计算无货商品数量
 const outOfStockCount = computed(() => {

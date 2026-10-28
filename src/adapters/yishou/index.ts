@@ -3,7 +3,7 @@
  */
 
 import { StockCheckError, StockCheckErrorType } from '../../types';
-import type { Platform, StockCheckResult, YishouGoodsData, YishouGoodsResponse, YishouCollectionGoodsData, YishouCollectionResponse, CollectionStockResult, CollectionStockCheckResult, YishouCartDetailResponse, YishouCartDetailData, ProductSkuResult, SkuInfo, YishouTabListResponse, YishouTabGoodsData } from '../../types';
+import type { Platform, StockCheckResult, YishouGoodsData, YishouGoodsResponse, YishouCollectionGoodsData, YishouCollectionResponse, CollectionStockResult, CollectionStockCheckResult, YishouCartDetailResponse, YishouCartDetailData, ProductSkuResult, SkuInfo, YishouTabGoodsData, PriceSnapshot } from '../../types';
 import { BaseAdapter } from '../base-adapter';
 import type { AdapterConfig } from '../types';
 import { httpPost } from '../../utils/http';
@@ -90,6 +90,66 @@ export const mapToStockResult = (data: YishouGoodsData): StockCheckResult => {
     productUrl: `${YISHOU_GOODS_URL_PREFIX}${data.goods_id}`,
     productImage: data.goods_thumb,
     message: getStockMessage(data, inStock),
+  };
+};
+
+/**
+ * 将字符串价格转换为数字
+ * @param value 价格字符串
+ * @returns 数字价格，无效时返回 undefined
+ */
+const toOptionalNumber = (value?: string): number | undefined => {
+  if (value === undefined || value === null || value === '') {
+    return undefined;
+  }
+
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+};
+
+/**
+ * 将一手商品数据转换为价格快照
+ *
+ * 说明：只有携带登录态（uid + token）时，shop_price 才是真实拿货价，
+ * coupons / coupons_new / check_status 也只在登录态下返回。
+ *
+ * @param data 一手商品数据
+ * @returns 价格快照
+ */
+export const mapToPriceSnapshot = (data: YishouGoodsData): PriceSnapshot => {
+  const coupons = (data.coupons ?? []).map((coupon) => ({
+    couponId: String(coupon.coupon_id ?? ''),
+    typeTitle: coupon.coupon_type_title ?? '',
+    title: coupon.coupon_title ?? '',
+  }));
+
+  const couponsNew = (data.coupons_new ?? []).map((coupon) => ({
+    couponId: String(coupon.coupon_id ?? ''),
+    threshold: Number(coupon.condition_goods_amount) || 0,
+    reduce: Number(coupon.reduce_amount) || 0,
+  }));
+
+  // 登录态下接口会额外返回 coupons_new / check_status，游客态没有
+  const authState: PriceSnapshot['authState'] =
+    Array.isArray(data.coupons_new) || typeof data.check_status === 'string'
+      ? 'logged_in'
+      : 'guest';
+
+  return {
+    platform: 'yishou',
+    productId: data.goods_id,
+    productName: data.goods_name,
+    productNo: data.goods_no,
+    productImage: data.goods_thumb,
+    productUrl: `${YISHOU_GOODS_URL_PREFIX}${data.goods_id}`,
+    shopPrice: toOptionalNumber(data.shop_price) ?? 0,
+    shopPriceNote: data.shop_price_note || undefined,
+    alonePrice: toOptionalNumber(data.alone_price),
+    shoppePrice: toOptionalNumber(data.shoppe_price),
+    authState,
+    coupons,
+    couponsNew,
+    capturedAt: Date.now(),
   };
 };
 
@@ -315,6 +375,91 @@ export class YishouAdapter extends BaseAdapter {
       t_t,
     });
     return { sign, t_t };
+  }
+
+  /**
+   * 获取商品价格快照（必须携带登录态）
+   *
+   * 价格监控专用：游客态 shop_price 与登录态不一致，且没有 coupons / coupons_new，
+   * 因此这里强制要求 uid + token，并在服务端判定为游客态时直接报错。
+   *
+   * @param productId 商品ID（goods_id）
+   * @returns 价格快照
+   */
+  async getPriceInfo(productId: string): Promise<PriceSnapshot> {
+    if (!this.config.uid || !this.config.token) {
+      throw new StockCheckError(
+        StockCheckErrorType.AUTH_REQUIRED,
+        '价格监控需要登录态，请先配置 uid 和 token'
+      );
+    }
+
+    // 生成签名和时间戳
+    const { sign, t_t } = this.generateSignature();
+
+    // 构建请求参数
+    const requestBody: Record<string, string> = {
+      ...this.buildBaseRequestBody(t_t),
+      goods_id: productId,
+      goods_no: '',
+    };
+
+    // 构建请求头
+    const headers = this.buildHeaders(sign);
+
+    try {
+      // 复用商品详情接口
+      const response = await httpPost<YishouGoodsResponse>(
+        YISHOU_API_URL,
+        requestBody,
+        headers,
+        this.getProxyConfig()
+      );
+
+      // 检查响应状态
+      if (response.code !== '200') {
+        if (response.msg.includes('不存在') || response.msg.includes('找不到')) {
+          throw new StockCheckError(
+            StockCheckErrorType.PRODUCT_NOT_FOUND,
+            `商品不存在: ${productId}`
+          );
+        }
+
+        throw new StockCheckError(
+          StockCheckErrorType.API_ERROR,
+          `一手平台 API 错误: ${response.msg}`
+        );
+      }
+
+      if (!response.data) {
+        throw new StockCheckError(
+          StockCheckErrorType.PRODUCT_NOT_FOUND,
+          `商品不存在: ${productId}`
+        );
+      }
+
+      const snapshot = mapToPriceSnapshot(response.data);
+
+      // 带了凭证但返回的是游客数据，说明 token 已失效
+      if (snapshot.authState !== 'logged_in') {
+        throw new StockCheckError(
+          StockCheckErrorType.AUTH_REQUIRED,
+          '登录态已失效，请在系统配置中更新 uid 和 token'
+        );
+      }
+
+      return snapshot;
+    } catch (error) {
+      if (error instanceof StockCheckError) {
+        throw error;
+      }
+
+      throw new StockCheckError(
+        StockCheckErrorType.UNKNOWN_ERROR,
+        `获取价格失败: ${error instanceof Error ? error.message : '未知错误'}`,
+        error
+      );
+    }
   }
 
   /**

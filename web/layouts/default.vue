@@ -15,7 +15,7 @@
       />
 
       <!-- 内容区域 -->
-      <main class="flex-1 min-h-[calc(100vh-4rem)] p-4 sm:p-6 lg:p-8 max-w-screen">
+      <main class="flex-1 min-w-0 min-h-[calc(100vh-4rem)] p-4 sm:p-6 lg:p-8 max-w-screen">
         <slot />
       </main>
     </div>

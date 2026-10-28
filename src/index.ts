@@ -31,6 +31,7 @@ export {
   verifyEmailConfig,
   createBackInStockTemplate,
   createStockReportTemplate,
+  createPriceChangeTemplate,
 } from './email';
 export type {
   EmailConfig,
@@ -68,3 +69,27 @@ export type {
   TabProgressCallback,
   TabResultCallback,
 } from './tab-list-monitor';
+
+// 导出价格监控
+export {
+  monitorPrice,
+  createCancellablePriceMonitor,
+  comparePrice,
+  shouldNotifyPriceChange,
+  MIN_PRICE_MONITOR_INTERVAL,
+  DEFAULT_PRICE_MONITOR_INTERVAL,
+  DEFAULT_PRODUCT_GAP_MIN,
+  DEFAULT_PRODUCT_GAP_MAX,
+  DEFAULT_NOTIFY_COOLDOWN,
+  DEFAULT_MIN_PRICE_DELTA,
+} from './price-monitor';
+export type {
+  PriceMonitorConfig,
+  PriceMonitorTask,
+  PriceMonitorResult,
+  PriceMonitorProgress,
+  PriceChangeInfo,
+  PriceNotifyOn,
+  PriceProgressCallback,
+  PriceResultCallback,
+} from './price-monitor';

@@ -45,7 +45,7 @@
     </div>
 
     <!-- 快捷入口 -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mb-8">
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mb-8">
       <!-- 库存查询 -->
       <NuxtLink
         to="/stock/check"
@@ -124,6 +124,22 @@
         </div>
         <h3 class="text-lg font-semibold text-gray-900 mb-1">Tab 监控</h3>
         <p class="text-sm text-gray-500">监控 Tab 商品列表变化</p>
+      </NuxtLink>
+
+      <!-- 价格监控 -->
+      <NuxtLink
+        to="/price-monitor"
+        class="block p-6 bg-white rounded-lg border border-gray-200 hover:shadow-md hover:border-emerald-300 transition-all group"
+      >
+        <div class="flex items-center mb-4">
+          <div class="w-12 h-12 rounded-lg bg-emerald-100 flex items-center justify-center group-hover:bg-emerald-200 transition-colors">
+            <svg class="w-6 h-6 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+            </svg>
+          </div>
+        </div>
+        <h3 class="text-lg font-semibold text-gray-900 mb-1">价格监控</h3>
+        <p class="text-sm text-gray-500">监控商品拿货价变化，降价涨价邮件提醒</p>
       </NuxtLink>
 
       <!-- 系统配置 -->
