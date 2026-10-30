@@ -183,6 +183,39 @@ export class EmailService {
 }
 
 /**
+ * 从环境变量读取 SMTP 配置
+ *
+ * 授权码等敏感信息不写进代码，部署时通过 PM2 ecosystem / shell 注入：
+ * - SMTP_HOST：默认 smtp.qq.com
+ * - SMTP_PORT：默认 465
+ * - SMTP_USER：默认 sumsalt@qq.com
+ * - SMTP_PASS：QQ 邮箱授权码，必填
+ * - SMTP_SECURE：默认 true（465 端口 SSL）
+ * - SMTP_FROM_NAME：发件人显示名，默认「购物助手」
+ *
+ * 未配置 SMTP_PASS 时返回 null：进程可以正常启动，只是发信时会报「邮件服务未配置」。
+ */
+export function loadEmailConfigFromEnv(): EmailConfig | null {
+  const pass = process.env.SMTP_PASS?.trim();
+  if (!pass) {
+    console.warn('[Email] 未配置 SMTP_PASS 环境变量，邮件通知不可用');
+    return null;
+  }
+
+  const rawPort = Number(process.env.SMTP_PORT ?? 465);
+  const port = Number.isFinite(rawPort) && rawPort > 0 ? rawPort : 465;
+
+  return {
+    host: process.env.SMTP_HOST || 'smtp.qq.com',
+    port,
+    secure: (process.env.SMTP_SECURE ?? 'true') !== 'false',
+    user: process.env.SMTP_USER || 'sumsalt@qq.com',
+    pass,
+    fromName: process.env.SMTP_FROM_NAME || '购物助手',
+  };
+}
+
+/**
  * 默认邮件服务实例（需要先配置）
  */
 let defaultEmailService: EmailService | null = null;

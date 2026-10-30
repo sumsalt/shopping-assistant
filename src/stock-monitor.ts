@@ -5,17 +5,19 @@
 import { checkStock } from './stock-check';
 import type { StockCheckRequest, StockCheckResult } from './types';
 import type { CheckStockOptions } from './stock-check';
-import { sendEmail, createBackInStockTemplate } from './email';
-import { configureEmailService } from './index';
+import {
+  sendEmail,
+  createBackInStockTemplate,
+  configureEmailService,
+  loadEmailConfigFromEnv,
+} from './email';
 import { runWithGateContext } from './utils/request-gate';
 
-configureEmailService({
-  host: 'smtp.qq.com',
-  port: 465,
-  user: 'sumsalt@qq.com',
-  pass: 'drkrrwyavsbzbjib',
-  secure: true,
-});
+// SMTP 配置来自环境变量（SMTP_PASS 等），代码里不保存授权码
+const emailConfig = loadEmailConfigFromEnv();
+if (emailConfig) {
+  configureEmailService(emailConfig);
+}
 
 /**
  * 库存监控配置

@@ -141,7 +141,12 @@ restart() {
         fi
         
         # 检查应用是否已存在
-        if pm2 list | grep -q "${APP_NAME}"; then
+        if [ -f "${REMOTE_PATH}/ecosystem.config.cjs" ]; then
+            # 用 ecosystem 启动/重载：SMTP_PASS 等敏感配置放在该文件（600 权限）里，避免每次部署丢环境变量
+            echo "使用 ecosystem.config.cjs 启动（含环境变量）..."
+            pm2 startOrReload ${REMOTE_PATH}/ecosystem.config.cjs --only ${APP_NAME} --update-env
+            pm2 save
+        elif pm2 list | grep -q "${APP_NAME}"; then
             # 重启应用
             pm2 restart ${APP_NAME} --update-env
         else
