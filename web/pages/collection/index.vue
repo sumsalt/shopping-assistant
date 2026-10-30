@@ -113,8 +113,10 @@
             :sales="item.salesOf7"
             :show-monitor-button="true"
             :is-monitoring="monitoringItems.has(item.collectId)"
+            show-price-monitor-button
             @click="handleProductClick(item.productNo)"
             @monitor="handleMonitorSingle(item)"
+            @price-monitor="openPriceMonitor(item)"
           />
         </div>
       </div>
@@ -137,7 +139,9 @@
             :price="item.price"
             :in-stock="item.inStock"
             :sales="item.salesOf7"
+            show-price-monitor-button
             @click="handleProductClick(item.productNo)"
+            @price-monitor="openPriceMonitor(item)"
           />
         </div>
       </div>
@@ -197,6 +201,12 @@
         </UiButton>
       </div>
     </div>
+
+    <!-- 价格监控弹窗 -->
+    <PriceMonitorDialog
+      v-model:open="showPriceDialog"
+      :products="priceMonitorProducts"
+    />
   </div>
 </template>
 
@@ -278,6 +288,34 @@ const handleMonitorAll = async () => {
   }))
 
   await monitorAllOutOfStock(products)
+}
+
+// 价格监控弹窗
+const showPriceDialog = ref(false)
+const priceMonitorProducts = ref<Array<{
+  productId: string
+  productName?: string
+  productImage?: string
+}>>([])
+
+// 打开价格监控弹窗（列表卡片上的「价格监控」按钮）
+const openPriceMonitor = (item: {
+  productId: string
+  productName?: string
+  productImage?: string
+}) => {
+  if (!item?.productId) {
+    return
+  }
+
+  priceMonitorProducts.value = [
+    {
+      productId: item.productId,
+      productName: item.productName,
+      productImage: item.productImage,
+    },
+  ]
+  showPriceDialog.value = true
 }
 
 // 页面加载时自动获取数据
