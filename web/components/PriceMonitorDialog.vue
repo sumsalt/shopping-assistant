@@ -120,7 +120,7 @@
       <div class="p-3 bg-blue-50 rounded-lg text-sm text-blue-700">
         预计每轮检测耗时：{{ cycleText }}
         <p class="mt-1 text-xs text-blue-600">
-          轮次间隔在每次检测结束后再计算，实际节奏还受全局请求闸门限制（登录态约 30 秒一次请求）
+          轮次间隔在每次检测结束后再计算，实际节奏还受全局请求闸门限制（登录态约 15 秒一次请求）
         </p>
       </div>
     </div>
@@ -186,6 +186,7 @@
 import {
   MIN_PRICE_MONITOR_INTERVAL,
   DEFAULT_PRICE_MONITOR_INTERVAL,
+  DEFAULT_PRICE_MONITOR_DURATION,
   type PriceMonitorProduct,
   type PriceNotifyOn,
 } from '~/composables/usePriceMonitor'
@@ -226,8 +227,8 @@ const searchedProduct = ref<PriceMonitorProduct | null>(null)
 
 // 检测间隔
 const intervalInput = ref(String(MIN_PRICE_MONITOR_INTERVAL))
-// 监控时长
-const duration = ref(7200)
+// 监控时长（默认 24 小时）
+const duration = ref(DEFAULT_PRICE_MONITOR_DURATION)
 // 通知条件
 const notifyOn = ref<PriceNotifyOn>('any')
 // 最小变动金额
@@ -369,7 +370,7 @@ watch(
     searchError.value = ''
     searchedProduct.value = null
     intervalInput.value = String(MIN_PRICE_MONITOR_INTERVAL)
-    duration.value = 7200
+    duration.value = DEFAULT_PRICE_MONITOR_DURATION
     notifyOn.value = 'any'
     minPriceDeltaInput.value = '0.01'
     intervalError.value = ''
