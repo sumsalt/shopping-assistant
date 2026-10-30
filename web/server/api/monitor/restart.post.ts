@@ -40,8 +40,9 @@ export default defineEventHandler(async (event) => {
     // 生成新任务 ID
     const newTaskId = `task_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`
 
-    // 构建监控任务列表
-    const tasks: MonitorTask[] = originalTask.products.map((product) => ({
+    // 构建监控任务
+    const product = originalTask.product
+    const task: MonitorTask = {
       request: {
         platform: 'yishou',
         productId: product.productId,
@@ -49,7 +50,7 @@ export default defineEventHandler(async (event) => {
       recipient: originalTask.userEmail,
       subject: `🔔 ${product.productName} 已到货`,
       productImage: product.productImage,
-    }))
+    }
 
     // 使用原任务的配置
     const config: StockMonitorConfig = {
@@ -65,7 +66,7 @@ export default defineEventHandler(async (event) => {
       id: newTaskId,
       userId: originalTask.userId,
       userEmail: originalTask.userEmail,
-      products: originalTask.products,
+      product,
       config,
       status: 'running',
       createdAt: new Date(),
@@ -75,14 +76,14 @@ export default defineEventHandler(async (event) => {
     persistTask('stock', newTask)
 
     // 启动监控任务
-    startMonitorTask(newTaskId, tasks, config)
+    config.taskId = newTaskId
+    startMonitorTask(newTaskId, task, config)
 
     // 返回新任务 ID
     return createSuccessResponse({
       taskId: newTaskId,
       status: 'started',
       message: '监控任务已重新发起',
-      taskCount: tasks.length,
       interval: config.interval,
       duration: config.duration,
     })

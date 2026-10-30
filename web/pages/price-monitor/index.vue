@@ -66,7 +66,7 @@
               <span class="text-sm text-gray-500">{{ formatTime(task.createdAt) }}</span>
               <span class="text-sm text-gray-400">·</span>
               <span class="text-sm text-gray-600 font-medium">
-                监控 {{ task.products.length }} 个商品
+                {{ task.product.productName }}
               </span>
             </div>
 
@@ -106,52 +106,46 @@
             {{ task.lastError }}
           </div>
 
-          <!-- 商品当前价格 -->
-          <div class="space-y-2">
-            <div
-              v-for="product in task.products"
-              :key="product.productId"
-              class="flex items-center justify-between gap-3 p-2 bg-gray-50 rounded-lg"
-            >
-              <div class="flex items-center gap-3 min-w-0">
-                <div class="w-10 h-10 flex-shrink-0 rounded overflow-hidden bg-gray-100">
-                  <img
-                    v-if="product.productImage"
-                    :src="product.productImage"
-                    :alt="product.productName"
-                    class="w-full h-full object-cover"
-                  >
-                  <div v-else class="w-full h-full flex items-center justify-center">
-                    <svg class="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                  </div>
-                </div>
-                <div class="min-w-0">
-                  <p class="text-sm font-medium text-gray-900 truncate">
-                    {{ product.productName || task.snapshots[product.productId]?.productName || product.productId }}
-                  </p>
-                  <p class="text-xs text-gray-500">
-                    ID：{{ product.productId }}
-                  </p>
+          <!-- 商品当前价格（一个任务只监控一个商品） -->
+          <div class="flex items-center justify-between gap-3 p-2 bg-gray-50 rounded-lg">
+            <div class="flex items-center gap-3 min-w-0">
+              <div class="w-10 h-10 flex-shrink-0 rounded overflow-hidden bg-gray-100">
+                <img
+                  v-if="task.product.productImage"
+                  :src="task.product.productImage"
+                  :alt="task.product.productName"
+                  class="w-full h-full object-cover"
+                >
+                <div v-else class="w-full h-full flex items-center justify-center">
+                  <svg class="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
                 </div>
               </div>
+              <div class="min-w-0">
+                <p class="text-sm font-medium text-gray-900 truncate">
+                  {{ task.product.productName || task.snapshot?.productName || task.product.productId }}
+                </p>
+                <p class="text-xs text-gray-500">
+                  ID：{{ task.product.productId }}
+                </p>
+              </div>
+            </div>
 
-              <div class="text-right flex-shrink-0">
-                <p
-                  v-if="task.snapshots[product.productId]"
-                  class="text-sm font-bold text-red-600"
-                >
-                  ¥{{ task.snapshots[product.productId].shopPrice.toFixed(2) }}
-                </p>
-                <p v-else class="text-sm text-gray-400">待检测</p>
-                <p
-                  v-if="task.snapshots[product.productId]"
-                  class="text-xs text-gray-400"
-                >
-                  {{ formatTime(task.snapshots[product.productId].checkedAt) }}
-                </p>
-              </div>
+            <div class="text-right flex-shrink-0">
+              <p
+                v-if="task.snapshot"
+                class="text-sm font-bold text-red-600"
+              >
+                ¥{{ task.snapshot.shopPrice.toFixed(2) }}
+              </p>
+              <p v-else class="text-sm text-gray-400">待检测</p>
+              <p
+                v-if="task.snapshot"
+                class="text-xs text-gray-400"
+              >
+                {{ formatTime(task.snapshot.checkedAt) }}
+              </p>
             </div>
           </div>
 
@@ -238,7 +232,7 @@
     <!-- 创建弹窗 -->
     <PriceMonitorDialog
       v-model:open="showCreateDialog"
-      :products="pendingProducts"
+      :product="pendingProduct"
       @created="handleCreated"
     />
 
@@ -247,7 +241,7 @@
       <h4 class="text-sm font-medium text-blue-800 mb-2">使用说明</h4>
       <ul class="text-sm text-blue-700 list-disc list-inside space-y-1">
         <li>价格监控只对比登录态（uid + token）下的拿货价，未配置登录态无法使用</li>
-        <li>检测间隔最低 60 秒；多商品串行检测，商品之间随机间隔 10~20 秒</li>
+        <li>检测间隔最低 60 秒；一个任务只监控一个商品，多个商品请分别创建任务</li>
         <li>首次检测只建立基线，不会发送通知</li>
         <li>价格变化会通过邮件通知，同一商品有通知冷却时间，避免价格抖动刷屏</li>
       </ul>
@@ -279,9 +273,9 @@ const {
   formatDuration,
 } = usePriceMonitorTasks()
 
-// 创建弹窗（页面入口为空商品列表，弹窗内先查询再设置参数）
+// 创建弹窗（页面入口不指定商品，弹窗内先查询再设置参数）
 const showCreateDialog = ref(false)
-const pendingProducts = ref<PriceMonitorProduct[]>([])
+const pendingProduct = ref<PriceMonitorProduct | null>(null)
 
 /**
  * 创建成功
@@ -307,10 +301,10 @@ const handleRestart = async (task: { id: string }) => {
 /**
  * 删除任务
  */
-const handleDelete = async (task: { id: string; products: PriceMonitorProduct[] }) => {
+const handleDelete = async (task: { id: string; product: { productId: string; productName?: string } }) => {
   const confirmed = await confirmDialog.confirm({
     title: '删除价格监控',
-    message: `确定要删除这 ${task.products.length} 个商品的价格监控任务吗？`,
+    message: `确定要删除「${task.product.productName || task.product.productId}」的价格监控任务吗？`,
     confirmText: '删除',
     cancelText: '取消',
   })

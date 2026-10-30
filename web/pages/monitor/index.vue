@@ -63,7 +63,7 @@
               </span>
               <span class="text-sm text-gray-400">·</span>
               <span class="text-sm text-gray-600 font-medium">
-                监控 {{ task.taskCount }} 个商品
+                {{ task.product.productName }}
               </span>
             </div>
 
@@ -132,91 +132,48 @@
             </UiButton>
           </div>
 
-          <!-- 监控结果（如果有） -->
-          <div v-if="task.results && task.results.some(r => r.detected)" class="mt-4">
+          <!-- 监控结果（已到货） -->
+          <div v-if="task.result?.detected" class="mt-4">
             <div class="bg-green-50 rounded-lg p-3 border border-green-100">
-              <p class="text-sm font-medium text-green-800 mb-2">✓ 已检测到 {{ task.results.filter(r => r.detected).length }} 个商品到货</p>
-              <div class="space-y-1">
-                <p
-                  v-for="(result, index) in task.results.filter(r => r.detected)"
-                  :key="index"
-                  class="text-sm text-green-700"
-                >
-                  {{ result.productName }}
-                  <span v-if="result.emailSent" class="text-xs text-green-600">(已发送邮件)</span>
-                </p>
-              </div>
+              <p class="text-sm font-medium text-green-800">
+                ✓ 已检测到商品到货
+                <span v-if="task.result.emailSent" class="text-xs text-green-600">（已发送邮件）</span>
+              </p>
             </div>
           </div>
         </div>
 
-        <!-- 展开/收起按钮 -->
-        <button
-          v-if="task.products.length > 3"
-          type="button"
-          class="w-full px-4 py-2 text-sm text-gray-500 hover:bg-gray-50 transition-colors flex items-center justify-center gap-1 border-t border-gray-100"
-          @click="toggleExpand(task.id)"
-        >
-          <span>{{ isExpanded(task.id) ? '收起商品列表' : `展开全部 ${task.products.length} 个商品` }}</span>
-          <svg
-            :class="['w-4 h-4 transition-transform', isExpanded(task.id) ? 'rotate-180' : '']"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-          </svg>
-        </button>
-
-        <!-- 商品列表 -->
-        <Transition
-          enter-active-class="transition-all duration-200 ease-out"
-          enter-from-class="max-h-0 opacity-0"
-          enter-to-class="max-h-screen opacity-100"
-          leave-active-class="transition-all duration-200 ease-in"
-          leave-from-class="max-h-screen opacity-100"
-          leave-to-class="max-h-0 opacity-0"
-        >
-          <div v-show="task.products.length <= 3 || isExpanded(task.id)" class="border-t border-gray-100 p-4">
-            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+        <!-- 商品信息（一个任务只监控一个商品） -->
+        <div class="border-t border-gray-100 p-4">
+          <div class="flex items-center gap-3">
+            <div class="w-16 h-16 flex-shrink-0 rounded-lg overflow-hidden bg-gray-100">
+              <img
+                v-if="task.product.productImage"
+                :src="task.product.productImage"
+                :alt="task.product.productName"
+                class="w-full h-full object-cover"
+                loading="lazy"
+                @error="handleImageError"
+              />
               <div
-                v-for="(product, index) in task.products"
-                :key="index"
-                class="bg-gray-50 rounded-lg p-3"
+                v-else
+                class="w-full h-full flex items-center justify-center text-gray-400"
               >
-                <!-- 商品图片 -->
-                <div class="aspect-square bg-gray-100 rounded-lg overflow-hidden mb-3">
-                  <img
-                    v-if="product.productImage"
-                    :src="product.productImage"
-                    :alt="product.productName"
-                    class="w-full h-full object-cover"
-                    loading="lazy"
-                    @error="handleImageError"
-                  />
-                  <div
-                    v-else
-                    class="w-full h-full flex items-center justify-center text-gray-400"
-                  >
-                    <svg class="w-12 h-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                  </div>
-                </div>
-
-                <!-- 商品名称 -->
-                <h3 class="text-sm font-medium text-gray-900 line-clamp-2" :title="product.productName">
-                  {{ product.productName }}
-                </h3>
-
-                <!-- 商品 ID -->
-                <p class="text-xs text-gray-500 mt-1">
-                  ID: {{ product.productId }}
-                </p>
+                <svg class="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
               </div>
             </div>
+            <div class="min-w-0">
+              <h3 class="text-sm font-medium text-gray-900 truncate" :title="task.product.productName">
+                {{ task.product.productName }}
+              </h3>
+              <p class="text-xs text-gray-500 mt-1">
+                ID: {{ task.product.productId }}
+              </p>
+            </div>
           </div>
-        </Transition>
+        </div>
       </div>
     </div>
 
@@ -257,8 +214,6 @@ const {
   deleteTask,
   restartTask,
   refresh,
-  toggleExpand,
-  isExpanded,
   getStatusText,
   getStatusColor,
   formatTime,

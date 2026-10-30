@@ -548,6 +548,8 @@ export enum StockCheckErrorType {
   API_ERROR = 'API_ERROR',
   /** 登录态缺失或已失效 */
   AUTH_REQUIRED = 'AUTH_REQUIRED',
+  /** 请求排队超时（全局请求闸门） */
+  REQUEST_GATE_TIMEOUT = 'REQUEST_GATE_TIMEOUT',
   /** 未知错误 */
   UNKNOWN_ERROR = 'UNKNOWN_ERROR',
 }

@@ -96,7 +96,7 @@ describe('createCancellablePriceMonitor - 参数校验', () => {
   };
 
   it('检测间隔小于 60 秒时应拒绝', async () => {
-    const { promise } = createCancellablePriceMonitor([task], {
+    const { promise } = createCancellablePriceMonitor(task, {
       interval: MIN_PRICE_MONITOR_INTERVAL - 1,
       adapterConfig: { uid: 'u', token: 't' },
     });
@@ -105,7 +105,7 @@ describe('createCancellablePriceMonitor - 参数校验', () => {
   });
 
   it('缺少 uid / token 时应拒绝', async () => {
-    const { promise } = createCancellablePriceMonitor([task], {
+    const { promise } = createCancellablePriceMonitor(task, {
       interval: 60,
       adapterConfig: {},
     });
@@ -113,12 +113,12 @@ describe('createCancellablePriceMonitor - 参数校验', () => {
     await expect(promise).rejects.toThrow('价格监控需要登录态');
   });
 
-  it('监控任务为空时应拒绝', async () => {
-    const { promise } = createCancellablePriceMonitor([], {
+  it('未指定商品时应拒绝', async () => {
+    const { promise } = createCancellablePriceMonitor(undefined as never, {
       interval: 60,
       adapterConfig: { uid: 'u', token: 't' },
     });
 
-    await expect(promise).rejects.toThrow('监控任务列表不能为空');
+    await expect(promise).rejects.toThrow('监控商品不能为空');
   });
 });

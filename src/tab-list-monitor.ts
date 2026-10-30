@@ -7,6 +7,7 @@ import type { AdapterConfig } from './adapters/types';
 import type { CollectionStockCheckResult, CollectionStockResult } from './types';
 import { sendEmail, createTabChangeTemplate } from './email';
 import { configureEmailService } from './index';
+import { runWithGateContext } from './utils/request-gate';
 
 configureEmailService({
   host: 'smtp.qq.com',
@@ -40,6 +41,8 @@ export interface TabMonitorConfig {
   maxPrice?: number;
   /** 触发变化的最少商品数量，默认10 */
   minChangeCount?: number;
+  /** 任务 ID（用于全局请求闸门的公平调度） */
+  taskId?: string;
 }
 
 /**
@@ -266,7 +269,14 @@ export const createCancellableTabMonitor = (
   const controller = new AbortController();
   const { signal } = controller;
 
-  const promise = (async (): Promise<TabMonitorResult> => {
+  // 打上任务上下文：循环内所有 HTTP 请求都会经过全局请求闸门（用户手动操作无上下文，不受限）
+  const promise = runWithGateContext(
+    {
+      taskId: config.taskId || 'tab-monitor',
+      kind: 'tab',
+      accountKey: config.adapterConfig?.uid,
+    },
+    async (): Promise<TabMonitorResult> => {
     const {
       interval = 60,
       duration = 24 * 60 * 60,
@@ -488,7 +498,8 @@ export const createCancellableTabMonitor = (
       checkCount,
       errorCount,
     };
-  })();
+    }
+  );
 
   return { controller, promise };
 };

@@ -42,15 +42,14 @@ interface CreatePriceTaskResponse {
   taskId: string
   status: string
   message: string
-  productCount: number
   interval: number
   duration?: number
-  snapshots: Record<string, {
+  snapshot: {
     productId: string
     productName: string
     shopPrice: number
     checkedAt: number
-  }>
+  }
 }
 
 /** API 响应类型 */
@@ -93,15 +92,17 @@ export const usePriceMonitor = () => {
   /**
    * 创建价格监控任务
    *
-   * @param products 待监控商品
+   * 一个任务只监控一个商品，需要监控多个商品时分别创建任务。
+   *
+   * @param product 待监控商品
    * @param options 监控参数
    * @returns 任务 ID，失败返回 null
    */
   const createPriceMonitorTask = async (
-    products: PriceMonitorProduct[],
+    product: PriceMonitorProduct,
     options: PriceMonitorOptions = {}
   ): Promise<string | null> => {
-    if (!products || products.length === 0) {
+    if (!product || !product.productId) {
       toast.warning('请选择要监控的商品')
       return null
     }
@@ -133,11 +134,11 @@ export const usePriceMonitor = () => {
         {
           method: 'POST',
           body: {
-            products: products.map(product => ({
+            product: {
               productId: product.productId,
               productName: product.productName,
               productImage: product.productImage,
-            })),
+            },
             config: {
               interval,
               duration: options.duration || DEFAULT_PRICE_MONITOR_DURATION,
@@ -160,9 +161,7 @@ export const usePriceMonitor = () => {
       )
 
       if (response.success && response.data) {
-        toast.success(
-          `已创建价格监控，共 ${response.data.productCount} 个商品`
-        )
+        toast.success('已创建价格监控任务')
         return response.data.taskId
       }
 

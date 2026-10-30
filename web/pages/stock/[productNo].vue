@@ -153,7 +153,7 @@
     <!-- 价格监控弹窗 -->
     <PriceMonitorDialog
       v-model:open="showPriceDialog"
-      :products="priceMonitorProducts"
+      :product="priceMonitorProduct"
     />
   </div>
 </template>
@@ -188,11 +188,11 @@ const monitoringProductId = ref<string | null>(null)
 
 // 价格监控弹窗
 const showPriceDialog = ref(false)
-const priceMonitorProducts = ref<Array<{
+const priceMonitorProduct = ref<{
   productId: string
   productName?: string
   productImage?: string
-}>>([])
+} | null>(null)
 
 // 打开价格监控弹窗
 const openPriceMonitor = () => {
@@ -200,13 +200,11 @@ const openPriceMonitor = () => {
     return
   }
 
-  priceMonitorProducts.value = [
-    {
-      productId: skuResult.value.productId,
-      productName: skuResult.value.productName,
-      productImage: skuResult.value.productImage,
-    },
-  ]
+  priceMonitorProduct.value = {
+    productId: skuResult.value.productId,
+    productName: skuResult.value.productName,
+    productImage: skuResult.value.productImage,
+  }
   showPriceDialog.value = true
 }
 
@@ -243,13 +241,11 @@ const handleMonitor = async () => {
   monitoringProductId.value = result.productId
 
   try {
-    await createMonitorTask([
-      {
-        productId: result.productId,
-        productName: result.productName,
-        productImage: result.productImage,
-      },
-    ])
+    await createMonitorTask({
+      productId: result.productId,
+      productName: result.productName,
+      productImage: result.productImage,
+    })
   } finally {
     monitoringProductId.value = null
   }

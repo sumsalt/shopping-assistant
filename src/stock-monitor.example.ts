@@ -1,30 +1,13 @@
 import { monitorStock } from './index';
 
 const main = async () => {
-  // 启动监控
+  // 启动监控（一个任务只监控一个商品，多个商品请分别调用）
   await monitorStock(
-    [
-      {
-        request: { platform: 'yishou', productId: '269723157' },
-        recipient: '473149942@qq.com',
-        subject: '商品到货提醒',
-      },
-      {
-        request: { platform: 'yishou', productId: '269723407' },
-        recipient: '473149942@qq.com',
-        subject: '商品到货提醒',
-      },
-      {
-        request: { platform: 'yishou', productId: '269723442' },
-        recipient: '473149942@qq.com',
-        subject: '商品到货提醒',
-      },
-      {
-        request: { platform: 'yishou', productId: '269696713' },
-        recipient: '473149942@qq.com',
-        subject: '商品到货提醒',
-      },
-    ],
+    {
+      request: { platform: 'yishou', productId: '269723157' },
+      recipient: '473149942@qq.com',
+      subject: '商品到货提醒',
+    },
     {
       interval: 1,
       duration: 3 * 60 * 60,
@@ -36,4 +19,3 @@ const main = async () => {
 };
 
 void main();
-

@@ -7,6 +7,7 @@ import type { StockCheckRequest, StockCheckResult } from './types';
 import type { CheckStockOptions } from './stock-check';
 import { sendEmail, createBackInStockTemplate } from './email';
 import { configureEmailService } from './index';
+import { runWithGateContext } from './utils/request-gate';
 
 configureEmailService({
   host: 'smtp.qq.com',
@@ -26,6 +27,8 @@ export interface StockMonitorConfig {
   duration?: number;
   /** 平台认证配置 */
   adapterConfig?: CheckStockOptions['adapterConfig'];
+  /** 任务 ID（用于全局请求闸门的公平调度） */
+  taskId?: string;
 }
 
 /**
@@ -89,58 +92,35 @@ export type ProgressCallback = (progress: MonitorProgress) => void;
 export type ResultCallback = (result: MonitorResult) => void;
 
 /**
- * 循环检查库存并发送邮件通知
+ * 循环检查库存并发送邮件通知（一个任务只监控一个商品）
  *
- * @param tasks 监控任务列表
+ * 检测到有货后发送邮件并结束任务。
+ *
+ * @param task 监控任务
  * @param config 监控配置
  * @param progressCallback 进度回调（可选）
  * @param resultCallback 结果回调（可选）
- * @returns Promise<MonitorResult[]> 所有监控结果
+ * @returns Promise<MonitorResult> 监控结果
  *
  * @example
  * ```typescript
- * import { configureEmailService } from './email';
- * import { monitorStock } from './stock-monitor';
- *
- * // 先配置邮件服务
- * configureEmailService({
- *   host: 'smtp.example.com',
- *   port: 465,
- *   user: 'your-email@example.com',
- *   pass: 'your-password',
- *   fromName: '购物助手'
- * });
- *
- * // 启动监控
- * const results = await monitorStock(
- *   [
- *     {
- *       request: { platform: 'yishou', productId: '123456' },
- *       recipient: 'customer@example.com',
- *       subject: '商品到货提醒'
- *     }
- *   ],
+ * const result = await monitorStock(
  *   {
- *     interval: 30, // 每 30 秒检查一次
- *     duration: 3600, // 最多运行 1 小时
- *     adapterConfig: { uid: 'xxx', token: 'xxx' }
+ *     request: { platform: 'yishou', productId: '123456' },
+ *     recipient: 'customer@example.com',
+ *     subject: '商品到货提醒'
  *   },
- *   (progress) => {
- *     console.log(`进度: ${progress.progress}%`);
- *   },
- *   (result) => {
- *     console.log(`商品 ${result.productName}: ${result.detected ? '已到货' : '未检测到'}`);
- *   }
+ *   { interval: 30, duration: 3600 }
  * );
  * ```
  */
 export const monitorStock = async (
-  tasks: MonitorTask[],
+  task: MonitorTask,
   config: StockMonitorConfig = {},
   progressCallback?: ProgressCallback,
   resultCallback?: ResultCallback
-): Promise<MonitorResult[]> => {
-  const { promise } = createCancellableMonitor(tasks, config, progressCallback, resultCallback);
+): Promise<MonitorResult> => {
+  const { promise } = createCancellableMonitor(task, config, progressCallback, resultCallback);
   return promise;
 };
 
@@ -161,13 +141,7 @@ export const monitorSingleStock = async (
   progressCallback?: ProgressCallback,
   resultCallback?: ResultCallback
 ): Promise<MonitorResult> => {
-  const results = await monitorStock(
-    [{ request, recipient }],
-    config,
-    progressCallback,
-    resultCallback
-  );
-  return results[0];
+  return monitorStock({ request, recipient }, config, progressCallback, resultCallback);
 };
 
 /**
@@ -178,29 +152,16 @@ const sleep = (ms: number): Promise<void> => {
 };
 
 /**
- * 取消监控（返回一个 AbortController 用于取消监控）
+ * 创建可取消的库存监控
  *
- * @returns AbortController 和 Promise，可以用于取消监控
- *
- * @example
- * ```typescript
- * const { controller, promise } = createCancellableMonitor([
- *   {
- *     request: { platform: 'yishou', productId: '123456' },
- *     recipient: 'customer@example.com'
- *   }
- * ]);
- *
- * // 5 秒后取消监控
- * setTimeout(() => {
- *   controller.abort();
- * }, 5000);
- *
- * const results = await promise;
- * ```
+ * @param task 监控任务（一个任务只包含一个商品）
+ * @param config 监控配置
+ * @param progressCallback 进度回调（可选）
+ * @param resultCallback 结果回调（可选）
+ * @returns AbortController 和 Promise
  */
 export const createCancellableMonitor = (
-  tasks: MonitorTask[],
+  task: MonitorTask,
   config: StockMonitorConfig = {},
   progressCallback?: ProgressCallback,
   resultCallback?: ResultCallback
@@ -208,136 +169,121 @@ export const createCancellableMonitor = (
   const controller = new AbortController();
   const { signal } = controller;
 
-  const promise = (async (): Promise<MonitorResult[]> => {
-    const {
-      interval = 1,
-      duration,
-      adapterConfig = {},
-    } = config;
+  // 打上任务上下文：循环内所有 HTTP 请求都会经过全局请求闸门（用户手动操作无上下文，不受限）
+  const promise = runWithGateContext(
+    {
+      taskId: config.taskId || 'stock-monitor',
+      kind: 'stock',
+      accountKey: config.adapterConfig?.uid,
+    },
+    async (): Promise<MonitorResult> => {
+      const {
+        interval = 1,
+        duration,
+        adapterConfig = {},
+      } = config;
 
-    // 校验参数
-    if (!tasks || tasks.length === 0) {
-      throw new Error('监控任务列表不能为空');
-    }
+      // 校验参数
+      if (!task?.request?.productId) {
+        throw new Error('监控商品不能为空');
+      }
 
-    if (interval <= 0) {
-      throw new Error('循环间隔时间必须大于 0');
-    }
+      if (interval <= 0) {
+        throw new Error('循环间隔时间必须大于 0');
+      }
 
-    if (duration !== undefined && duration <= 0) {
-      throw new Error('循环总时长必须大于 0');
-    }
+      if (duration !== undefined && duration <= 0) {
+        throw new Error('循环总时长必须大于 0');
+      }
 
-    // 记录每个商品的状态
-    const taskStatus = new Map<string, MonitorResult>();
-    const startTime = Date.now();
-    let totalCheckCount = 0;
-
-    // 初始化任务状态
-    tasks.forEach(task => {
-      const key = `${task.request.platform}-${task.request.productId}`;
-      taskStatus.set(key, {
+      const result: MonitorResult = {
         productId: task.request.productId,
         productName: '',
         detected: false,
         checkCount: 0,
         errorCount: 0,
-      });
-    });
+      };
 
-    // 主监控循环
-    while (true) {
-      // 检查是否被取消
-      if (signal.aborted) {
-        break;
-      }
+      const startTime = Date.now();
 
-      const elapsedTime = Math.floor((Date.now() - startTime) / 1000);
+      // 主监控循环
+      while (true) {
+        // 检查是否被取消
+        if (signal.aborted) {
+          break;
+        }
 
-      // 检查是否达到总时长限制
-      if (duration && elapsedTime >= duration) {
-        break;
-      }
+        const elapsedTime = Math.floor((Date.now() - startTime) / 1000);
 
-      // 检查是否所有商品都已检测到有货
-      const allDetected = Array.from(taskStatus.values()).every(status => status.detected);
-      if (allDetected) {
-        break;
-      }
+        // 检查是否达到总时长限制
+        if (duration && elapsedTime >= duration) {
+          break;
+        }
 
-      // 遍历任务进行检查
-      for (const task of tasks) {
-        const key = `${task.request.platform}-${task.request.productId}`;
-        const status = taskStatus.get(key);
-
-        if (!status || status.detected) {
-          continue;
+        // 已检测到有货，任务完成
+        if (result.detected) {
+          break;
         }
 
         try {
-          const result: StockCheckResult = await checkStock(task.request, { adapterConfig });
-          status.productName = result.productName;
-          status.checkCount++;
-          totalCheckCount++;
+          const checkResult: StockCheckResult = await checkStock(task.request, { adapterConfig });
+          result.productName = checkResult.productName;
+          result.checkCount++;
 
-          if (result.inStock) {
-            status.detected = true;
+          if (checkResult.inStock) {
+            result.detected = true;
 
             const emailResult = await sendEmail({
               to: task.recipient,
-              subject: task.subject || `🎉 ${result.productName} 已到货`,
-              html: createBackInStockTemplate(result.productName, result.price, task.productImage),
+              subject: task.subject || `🎉 ${checkResult.productName} 已到货`,
+              html: createBackInStockTemplate(checkResult.productName, checkResult.price, task.productImage),
             });
 
-            status.emailSent = emailResult.success;
+            result.emailSent = emailResult.success;
             if (!emailResult.success) {
-              status.error = emailResult.error;
+              result.error = emailResult.error;
             }
           }
 
           // 每次检查都触发结果回调（不仅是有货或出错时）
           if (resultCallback) {
-            resultCallback(status);
+            resultCallback(result);
           }
 
           const randomDelay = Math.random() * 0.5 + 0.7;
           await sleep(interval * 1000 + randomDelay * 1000);
         } catch (error) {
-          status.error = error instanceof Error ? error.message : String(error);
-          status.checkCount++;
-          status.errorCount = (status.errorCount || 0) + 1;
-          totalCheckCount++;
+          result.error = error instanceof Error ? error.message : String(error);
+          result.checkCount++;
+          result.errorCount = (result.errorCount || 0) + 1;
 
           if (resultCallback) {
-            resultCallback(status);
+            resultCallback(result);
           }
+        }
+
+        if (progressCallback) {
+          progressCallback({
+            elapsedTime,
+            duration,
+            progress: duration ? Math.floor((elapsedTime / duration) * 100) : undefined,
+            checkCount: result.checkCount,
+            detectedCount: result.detected ? 1 : 0,
+          });
+        }
+
+        if (signal.aborted) {
+          break;
+        }
+
+        if (duration && elapsedTime + interval >= duration) {
+          break;
         }
       }
 
-      const detectedCount = Array.from(taskStatus.values()).filter(s => s.detected).length;
-      const progress: MonitorProgress = {
-        elapsedTime,
-        duration,
-        progress: duration ? Math.floor((elapsedTime / duration) * 100) : undefined,
-        checkCount: totalCheckCount,
-        detectedCount,
-      };
-
-      if (progressCallback) {
-        progressCallback(progress);
-      }
-
-      if (signal.aborted) {
-        break;
-      }
-
-      if (duration && elapsedTime + interval >= duration) {
-        break;
-      }
+      return result;
     }
-
-    return Array.from(taskStatus.values());
-  })();
+  );
 
   return { controller, promise };
 };

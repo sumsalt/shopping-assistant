@@ -143,10 +143,60 @@ const serialize = (task: StoredTaskBase): string => {
 }
 
 /**
+ * 兼容旧版本数据：早期任务是「一个任务多个商品」，现在已改为单商品。
+ * 读取时把 products 折叠成 product、把 results/snapshots 折叠成单条，
+ * 避免历史任务在列表/续跑时炸掉。
+ */
+const normalizeLegacyPayload = (
+  kind: TaskKind,
+  payload: Record<string, unknown>
+): Record<string, unknown> => {
+  if (kind === 'tab') {
+    return payload
+  }
+
+  if (
+    payload.product === undefined &&
+    Array.isArray(payload.products) &&
+    payload.products.length > 0
+  ) {
+    payload.product = payload.products[0]
+  }
+  delete payload.products
+
+  if (kind === 'stock') {
+    if (
+      payload.result === undefined &&
+      Array.isArray(payload.results) &&
+      payload.results.length > 0
+    ) {
+      payload.result = payload.results[0]
+    }
+    delete payload.results
+  }
+
+  if (kind === 'price') {
+    if (
+      payload.snapshot === undefined &&
+      payload.snapshots &&
+      typeof payload.snapshots === 'object'
+    ) {
+      const first = Object.values(payload.snapshots as Record<string, unknown>)[0]
+      if (first) {
+        payload.snapshot = first
+      }
+    }
+    delete payload.snapshots
+  }
+
+  return payload
+}
+
+/**
  * 反序列化任务（恢复 Date 字段）
  */
-const deserialize = <T extends StoredTaskBase>(row: TaskRow): T => {
-  const payload = JSON.parse(row.payload) as Record<string, unknown>
+const deserialize = <T extends StoredTaskBase>(kind: TaskKind, row: TaskRow): T => {
+  const payload = normalizeLegacyPayload(kind, JSON.parse(row.payload) as Record<string, unknown>)
 
   const restored: Record<string, unknown> = {
     ...payload,
@@ -275,7 +325,7 @@ export const listTasks = <T extends StoredTaskBase>(kind: TaskKind, userId?: str
       : connection.prepare('SELECT * FROM tasks WHERE kind = ? ORDER BY created_at DESC')
 
     const rows = (userId ? statement.all(kind, userId) : statement.all(kind)) as TaskRow[]
-    return rows.map(row => deserialize<T>(row))
+    return rows.map(row => deserialize<T>(kind, row))
   } catch (error) {
     console.error(`[TaskStore] 查询任务列表失败 (${kind}):`, error)
     return []
@@ -296,7 +346,7 @@ export const getTask = <T extends StoredTaskBase>(kind: TaskKind, taskId: string
       .prepare('SELECT * FROM tasks WHERE kind = ? AND id = ?')
       .get(kind, taskId) as TaskRow | undefined
 
-    return row ? deserialize<T>(row) : null
+    return row ? deserialize<T>(kind, row) : null
   } catch (error) {
     console.error(`[TaskStore] 查询任务 ${taskId} 失败:`, error)
     return null
@@ -317,7 +367,7 @@ export const listRunningTasks = <T extends StoredTaskBase>(kind: TaskKind): T[] 
       .prepare("SELECT * FROM tasks WHERE kind = ? AND status = 'running' ORDER BY created_at ASC")
       .all(kind) as TaskRow[]
 
-    return rows.map(row => deserialize<T>(row))
+    return rows.map(row => deserialize<T>(kind, row))
   } catch (error) {
     console.error(`[TaskStore] 查询运行中任务失败 (${kind}):`, error)
     return []

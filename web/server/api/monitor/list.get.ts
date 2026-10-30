@@ -29,13 +29,12 @@ export default defineEventHandler(async (event) => {
     const userTasks = [...liveTasks, ...restoredTasks]
       .map(task => ({
         id: task.id,
-        taskCount: task.products.length,
-        products: task.products,
+        product: task.product,
         status: task.status,
         interval: task.config.interval,
         duration: task.config.duration,
         createdAt: task.createdAt,
-        results: task.results,
+        result: task.result,
       }))
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
 

@@ -78,8 +78,6 @@ export {
   shouldNotifyPriceChange,
   MIN_PRICE_MONITOR_INTERVAL,
   DEFAULT_PRICE_MONITOR_INTERVAL,
-  DEFAULT_PRODUCT_GAP_MIN,
-  DEFAULT_PRODUCT_GAP_MAX,
   DEFAULT_NOTIFY_COOLDOWN,
   DEFAULT_MIN_PRICE_DELTA,
 } from './price-monitor';
@@ -93,3 +91,23 @@ export type {
   PriceProgressCallback,
   PriceResultCallback,
 } from './price-monitor';
+
+// 导出全局请求闸门
+export {
+  acquireRequestSlot,
+  configureRequestGate,
+  getGateContext,
+  getGateOptions,
+  getGateStats,
+  resetRequestGate,
+  runWithGateContext,
+  GateTimeoutError,
+} from './utils/request-gate';
+export type {
+  GateContext,
+  GateOptions,
+  GateStats,
+  GateBucketStats,
+  GateTaskStats,
+  GateTaskKind,
+} from './utils/request-gate';

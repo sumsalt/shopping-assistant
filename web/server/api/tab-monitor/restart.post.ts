@@ -75,6 +75,7 @@ export default defineEventHandler(async (event) => {
     persistTask('tab', newTask)
 
     // 启动监控任务
+    config.taskId = newTaskId
     startTabMonitorTask(newTaskId, task, config)
 
     // 返回新任务 ID

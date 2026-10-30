@@ -39,7 +39,7 @@ export default defineEventHandler(async (event) => {
 
     return createSuccessResponse({
       id: task.id,
-      products: task.products,
+      product: task.product,
       status: task.status,
       interval: task.config.interval,
       duration: task.config.duration,
@@ -49,7 +49,7 @@ export default defineEventHandler(async (event) => {
       checkCount: task.checkCount,
       detectedCount: task.detectedCount,
       lastError: task.lastError,
-      snapshots: task.snapshots,
+      snapshot: task.snapshot,
       changes: task.changes,
     })
   } catch (error: unknown) {

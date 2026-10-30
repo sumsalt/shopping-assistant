@@ -289,7 +289,7 @@
     <!-- 价格监控弹窗 -->
     <PriceMonitorDialog
       v-model:open="showPriceDialog"
-      :products="priceMonitorProducts"
+      :product="priceMonitorProduct"
     />
   </div>
 </template>
@@ -318,7 +318,7 @@ const {
 } = useStock()
 
 // 使用监控 composable
-const { createMonitorTask, isLoading: isCreatingMonitor } = useMonitor()
+const { createMonitorTask, monitorAllOutOfStock, isLoading: isCreatingMonitor } = useMonitor()
 
 // 搜索关键词
 const searchQuery = ref('')
@@ -328,11 +328,11 @@ const monitoringProductId = ref<string | null>(null)
 
 // 价格监控弹窗
 const showPriceDialog = ref(false)
-const priceMonitorProducts = ref<Array<{
+const priceMonitorProduct = ref<{
   productId: string
   productName?: string
   productImage?: string
-}>>([])
+} | null>(null)
 
 // 打开价格监控弹窗
 const openPriceMonitor = (item: any) => {
@@ -340,13 +340,11 @@ const openPriceMonitor = (item: any) => {
     return
   }
 
-  priceMonitorProducts.value = [
-    {
-      productId: item.productId,
-      productName: item.productName,
-      productImage: item.productImage,
-    },
-  ]
+  priceMonitorProduct.value = {
+    productId: item.productId,
+    productName: item.productName,
+    productImage: item.productImage,
+  }
   showPriceDialog.value = true
 }
 
@@ -404,13 +402,11 @@ const handleMonitor = async (item: any) => {
   monitoringProductId.value = item.productId
 
   try {
-    await createMonitorTask([
-      {
-        productId: item.productId,
-        productName: item.productName,
-        productImage: item.productImage,
-      },
-    ])
+    await createMonitorTask({
+      productId: item.productId,
+      productName: item.productName,
+      productImage: item.productImage,
+    })
   } finally {
     monitoringProductId.value = null
   }
@@ -440,17 +436,13 @@ const handleBatchMonitor = async () => {
     return
   }
 
-  try {
-    await createMonitorTask(
-      outOfStockItems.map(item => ({
-        productId: item.productId,
-        productName: item.productName,
-        productImage: item.productImage,
-      }))
-    )
-    toast.success(`成功为 ${outOfStockItems.length} 个商品创建监控`)
-  } catch (error) {
-    toast.error('批量创建监控失败')
-  }
+  // 一个任务只监控一个商品，批量场景拆成多个任务串行创建（提示由 composable 统一给出）
+  await monitorAllOutOfStock(
+    outOfStockItems.map(item => ({
+      productId: item.productId,
+      productName: item.productName,
+      productImage: item.productImage,
+    }))
+  )
 }
 </script>

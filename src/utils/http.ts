@@ -4,6 +4,7 @@
 
 import axios, { type AxiosRequestConfig, type AxiosResponse } from 'axios';
 import { StockCheckError, StockCheckErrorType } from '../types';
+import { acquireRequestSlot, GateTimeoutError, getGateContext } from './request-gate';
 
 /**
  * HTTP 请求选项
@@ -73,6 +74,24 @@ export const httpRequest = async <T>(
         ...headers,
         'Content-Type': 'application/x-www-form-urlencoded',
       };
+    }
+  }
+
+  // 全局请求闸门：只有带任务上下文的请求才排队限流；
+  // 用户手动触发的请求（无上下文）直接放行，不受任何限制。
+  const gateContext = getGateContext();
+  if (gateContext) {
+    try {
+      await acquireRequestSlot(gateContext);
+    } catch (error) {
+      if (error instanceof GateTimeoutError) {
+        throw new StockCheckError(
+          StockCheckErrorType.REQUEST_GATE_TIMEOUT,
+          error.message,
+          error
+        );
+      }
+      throw error;
     }
   }
 

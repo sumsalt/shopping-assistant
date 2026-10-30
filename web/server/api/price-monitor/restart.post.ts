@@ -57,51 +57,49 @@ export default defineEventHandler(async (event) => {
     // 复用原任务配置，但不带初始快照，由监控循环重新建立基线
     const config: PriceMonitorConfig = {
       ...originalTask.config,
-      initialSnapshots: undefined,
+      initialSnapshot: undefined,
     }
 
     // 构建监控任务
-    const tasks: PriceMonitorTask[] = originalTask.products.map((product) => {
-      const snapshot = originalTask.snapshots[String(product.productId)]
-
-      return {
-        request: {
-          platform: 'yishou',
-          productId: String(product.productId),
-        },
-        recipient: originalTask.userEmail,
-        subject: `价格变动提醒：${snapshot?.productName || product.productName || product.productId}`,
-        productName: product.productName || snapshot?.productName,
-        productImage: product.productImage,
-      }
-    })
+    const product = originalTask.product
+    const snapshot = originalTask.snapshot
+    const task: PriceMonitorTask = {
+      request: {
+        platform: 'yishou',
+        productId: String(product.productId),
+      },
+      recipient: originalTask.userEmail,
+      subject: `价格变动提醒：${snapshot?.productName || product.productName || product.productId}`,
+      productName: product.productName || snapshot?.productName,
+      productImage: product.productImage,
+    }
 
     // 创建新任务
     const newTask: PriceMonitorTaskRecord = {
       id: newTaskId,
       userId: originalTask.userId,
       userEmail: originalTask.userEmail,
-      products: originalTask.products,
+      product,
       config,
       status: 'running',
       createdAt: new Date(),
       checkCount: 0,
       detectedCount: 0,
       changes: [],
-      snapshots: { ...originalTask.snapshots },
+      snapshot: originalTask.snapshot,
     }
 
     priceMonitorTasks.set(newTaskId, newTask)
     persistTask('price', newTask)
 
     // 启动监控任务
-    startPriceMonitorTask(newTaskId, tasks, config)
+    config.taskId = newTaskId
+    startPriceMonitorTask(newTaskId, task, config)
 
     return createSuccessResponse({
       taskId: newTaskId,
       status: 'started',
       message: '价格监控任务已重新发起',
-      productCount: tasks.length,
       interval: config.interval,
       duration: config.duration,
     })

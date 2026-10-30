@@ -5,7 +5,7 @@
  * 说明：
  * 1. 只监控登录态（uid + token）下的 shop_price，创建时同步拉一次基线，凭证异常直接失败
  * 2. 检测间隔硬下限 60 秒
- * 3. 多商品串行，商品之间随机间隔 10~20 秒
+ * 3. 一个任务只监控一个商品
  */
 
 import {
@@ -15,8 +15,6 @@ import {
   DEFAULT_PRICE_MONITOR_INTERVAL,
   DEFAULT_NOTIFY_COOLDOWN,
   DEFAULT_MIN_PRICE_DELTA,
-  DEFAULT_PRODUCT_GAP_MIN,
-  DEFAULT_PRODUCT_GAP_MAX,
   type AdapterConfig,
   type PriceChangeInfo,
   type PriceMonitorConfig,
@@ -27,12 +25,6 @@ import {
 import { createSuccessResponse, createErrorResponse, ErrorCode } from '../../utils/response'
 import { getCurrentUser } from '../../utils/session'
 import { persistTask, persistTaskSoon, type StoredTaskBase } from '../../utils/taskStore'
-
-/** 单次最多创建的商品数量 */
-const MAX_PRODUCTS_PER_TASK = 20
-
-/** 创建任务时建立基线，商品之间仅等待 200ms，避免创建请求过慢 */
-const BASELINE_GAP_MS = 200
 
 /** 商品信息 */
 interface PriceProductInfo {
@@ -57,13 +49,13 @@ export interface PriceChangeRecord extends PriceChangeInfo {
 
 /** 价格监控任务记录 */
 export interface PriceMonitorTaskRecord extends StoredTaskBase {
-  products: PriceProductInfo[]
+  product: PriceProductInfo
   config: PriceMonitorConfig
   checkCount: number
   detectedCount: number
   lastError?: string
   changes: PriceChangeRecord[]
-  snapshots: Record<string, PriceSnapshotSummary>
+  snapshot?: PriceSnapshotSummary
   controller?: AbortController
 }
 
@@ -75,39 +67,36 @@ const generateTaskId = (): string => {
   return `price_task_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`
 }
 
-/** 睡眠 */
-const sleep = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms))
-
 /**
  * 启动价格监控任务
  */
 export const startPriceMonitorTask = (
   taskId: string,
-  tasks: PriceMonitorTask[],
+  task: PriceMonitorTask,
   config: PriceMonitorConfig
 ): { controller: AbortController; promise: Promise<unknown> } => {
   const { controller, promise } = createCancellablePriceMonitor(
-    tasks,
+    task,
     config,
     (progress) => {
-      const task = priceMonitorTasks.get(taskId)
-      if (!task) {
+      const record = priceMonitorTasks.get(taskId)
+      if (!record) {
         return
       }
-      task.checkCount = progress.checkCount
-      task.detectedCount = progress.detectedCount
-      persistTaskSoon('price', task)
+      record.checkCount = progress.checkCount
+      record.detectedCount = progress.detectedCount
+      persistTaskSoon('price', record)
     },
     (result) => {
-      const task = priceMonitorTasks.get(taskId)
-      if (!task) {
+      const record = priceMonitorTasks.get(taskId)
+      if (!record) {
         return
       }
 
       const checkedAt = Date.now()
 
       if (result.currentPrice !== undefined) {
-        task.snapshots[result.productId] = {
+        record.snapshot = {
           productId: result.productId,
           productName: result.productName,
           shopPrice: result.currentPrice,
@@ -116,44 +105,44 @@ export const startPriceMonitorTask = (
       }
 
       if (result.error) {
-        task.lastError = result.error
+        record.lastError = result.error
       }
 
       if (result.detected && result.changeInfo) {
-        task.changes.unshift({
+        record.changes.unshift({
           ...result.changeInfo,
           emailSent: Boolean(result.emailSent),
         })
         // 只保留最近 50 条，避免内存无限增长
-        task.changes = task.changes.slice(0, 50)
+        record.changes = record.changes.slice(0, 50)
       }
 
-      persistTaskSoon('price', task)
+      persistTaskSoon('price', record)
     }
   )
 
-  const storedTask = priceMonitorTasks.get(taskId)
-  if (storedTask) {
-    storedTask.controller = controller
+  const stored = priceMonitorTasks.get(taskId)
+  if (stored) {
+    stored.controller = controller
   }
 
   promise
     .then(() => {
-      const task = priceMonitorTasks.get(taskId)
-      if (task) {
-        task.status = 'completed'
-        task.controller = undefined
-        persistTask('price', task)
+      const record = priceMonitorTasks.get(taskId)
+      if (record) {
+        record.status = 'completed'
+        record.controller = undefined
+        persistTask('price', record)
       }
     })
     .catch((error) => {
       console.error(`[价格监控] 任务 ${taskId} 结束:`, error)
-      const task = priceMonitorTasks.get(taskId)
-      if (task) {
-        task.status = 'stopped'
-        task.lastError = error instanceof Error ? error.message : String(error)
-        task.controller = undefined
-        persistTask('price', task)
+      const record = priceMonitorTasks.get(taskId)
+      if (record) {
+        record.status = 'stopped'
+        record.lastError = error instanceof Error ? error.message : String(error)
+        record.controller = undefined
+        persistTask('price', record)
       }
     })
 
@@ -196,26 +185,16 @@ export default defineEventHandler(async (event) => {
     // 获取请求体
     const body = await readBody(event)
 
-    // 校验商品列表
-    const products: PriceProductInfo[] = Array.isArray(body?.products) ? body.products : []
-    if (products.length === 0) {
-      return createErrorResponse(ErrorCode.INVALID_PARAMS, '监控商品列表不能为空')
-    }
-
-    if (products.length > MAX_PRODUCTS_PER_TASK) {
+    // 校验商品（一个任务只能有一个商品）
+    const product = body?.product as PriceProductInfo | undefined
+    if (!product || !product.productId) {
       return createErrorResponse(
         ErrorCode.INVALID_PARAMS,
-        `单次最多创建 ${MAX_PRODUCTS_PER_TASK} 个商品的价格监控`
+        '请指定要监控的商品（一个任务只能监控一个商品）'
       )
     }
 
-    for (const product of products) {
-      if (!product || !product.productId) {
-        return createErrorResponse(ErrorCode.INVALID_PARAMS, '商品必须包含有效的 productId')
-      }
-    }
-
-    const productIds = products.map(product => String(product.productId))
+    const productId = String(product.productId)
 
     // 校验间隔（硬下限 60 秒）
     const interval = Number(body?.config?.interval ?? DEFAULT_PRICE_MONITOR_INTERVAL)
@@ -241,46 +220,29 @@ export default defineEventHandler(async (event) => {
       )
     }
 
-    // 校验重复任务
+    // 校验重复任务（同一商品不能同时被两个运行中的任务监控）
     const duplicateTask = Array.from(priceMonitorTasks.values()).find(
       task =>
         task.userId === currentUser.username &&
         task.status === 'running' &&
-        task.products.some(product => productIds.includes(String(product.productId)))
+        String(task.product?.productId) === productId
     )
 
     if (duplicateTask) {
-      const duplicatedIds = duplicateTask.products
-        .map(product => String(product.productId))
-        .filter(id => productIds.includes(id))
-
-      return createErrorResponse(
-        ErrorCode.DUPLICATE,
-        `商品 ${duplicatedIds.join(', ')} 已在价格监控中`
-      )
+      return createErrorResponse(ErrorCode.DUPLICATE, `商品 ${productId} 已在价格监控中`)
     }
 
     // 同步建立基线：凭证失效 / 商品不存在时直接失败，不创建“跑不起来”的任务
     const adapter = getAdapter('yishou', adapterConfig)
-    const initialSnapshots: Record<string, PriceSnapshot> = {}
+    let initialSnapshot: PriceSnapshot
 
-    for (let index = 0; index < products.length; index++) {
-      const product = products[index]
-
-      try {
-        initialSnapshots[String(product.productId)] = await adapter.getPriceInfo(
-          String(product.productId)
-        )
-      } catch (error) {
-        return createErrorResponse(
-          getErrorCode(error),
-          error instanceof Error ? error.message : '获取商品价格失败'
-        )
-      }
-
-      if (index < products.length - 1) {
-        await sleep(BASELINE_GAP_MS)
-      }
+    try {
+      initialSnapshot = await adapter.getPriceInfo(productId)
+    } catch (error) {
+      return createErrorResponse(
+        getErrorCode(error),
+        error instanceof Error ? error.message : '获取商品价格失败'
+      )
     }
 
     // 构建监控配置
@@ -296,73 +258,62 @@ export default defineEventHandler(async (event) => {
         body?.config?.notifyCooldown,
         DEFAULT_NOTIFY_COOLDOWN
       ),
-      productGapMin: DEFAULT_PRODUCT_GAP_MIN,
-      productGapMax: DEFAULT_PRODUCT_GAP_MAX,
       adapterConfig,
-      initialSnapshots,
+      initialSnapshot,
     }
 
     // 构建监控任务
-    const tasks: PriceMonitorTask[] = products.map((product) => {
-      const snapshot = initialSnapshots[String(product.productId)]
-
-      return {
-        request: {
-          platform: 'yishou',
-          productId: String(product.productId),
-        },
-        recipient: currentUser.email,
-        subject: `价格变动提醒：${snapshot?.productName || product.productName || product.productId}`,
-        productName: product.productName || snapshot?.productName,
-        productImage: product.productImage || snapshot?.productImage,
-      }
-    })
+    const task: PriceMonitorTask = {
+      request: {
+        platform: 'yishou',
+        productId,
+      },
+      recipient: currentUser.email,
+      subject: `价格变动提醒：${initialSnapshot.productName || product.productName || productId}`,
+      productName: product.productName || initialSnapshot.productName,
+      productImage: product.productImage || initialSnapshot.productImage,
+    }
 
     // 生成任务 ID
     const taskId = generateTaskId()
 
-    // 存储任务信息
-    const snapshots: Record<string, PriceSnapshotSummary> = {}
-    products.forEach((product) => {
-      const snapshot = initialSnapshots[String(product.productId)]
-      if (snapshot) {
-        snapshots[String(product.productId)] = {
-          productId: snapshot.productId,
-          productName: snapshot.productName,
-          shopPrice: snapshot.shopPrice,
-          checkedAt: snapshot.capturedAt,
-        }
-      }
-    })
+    // 最近一次快照（列表展示用）
+    const snapshot: PriceSnapshotSummary = {
+      productId: initialSnapshot.productId,
+      productName: initialSnapshot.productName,
+      shopPrice: initialSnapshot.shopPrice,
+      checkedAt: initialSnapshot.capturedAt,
+    }
 
     const taskRecord: PriceMonitorTaskRecord = {
       id: taskId,
       userId: currentUser.username,
       userEmail: currentUser.email,
-      products,
+      product,
       config,
       status: 'running',
       createdAt: new Date(),
       checkCount: 0,
       detectedCount: 0,
       changes: [],
-      snapshots,
+      snapshot,
     }
 
     priceMonitorTasks.set(taskId, taskRecord)
     persistTask('price', taskRecord)
 
     // 启动后台监控（基线已建立，只有真实价格变动才会通知）
-    startPriceMonitorTask(taskId, tasks, config)
+    // 让任务内的请求带上闸门上下文（用户手动操作不带上下文，不受限流）
+    config.taskId = taskId
+    startPriceMonitorTask(taskId, task, config)
 
     return createSuccessResponse({
       taskId,
       status: 'started',
       message: '价格监控任务已启动',
-      productCount: products.length,
       interval: config.interval,
       duration: config.duration,
-      snapshots,
+      snapshot,
     })
   } catch (error: unknown) {
     console.error('创建价格监控任务失败:', error)

@@ -33,7 +33,7 @@ export interface PriceChangeRecord {
 /** 价格监控任务 */
 export interface PriceMonitorTaskItem {
   id: string
-  products: PriceTaskProduct[]
+  product: PriceTaskProduct
   status: 'running' | 'stopped' | 'completed'
   interval?: number
   duration?: number
@@ -43,7 +43,7 @@ export interface PriceMonitorTaskItem {
   checkCount: number
   detectedCount: number
   lastError?: string
-  snapshots: Record<string, PriceSnapshotSummary>
+  snapshot?: PriceSnapshotSummary
   changes: PriceChangeRecord[]
 }
 
@@ -238,14 +238,8 @@ export const usePriceMonitorTasks = () => {
    * 获取任务的平均检测周期文案
    */
   const getCycleText = (task: PriceMonitorTaskItem): string => {
-    const productCount = task.products.length
     const interval = task.interval || 60
-    if (productCount <= 1) {
-      return `约 ${interval} 秒/次`
-    }
-    const min = productCount * 10 + interval
-    const max = productCount * 20 + interval
-    return `约 ${formatDuration(min)}~${formatDuration(max)}/轮`
+    return `约 ${interval} 秒/次`
   }
 
   /**

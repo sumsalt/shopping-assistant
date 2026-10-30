@@ -56,14 +56,12 @@ const restoreStockTasks = (): number => {
 
       task.status = 'running'
       task.controller = undefined
-      if (!Array.isArray(task.results)) {
-        task.results = []
-      }
 
       monitorTasks.set(task.id, task)
 
-      // 重建监控请求
-      const requests: MonitorTask[] = task.products.map(product => ({
+      // 重建监控请求（一个任务只监控一个商品）
+      const product = task.product
+      const request: MonitorTask = {
         request: {
           platform: 'yishou',
           productId: product.productId,
@@ -71,10 +69,11 @@ const restoreStockTasks = (): number => {
         recipient: task.userEmail,
         subject: `🔔 ${product.productName} 已到货`,
         productImage: product.productImage,
-      }))
+      }
 
-      startMonitorTask(task.id, requests, {
+      startMonitorTask(task.id, request, {
         ...task.config,
+        taskId: task.id,
         duration: remaining === Number.POSITIVE_INFINITY ? undefined : Math.floor(remaining),
       })
 
@@ -107,27 +106,26 @@ const restorePriceTasks = (): number => {
       task.status = 'running'
       task.controller = undefined
       task.changes = Array.isArray(task.changes) ? task.changes : []
-      task.snapshots = task.snapshots || {}
 
       priceMonitorTasks.set(task.id, task)
 
-      const requests: PriceMonitorTask[] = task.products.map(product => {
-        const snapshot = task.snapshots[String(product.productId)]
+      // 重建监控请求（一个任务只监控一个商品）
+      const product = task.product
+      const snapshot = task.snapshot
+      const request: PriceMonitorTask = {
+        request: {
+          platform: 'yishou',
+          productId: String(product.productId),
+        },
+        recipient: task.userEmail,
+        subject: `价格变动提醒：${snapshot?.productName || product.productName || product.productId}`,
+        productName: product.productName || snapshot?.productName,
+        productImage: product.productImage || undefined,
+      }
 
-        return {
-          request: {
-            platform: 'yishou',
-            productId: String(product.productId),
-          },
-          recipient: task.userEmail,
-          subject: `价格变动提醒：${snapshot?.productName || product.productName || product.productId}`,
-          productName: product.productName || snapshot?.productName,
-          productImage: product.productImage || undefined,
-        }
-      })
-
-      startPriceMonitorTask(task.id, requests, {
+      startPriceMonitorTask(task.id, request, {
         ...task.config,
+        taskId: task.id,
         duration: remaining === Number.POSITIVE_INFINITY ? undefined : Math.floor(remaining),
       })
 
@@ -173,6 +171,7 @@ const restoreTabTasks = (): number => {
         request,
         {
           ...task.config,
+          taskId: task.id,
           duration: remaining === Number.POSITIVE_INFINITY ? undefined : Math.floor(remaining),
         },
         { preserveState: true }

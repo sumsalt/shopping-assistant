@@ -26,37 +26,27 @@
 
     <!-- 第二步：设置参数 -->
     <div v-else class="space-y-5">
-      <!-- 商品摘要 -->
-      <div class="space-y-2">
-        <div
-          v-for="product in visibleProducts"
-          :key="product.productId"
-          class="flex items-center gap-3 p-2 bg-gray-50 rounded-lg"
-        >
-          <div class="w-10 h-10 flex-shrink-0 rounded overflow-hidden bg-gray-100">
-            <img
-              v-if="product.productImage"
-              :src="product.productImage"
-              :alt="product.productName"
-              class="w-full h-full object-cover"
-            >
-            <div v-else class="w-full h-full flex items-center justify-center">
-              <svg class="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-            </div>
-          </div>
-          <div class="min-w-0 flex-1">
-            <p class="text-sm font-medium text-gray-900 truncate">
-              {{ product.productName || product.productId }}
-            </p>
-            <p class="text-xs text-gray-500">ID：{{ product.productId }}</p>
+      <!-- 商品摘要（一个任务只监控一个商品） -->
+      <div v-if="displayProduct" class="flex items-center gap-3 p-2 bg-gray-50 rounded-lg">
+        <div class="w-10 h-10 flex-shrink-0 rounded overflow-hidden bg-gray-100">
+          <img
+            v-if="displayProduct.productImage"
+            :src="displayProduct.productImage"
+            :alt="displayProduct.productName"
+            class="w-full h-full object-cover"
+          >
+          <div v-else class="w-full h-full flex items-center justify-center">
+            <svg class="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
           </div>
         </div>
-
-        <p v-if="displayProducts.length > visibleProducts.length" class="text-xs text-gray-500">
-          还有 {{ displayProducts.length - visibleProducts.length }} 个商品
-        </p>
+        <div class="min-w-0 flex-1">
+          <p class="text-sm font-medium text-gray-900 truncate">
+            {{ displayProduct.productName || displayProduct.productId }}
+          </p>
+          <p class="text-xs text-gray-500">ID：{{ displayProduct.productId }}</p>
+        </div>
       </div>
 
       <!-- 登录态提示 -->
@@ -128,9 +118,9 @@
 
       <!-- 预计周期 -->
       <div class="p-3 bg-blue-50 rounded-lg text-sm text-blue-700">
-        预计单商品检测周期：{{ cycleText }}
+        预计每轮检测耗时：{{ cycleText }}
         <p class="mt-1 text-xs text-blue-600">
-          多商品串行检测，商品之间随机间隔 10~20 秒
+          轮次间隔在每次检测结束后再计算，实际节奏还受全局请求闸门限制（登录态约 30 秒一次请求）
         </p>
       </div>
     </div>
@@ -204,11 +194,11 @@ import {
 interface Props {
   open: boolean
   /** 已确定的商品；为空时弹窗进入“先查询商品”模式 */
-  products?: PriceMonitorProduct[]
+  product?: PriceMonitorProduct | null
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  products: () => [],
+  product: null,
 })
 
 // 定义事件
@@ -222,7 +212,7 @@ const { createPriceMonitorTask, isLoading } = usePriceMonitor()
 const { checkStock } = useStock()
 
 // 是否为“先查询商品”模式
-const isSearchMode = computed(() => props.products.length === 0)
+const isSearchMode = computed(() => !props.product)
 
 // 当前步骤
 const step = ref<'search' | 'config'>('search')
@@ -232,7 +222,7 @@ const isSearchStep = computed(() => step.value === 'search')
 const searchInput = ref('')
 const searchError = ref('')
 const isSearching = ref(false)
-const searchedProducts = ref<PriceMonitorProduct[]>([])
+const searchedProduct = ref<PriceMonitorProduct | null>(null)
 
 // 检测间隔
 const intervalInput = ref(String(MIN_PRICE_MONITOR_INTERVAL))
@@ -251,10 +241,8 @@ const notifyOptions: Array<{ value: PriceNotifyOn; label: string }> = [
   { value: 'rise', label: '仅涨价' },
 ]
 
-// 实际要监控的商品
-const displayProducts = computed(() =>
-  props.products.length > 0 ? props.products : searchedProducts.value
-)
+// 实际要监控的商品（一个任务只监控一个商品）
+const displayProduct = computed(() => props.product ?? searchedProduct.value)
 
 // 是否已配置登录态
 const hasCredential = computed(() => {
@@ -262,29 +250,11 @@ const hasCredential = computed(() => {
   return Boolean(config?.uid && config?.token)
 })
 
-// 最多展示 3 个商品
-const visibleProducts = computed(() => displayProducts.value.slice(0, 3))
-
 // 预计检测周期
 const cycleText = computed(() => {
-  const count = displayProducts.value.length
   const interval = Number(intervalInput.value) || DEFAULT_PRICE_MONITOR_INTERVAL
-
-  if (count <= 1) {
-    return `约 ${interval} 秒/次`
-  }
-
-  const min = count * 10 + interval
-  const max = count * 20 + interval
-  return `约 ${formatSeconds(min)} ~ ${formatSeconds(max)}`
+  return `约 ${interval} 秒/次`
 })
-
-// 秒数格式化
-const formatSeconds = (seconds: number): string => {
-  if (seconds < 60) return `${seconds} 秒`
-  if (seconds < 3600) return `${Math.round(seconds / 60)} 分钟`
-  return `${(seconds / 3600).toFixed(seconds % 3600 === 0 ? 0 : 1)} 小时`
-}
 
 // 从输入中解析商品 ID（兼容商品链接）
 const parseProductId = (input: string): string => {
@@ -325,13 +295,11 @@ const handleSearchProduct = async () => {
       return
     }
 
-    searchedProducts.value = [
-      {
-        productId: result.productId,
-        productName: result.productName,
-        productImage: result.productImage,
-      },
-    ]
+    searchedProduct.value = {
+      productId: result.productId,
+      productName: result.productName,
+      productImage: result.productImage,
+    }
     step.value = 'config'
   } finally {
     isSearching.value = false
@@ -343,7 +311,7 @@ const handleSearchProduct = async () => {
  */
 const backToSearch = () => {
   step.value = 'search'
-  searchedProducts.value = []
+  searchedProduct.value = null
   searchError.value = ''
 }
 
@@ -367,7 +335,7 @@ const handleSubmit = async () => {
     return
   }
 
-  if (displayProducts.value.length === 0) {
+  if (!displayProduct.value) {
     searchError.value = '请先选择要监控的商品'
     step.value = 'search'
     return
@@ -375,7 +343,7 @@ const handleSubmit = async () => {
 
   const minPriceDelta = Number(minPriceDeltaInput.value)
 
-  const taskId = await createPriceMonitorTask(displayProducts.value, {
+  const taskId = await createPriceMonitorTask(displayProduct.value, {
     interval,
     duration: duration.value,
     notifyOn: notifyOn.value,
@@ -396,10 +364,10 @@ watch(
       return
     }
 
-    step.value = props.products.length > 0 ? 'config' : 'search'
+    step.value = props.product ? 'config' : 'search'
     searchInput.value = ''
     searchError.value = ''
-    searchedProducts.value = []
+    searchedProduct.value = null
     intervalInput.value = String(MIN_PRICE_MONITOR_INTERVAL)
     duration.value = 7200
     notifyOn.value = 'any'

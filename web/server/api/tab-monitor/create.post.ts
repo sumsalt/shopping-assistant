@@ -170,6 +170,8 @@ export default defineEventHandler(async (event) => {
     persistTask('tab', taskRecord)
 
     // 启动监控任务
+    // 让任务内的请求带上闸门上下文（用户手动操作不带上下文，不受限流）
+    config.taskId = taskId
     startTabMonitorTask(taskId, task, config)
 
     // 返回任务 ID

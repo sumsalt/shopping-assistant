@@ -1,9 +1,16 @@
 /**
  * 创建监控任务 API
  * POST /api/monitor/create
+ *
+ * 一个任务只监控一个商品；需要监控多个商品时由前端分别创建多个任务。
  */
 
-import { createCancellableMonitor, type MonitorTask, type StockMonitorConfig } from '@core'
+import {
+  createCancellableMonitor,
+  type MonitorResult,
+  type MonitorTask,
+  type StockMonitorConfig,
+} from '@core'
 import { createSuccessResponse, createErrorResponse, ErrorCode } from '../../utils/response'
 import { getCurrentUser } from '../../utils/session'
 import { persistTask, persistTaskSoon, type StoredTaskBase } from '../../utils/taskStore'
@@ -17,9 +24,9 @@ interface ProductInfo {
 
 // 监控任务记录
 export interface MonitorTaskRecord extends StoredTaskBase {
-  products: ProductInfo[]
+  product: ProductInfo
   config: StockMonitorConfig
-  results?: any[]
+  result?: MonitorResult
   controller?: AbortController
 }
 
@@ -36,75 +43,65 @@ const generateTaskId = (): string => {
  */
 export const startMonitorTask = (
   taskId: string,
-  tasks: MonitorTask[],
+  task: MonitorTask,
   config: StockMonitorConfig
-): { controller: AbortController; promise: Promise<any[]> } => {
-  // 初始化任务结果数组，为每个商品创建初始结果
+): { controller: AbortController; promise: Promise<MonitorResult> } => {
   const taskData = monitorTasks.get(taskId)
   if (taskData) {
     // 续跑时保留已有结果，避免重启后进度被清空
-    if (!taskData.results || taskData.results.length === 0) {
-      taskData.results = tasks.map(task => ({
+    if (!taskData.result) {
+      taskData.result = {
         productId: task.request.productId,
         productName: '',
         detected: false,
         checkCount: 0,
         errorCount: 0,
-      }))
+      }
     }
     persistTaskSoon('stock', taskData)
   }
 
   // 在后台启动监控任务（不等待结果）
   const { controller, promise } = createCancellableMonitor(
-    tasks,
+    task,
     config,
     (progress) => {
       console.log(`任务 ${taskId} 进度:`, progress)
-      // 这里不更新 checkCount，因为每个商品的 checkCount 在各自的 result 中
     },
     (result) => {
-      console.log(`任务 ${taskId} 结果:`, result)
-
-      // 更新商品结果
-      const task = monitorTasks.get(taskId)
-      if (task && task.results) {
-        // 查找是否已存在该商品的结果，如果存在则更新
-        const existingIndex = task.results.findIndex((r: any) => r.productId === result.productId)
-        if (existingIndex >= 0) {
-          task.results[existingIndex] = {
-            ...task.results[existingIndex],
-            ...result,
-          }
-        }
-        persistTaskSoon('stock', task)
+      const record = monitorTasks.get(taskId)
+      if (record) {
+        record.result = result
+        persistTaskSoon('stock', record)
       }
     }
   )
 
   // 保存控制器以便停止任务
-  const task = monitorTasks.get(taskId)
-  if (task) {
-    task.controller = controller
+  const record = monitorTasks.get(taskId)
+  if (record) {
+    record.controller = controller
   }
 
-  promise.then((results) => {
-    const task = monitorTasks.get(taskId)
-    if (task) {
-      task.status = 'completed'
-      task.results = results
-      task.controller = undefined
-      persistTask('stock', task)
-    }
-  }).catch((error) => {
-    console.error(`任务 ${taskId} 失败:`, error)
-    const task = monitorTasks.get(taskId)
-    if (task) {
-      task.status = 'stopped'
-      task.controller = undefined
-      persistTask('stock', task)
-    }
-  })
+  promise
+    .then((result) => {
+      const current = monitorTasks.get(taskId)
+      if (current) {
+        current.status = 'completed'
+        current.result = result
+        current.controller = undefined
+        persistTask('stock', current)
+      }
+    })
+    .catch((error) => {
+      console.error(`任务 ${taskId} 失败:`, error)
+      const current = monitorTasks.get(taskId)
+      if (current) {
+        current.status = 'stopped'
+        current.controller = undefined
+        persistTask('stock', current)
+      }
+    })
 
   return { controller, promise }
 }
@@ -120,20 +117,17 @@ export default defineEventHandler(async (event) => {
     // 获取请求体
     const body = await readBody(event)
 
-    // 验证必需参数
-    if (!body.products || !Array.isArray(body.products) || body.products.length === 0) {
-      return createErrorResponse(ErrorCode.INVALID_PARAMS, '监控商品列表不能为空')
-    }
-
-    // 验证每个商品
-    for (const product of body.products) {
-      if (!product.productId) {
-        return createErrorResponse(ErrorCode.INVALID_PARAMS, '商品必须包含有效的 productId')
-      }
+    // 验证必需参数（一个任务只接受一个商品）
+    const product = body?.product as ProductInfo | undefined
+    if (!product || !product.productId) {
+      return createErrorResponse(
+        ErrorCode.INVALID_PARAMS,
+        '请指定要监控的商品（一个任务只能监控一个商品）'
+      )
     }
 
     // 构建监控任务
-    const tasks: MonitorTask[] = body.products.map((product: any) => ({
+    const task: MonitorTask = {
       request: {
         platform: 'yishou',
         productId: product.productId,
@@ -141,7 +135,7 @@ export default defineEventHandler(async (event) => {
       recipient: currentUser.email,
       subject: `🔔 ${product.productName} 已到货`,
       productImage: product.productImage,
-    }))
+    }
 
     // 构建监控配置
     const config: StockMonitorConfig = {
@@ -154,13 +148,13 @@ export default defineEventHandler(async (event) => {
     const taskId = generateTaskId()
 
     // 存储任务信息
-    const taskRecord = {
+    const taskRecord: MonitorTaskRecord = {
       id: taskId,
       userId: currentUser.username,
       userEmail: currentUser.email,
-      products: body.products,
+      product,
       config,
-      status: 'running' as const,
+      status: 'running',
       createdAt: new Date(),
     }
 
@@ -168,14 +162,15 @@ export default defineEventHandler(async (event) => {
     persistTask('stock', taskRecord)
 
     // 启动监控任务
-    startMonitorTask(taskId, tasks, config)
+    // 让任务内的请求带上闸门上下文（用户手动操作不带上下文，不受限流）
+    config.taskId = taskId
+    startMonitorTask(taskId, task, config)
 
     // 返回任务 ID
     return createSuccessResponse({
       taskId,
       status: 'started',
       message: '监控任务已启动',
-      taskCount: tasks.length,
       interval: config.interval,
       duration: config.duration,
     })

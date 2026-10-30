@@ -22,7 +22,6 @@ interface CreateTaskResponse {
   taskId: string
   status: string
   message: string
-  taskCount: number
   interval: number
   duration: number
 }
@@ -31,10 +30,22 @@ interface CreateTaskResponse {
 interface TaskStatusResponse {
   id: string
   status: 'running' | 'stopped' | 'completed'
-  taskCount: number
+  product: {
+    productId: string
+    productName: string
+    productImage?: string
+  }
   config: MonitorConfig
   createdAt: Date
-  results?: any[]
+  result?: {
+    productId: string
+    productName: string
+    detected: boolean
+    emailSent?: boolean
+    error?: string
+    checkCount: number
+    errorCount?: number
+  }
 }
 
 // API 响应类型
@@ -71,11 +82,12 @@ export const useMonitor = () => {
   }
 
   /**
-   * 创建监控任务
+   * 创建监控任务（一个任务只监控一个商品）
    */
   const createMonitorTask = async (
-    products: Array<{ productId: string; productName: string; productImage?: string }>,
-    config?: MonitorConfig
+    product: { productId: string; productName: string; productImage?: string },
+    config?: MonitorConfig,
+    options: { silent?: boolean } = {}
   ): Promise<string | null> => {
     const userConfig = checkConfig()
     if (!userConfig) {
@@ -116,24 +128,30 @@ export const useMonitor = () => {
       const response = await $fetch<ApiResponse<CreateTaskResponse>>('/api/monitor/create', {
         method: 'POST',
         body: {
-          products,
+          product,
           config: monitorConfig,
         },
       })
 
       if (response.success && response.data) {
-        toast.success(`已创建监控任务，共 ${response.data.taskCount} 个商品`)
+        if (!options.silent) {
+          toast.success('已创建到货监控任务')
+        }
         return response.data.taskId
       } else {
         const errorMsg = response.error?.message || '创建任务失败'
         error.value = errorMsg
-        toast.error(errorMsg)
+        if (!options.silent) {
+          toast.error(errorMsg)
+        }
         return null
       }
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : '网络请求失败'
       error.value = errorMsg
-      toast.error(errorMsg)
+      if (!options.silent) {
+        toast.error(errorMsg)
+      }
       return null
     } finally {
       isLoading.value = false
@@ -141,7 +159,9 @@ export const useMonitor = () => {
   }
 
   /**
-   * 为所有无货商品创建监控任务
+   * 为多个无货商品分别创建监控任务（一个商品一个任务）
+   *
+   * @returns 成功创建的任务数
    */
   const monitorAllOutOfStock = async (
     outOfStockItems: Array<{
@@ -149,13 +169,35 @@ export const useMonitor = () => {
       productName: string
       productImage?: string
     }>
-  ): Promise<string | null> => {
+  ): Promise<number> => {
     if (outOfStockItems.length === 0) {
       toast.warning('没有无货商品需要监控')
-      return null
+      return 0
     }
 
-    return createMonitorTask(outOfStockItems)
+    let created = 0
+    let failed = 0
+
+    for (const item of outOfStockItems) {
+      const taskId = await createMonitorTask(item, undefined, { silent: true })
+      if (taskId) {
+        created++
+      } else {
+        failed++
+      }
+    }
+
+    if (created > 0) {
+      toast.success(
+        failed > 0
+          ? `已创建 ${created} 个监控任务，${failed} 个失败`
+          : `已创建 ${created} 个监控任务`
+      )
+    } else {
+      toast.error('创建监控任务失败')
+    }
+
+    return created
   }
 
   /**

@@ -13,18 +13,13 @@ import type { AdapterConfig } from './adapters';
 import type { Platform, PriceSnapshot } from './types';
 import { StockCheckError, StockCheckErrorType } from './types';
 import { sendEmail, createPriceChangeTemplate } from './email';
+import { runWithGateContext } from './utils/request-gate';
 
 /** 检测间隔硬下限（秒），需求要求大于 1 分钟一次 */
 export const MIN_PRICE_MONITOR_INTERVAL = 60;
 
 /** 默认检测间隔（秒） */
 export const DEFAULT_PRICE_MONITOR_INTERVAL = 60;
-
-/** 默认多商品之间的最小间隔（秒） */
-export const DEFAULT_PRODUCT_GAP_MIN = 10;
-
-/** 默认多商品之间的最大间隔（秒） */
-export const DEFAULT_PRODUCT_GAP_MAX = 20;
 
 /** 默认通知冷却时间（秒） */
 export const DEFAULT_NOTIFY_COOLDOWN = 300;
@@ -99,12 +94,10 @@ export interface PriceMonitorConfig {
   minPriceDelta?: number;
   /** 通知冷却时间（秒），默认 300 */
   notifyCooldown?: number;
-  /** 多商品之间的最小间隔（秒），默认 10 */
-  productGapMin?: number;
-  /** 多商品之间的最大间隔（秒），默认 20 */
-  productGapMax?: number;
-  /** 初始基线快照（由创建任务时预取，key 为 productId） */
-  initialSnapshots?: Record<string, PriceSnapshot>;
+  /** 初始基线快照（由创建任务时预取） */
+  initialSnapshot?: PriceSnapshot;
+  /** 任务 ID（用于全局请求闸门的公平调度） */
+  taskId?: string;
 }
 
 /**
@@ -147,8 +140,8 @@ export interface PriceMonitorProgress {
   checkCount: number;
   /** 已触发通知次数 */
   detectedCount: number;
-  /** 各商品当前价格 */
-  currentPrices: Record<string, number>;
+  /** 当前价格 */
+  currentPrice?: number;
 }
 
 /**
@@ -166,16 +159,6 @@ export type PriceResultCallback = (result: PriceMonitorResult) => void;
  */
 const sleep = (ms: number): Promise<void> => {
   return new Promise((resolve) => setTimeout(resolve, ms));
-};
-
-/**
- * 生成指定区间内的随机整数（秒）
- */
-const randomBetween = (min: number, max: number): number => {
-  if (max <= min) {
-    return min;
-  }
-  return min + Math.random() * (max - min);
 };
 
 /**
@@ -237,7 +220,7 @@ export const shouldNotifyPriceChange = (
 /**
  * 监控单个商品价格
  *
- * @param task 监控任务
+ * @param task 监控任务（一个任务只包含一个商品）
  * @param config 监控配置
  * @param progressCallback 进度回调（可选）
  * @param resultCallback 结果回调（可选）
@@ -249,27 +232,22 @@ export const monitorPrice = async (
   progressCallback?: PriceProgressCallback,
   resultCallback?: PriceResultCallback
 ): Promise<PriceMonitorResult> => {
-  const results = await createCancellablePriceMonitor(
-    [task],
-    config,
-    progressCallback,
-    resultCallback
-  ).promise;
-
-  return results[0];
+  return createCancellablePriceMonitor(task, config, progressCallback, resultCallback).promise;
 };
 
 /**
  * 创建可取消的价格监控
  *
- * @param tasks 监控任务列表
+ * 一个任务只监控一个商品，请求节奏由全局请求闸门统一控制。
+ *
+ * @param task 监控任务
  * @param config 监控配置
  * @param progressCallback 进度回调（可选）
  * @param resultCallback 结果回调（可选）
  * @returns AbortController 和 Promise
  */
 export const createCancellablePriceMonitor = (
-  tasks: PriceMonitorTask[],
+  task: PriceMonitorTask,
   config: PriceMonitorConfig = {},
   progressCallback?: PriceProgressCallback,
   resultCallback?: PriceResultCallback
@@ -277,170 +255,141 @@ export const createCancellablePriceMonitor = (
   const controller = new AbortController();
   const { signal } = controller;
 
-  const promise = (async (): Promise<PriceMonitorResult[]> => {
-    const {
-      interval = DEFAULT_PRICE_MONITOR_INTERVAL,
-      duration,
-      adapterConfig = {},
-      notifyOn = 'any',
-      minPriceDelta = DEFAULT_MIN_PRICE_DELTA,
-      notifyCooldown = DEFAULT_NOTIFY_COOLDOWN,
-      productGapMin = DEFAULT_PRODUCT_GAP_MIN,
-      productGapMax = DEFAULT_PRODUCT_GAP_MAX,
-      initialSnapshots = {},
-    } = config;
+  // 打上任务上下文：循环内所有 HTTP 请求都会经过全局请求闸门（用户手动操作无上下文，不受限）
+  const promise = runWithGateContext(
+    {
+      taskId: config.taskId || 'price-monitor',
+      kind: 'price',
+      accountKey: config.adapterConfig?.uid,
+    },
+    async (): Promise<PriceMonitorResult> => {
+      const {
+        interval = DEFAULT_PRICE_MONITOR_INTERVAL,
+        duration,
+        adapterConfig = {},
+        notifyOn = 'any',
+        minPriceDelta = DEFAULT_MIN_PRICE_DELTA,
+        notifyCooldown = DEFAULT_NOTIFY_COOLDOWN,
+        initialSnapshot,
+      } = config;
 
-    // 校验参数
-    if (!tasks || tasks.length === 0) {
-      throw new Error('监控任务列表不能为空');
-    }
-
-    if (interval < MIN_PRICE_MONITOR_INTERVAL) {
-      throw new Error(`检测间隔不能小于 ${MIN_PRICE_MONITOR_INTERVAL} 秒`);
-    }
-
-    if (duration !== undefined && duration <= 0) {
-      throw new Error('循环总时长必须大于 0');
-    }
-
-    if (productGapMin < 0 || productGapMax < productGapMin) {
-      throw new Error('商品间隔区间不合法');
-    }
-
-    if (!adapterConfig.uid || !adapterConfig.token) {
-      throw new StockCheckError(
-        StockCheckErrorType.AUTH_REQUIRED,
-        '价格监控需要登录态，请先配置 uid 和 token'
-      );
-    }
-
-    const adapter = getAdapter(tasks[0].request.platform, adapterConfig);
-
-    interface ProductState {
-      snapshot?: PriceSnapshot;
-      lastNotifiedAt: number;
-      result: PriceMonitorResult;
-    }
-
-    // 初始化每个商品的状态
-    const states = new Map<string, ProductState>();
-    tasks.forEach((task) => {
-      const key = `${task.request.platform}-${task.request.productId}`;
-      const initial = initialSnapshots[task.request.productId];
-
-      states.set(key, {
-        snapshot: initial,
-        lastNotifiedAt: 0,
-        result: {
-          productId: task.request.productId,
-          productName: initial?.productName || task.productName || '',
-          detected: false,
-          currentPrice: initial?.shopPrice,
-          checkCount: 0,
-          errorCount: 0,
-        },
-      });
-    });
-
-    const startTime = Date.now();
-    let totalCheckCount = 0;
-    let detectedCount = 0;
-    let fatalError: StockCheckError | null = null;
-
-    // 主监控循环
-    while (!signal.aborted && !fatalError) {
-      const elapsedTime = Math.floor((Date.now() - startTime) / 1000);
-
-      if (duration && elapsedTime >= duration) {
-        break;
+      // 校验参数
+      if (!task?.request?.productId) {
+        throw new Error('监控商品不能为空');
       }
 
-      for (let index = 0; index < tasks.length; index++) {
-        if (signal.aborted || fatalError) {
+      if (interval < MIN_PRICE_MONITOR_INTERVAL) {
+        throw new Error(`检测间隔不能小于 ${MIN_PRICE_MONITOR_INTERVAL} 秒`);
+      }
+
+      if (duration !== undefined && duration <= 0) {
+        throw new Error('循环总时长必须大于 0');
+      }
+
+      if (!adapterConfig.uid || !adapterConfig.token) {
+        throw new StockCheckError(
+          StockCheckErrorType.AUTH_REQUIRED,
+          '价格监控需要登录态，请先配置 uid 和 token'
+        );
+      }
+
+      const adapter = getAdapter(task.request.platform, adapterConfig);
+
+      /** 基线快照，首次检测只建立基线不通知 */
+      let snapshot: PriceSnapshot | undefined = initialSnapshot;
+      let lastNotifiedAt = 0;
+      let detectedCount = 0;
+
+      const result: PriceMonitorResult = {
+        productId: task.request.productId,
+        productName: initialSnapshot?.productName || task.productName || '',
+        detected: false,
+        currentPrice: initialSnapshot?.shopPrice,
+        checkCount: 0,
+        errorCount: 0,
+      };
+
+      const startTime = Date.now();
+
+      // 主监控循环
+      while (!signal.aborted) {
+        const elapsedTime = Math.floor((Date.now() - startTime) / 1000);
+
+        if (duration && elapsedTime >= duration) {
           break;
         }
 
-        const task = tasks[index];
-        const key = `${task.request.platform}-${task.request.productId}`;
-        const state = states.get(key);
-
-        if (!state) {
-          continue;
-        }
-
         try {
-          state.result.error = undefined;
-          state.result.errorType = undefined;
-          state.result.emailSent = undefined;
+          result.error = undefined;
+          result.errorType = undefined;
+          result.emailSent = undefined;
 
-          const snapshot = await adapter.getPriceInfo(task.request.productId);
-          state.result.checkCount++;
-          totalCheckCount++;
+          const current = await adapter.getPriceInfo(task.request.productId);
+          result.checkCount++;
 
-          state.result.productName = snapshot.productName || state.result.productName;
-          state.result.currentPrice = snapshot.shopPrice;
+          result.productName = current.productName || result.productName;
+          result.currentPrice = current.shopPrice;
 
-          if (!state.snapshot) {
+          if (!snapshot) {
             // 首次检测：只建立基线，不通知
-            state.snapshot = snapshot;
-            state.result.detected = false;
-            state.result.changeInfo = undefined;
+            snapshot = current;
+            result.detected = false;
+            result.changeInfo = undefined;
           } else {
-            const change = comparePrice(state.snapshot, snapshot, minPriceDelta);
+            const change = comparePrice(snapshot, current, minPriceDelta);
             const now = Date.now();
-            const cooldownPassed = now - state.lastNotifiedAt >= notifyCooldown * 1000;
+            const cooldownPassed = now - lastNotifiedAt >= notifyCooldown * 1000;
 
             // 无论是否通知，都要用最新快照更新基线
-            state.snapshot = snapshot;
+            snapshot = current;
 
             if (change && shouldNotifyPriceChange(change, notifyOn) && cooldownPassed) {
-              state.result.detected = true;
-              state.result.changeInfo = change;
-              state.lastNotifiedAt = now;
+              result.detected = true;
+              result.changeInfo = change;
+              lastNotifiedAt = now;
               detectedCount++;
 
               const emailResult = await sendEmail({
                 to: task.recipient,
                 subject:
                   task.subject ||
-                  `价格变动提醒：${snapshot.productName} ${
+                  `价格变动提醒：${current.productName} ${
                     change.direction === 'down' ? '降价' : '涨价'
                   }`,
                 html: createPriceChangeTemplate(
-                  snapshot.productName,
+                  current.productName,
                   change,
-                  task.productImage || snapshot.productImage,
-                  snapshot.productUrl
+                  task.productImage || current.productImage,
+                  current.productUrl
                 ),
               });
 
-              state.result.emailSent = emailResult.success;
+              result.emailSent = emailResult.success;
 
               if (!emailResult.success) {
-                state.result.error = emailResult.error;
-                state.result.errorCount = (state.result.errorCount || 0) + 1;
+                result.error = emailResult.error;
+                result.errorCount = (result.errorCount || 0) + 1;
               }
             } else {
-              state.result.detected = false;
-              state.result.changeInfo = undefined;
+              result.detected = false;
+              result.changeInfo = undefined;
             }
           }
 
           if (resultCallback) {
-            resultCallback({ ...state.result });
+            resultCallback({ ...result });
           }
         } catch (error) {
-          state.result.checkCount++;
-          totalCheckCount++;
-          state.result.detected = false;
-          state.result.changeInfo = undefined;
-          state.result.error = error instanceof Error ? error.message : String(error);
-          state.result.errorType =
+          result.checkCount++;
+          result.detected = false;
+          result.changeInfo = undefined;
+          result.error = error instanceof Error ? error.message : String(error);
+          result.errorType =
             error instanceof StockCheckError ? error.type : StockCheckErrorType.UNKNOWN_ERROR;
-          state.result.errorCount = (state.result.errorCount || 0) + 1;
+          result.errorCount = (result.errorCount || 0) + 1;
 
           if (resultCallback) {
-            resultCallback({ ...state.result });
+            resultCallback({ ...result });
           }
 
           // 登录态失效属于致命错误，继续跑没有意义
@@ -448,55 +397,38 @@ export const createCancellablePriceMonitor = (
             error instanceof StockCheckError &&
             error.type === StockCheckErrorType.AUTH_REQUIRED
           ) {
-            fatalError = error;
-            break;
+            throw error;
           }
         }
 
-        // 多商品串行：商品之间随机间隔，最后一个商品不再等待
-        if (index < tasks.length - 1 && !signal.aborted && !fatalError) {
-          await sleep(randomBetween(productGapMin, productGapMax) * 1000);
+        if (signal.aborted) {
+          break;
         }
+
+        // 触发进度回调
+        if (progressCallback) {
+          progressCallback({
+            elapsedTime,
+            duration,
+            progress: duration ? Math.floor((elapsedTime / duration) * 100) : undefined,
+            checkCount: result.checkCount,
+            detectedCount,
+            currentPrice: result.currentPrice,
+          });
+        }
+
+        const elapsedAfterRound = Math.floor((Date.now() - startTime) / 1000);
+        if (duration && elapsedAfterRound + interval >= duration) {
+          break;
+        }
+
+        // 轮次间隔 + 0~2 秒随机抖动
+        await sleep(interval * 1000 + Math.random() * 2000);
       }
 
-      // 触发进度回调
-      if (progressCallback) {
-        const currentPrices: Record<string, number> = {};
-        states.forEach((state) => {
-          if (state.result.currentPrice !== undefined) {
-            currentPrices[state.result.productId] = state.result.currentPrice;
-          }
-        });
-
-        progressCallback({
-          elapsedTime,
-          duration,
-          progress: duration ? Math.floor((elapsedTime / duration) * 100) : undefined,
-          checkCount: totalCheckCount,
-          detectedCount,
-          currentPrices,
-        });
-      }
-
-      if (signal.aborted || fatalError) {
-        break;
-      }
-
-      const elapsedAfterRound = Math.floor((Date.now() - startTime) / 1000);
-      if (duration && elapsedAfterRound + interval >= duration) {
-        break;
-      }
-
-      // 轮次间隔 + 0~2 秒随机抖动
-      await sleep(interval * 1000 + Math.random() * 2000);
+      return result;
     }
-
-    if (fatalError) {
-      throw fatalError;
-    }
-
-    return Array.from(states.values()).map((state) => state.result);
-  })();
+  );
 
   return { controller, promise };
 };

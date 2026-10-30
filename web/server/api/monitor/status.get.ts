@@ -29,10 +29,10 @@ export default defineEventHandler(async (event) => {
     return createSuccessResponse({
       id: task.id,
       status: task.status,
-      taskCount: task.products.length,
+      product: task.product,
       config: task.config,
       createdAt: task.createdAt,
-      results: task.results,
+      result: task.result,
     })
   } catch (error: unknown) {
     console.error('查询任务状态失败:', error)

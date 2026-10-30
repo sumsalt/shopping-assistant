@@ -202,10 +202,10 @@
       </div>
     </div>
 
-    <!-- 价格监控弹窗 -->
+    <!-- 价格监控弹窗（一个任务只监控一个商品） -->
     <PriceMonitorDialog
       v-model:open="showPriceDialog"
-      :products="priceMonitorProducts"
+      :product="priceMonitorProduct"
     />
   </div>
 </template>
@@ -266,13 +266,11 @@ const handleMonitorSingle = async (item: {
   monitoringItems.value.add(item.collectId)
 
   try {
-    await createMonitorTask([
-      {
-        productId: item.productId,
-        productName: item.productName,
-        productImage: item.productImage,
-      },
-    ])
+    await createMonitorTask({
+      productId: item.productId,
+      productName: item.productName,
+      productImage: item.productImage,
+    })
   } finally {
     // 移除监控状态
     monitoringItems.value.delete(item.collectId)
@@ -290,13 +288,13 @@ const handleMonitorAll = async () => {
   await monitorAllOutOfStock(products)
 }
 
-// 价格监控弹窗
+// 价格监控弹窗（一个任务只监控一个商品）
 const showPriceDialog = ref(false)
-const priceMonitorProducts = ref<Array<{
+const priceMonitorProduct = ref<{
   productId: string
   productName?: string
   productImage?: string
-}>>([])
+} | null>(null)
 
 // 打开价格监控弹窗（列表卡片上的「价格监控」按钮）
 const openPriceMonitor = (item: {
@@ -308,13 +306,11 @@ const openPriceMonitor = (item: {
     return
   }
 
-  priceMonitorProducts.value = [
-    {
-      productId: item.productId,
-      productName: item.productName,
-      productImage: item.productImage,
-    },
-  ]
+  priceMonitorProduct.value = {
+    productId: item.productId,
+    productName: item.productName,
+    productImage: item.productImage,
+  }
   showPriceDialog.value = true
 }
 

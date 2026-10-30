@@ -5,17 +5,16 @@
 // 监控任务类型
 interface MonitorTaskItem {
   id: string
-  taskCount: number
-  products: Array<{
+  product: {
     productId: string
     productName: string
     productImage?: string
-  }>
+  }
   status: 'running' | 'stopped' | 'completed'
   interval: number
   duration: number
   createdAt: Date
-  results?: Array<{
+  result?: {
     productId: string
     productName: string
     detected: boolean
@@ -23,7 +22,7 @@ interface MonitorTaskItem {
     error?: string
     checkCount: number
     errorCount?: number
-  }>
+  }
 }
 
 // 任务列表响应类型
@@ -52,7 +51,6 @@ export const useMonitorTasks = () => {
   const tasks = ref<MonitorTaskItem[]>([])
 
   // 展开的任务 ID 集合
-  const expandedTaskIds = ref<Set<string>>(new Set())
 
   /**
    * 加载任务列表
@@ -99,7 +97,6 @@ export const useMonitorTasks = () => {
       if (response.success) {
         // 从列表中移除任务
         tasks.value = tasks.value.filter(t => t.id !== taskId)
-        expandedTaskIds.value.delete(taskId)
         toast.success('任务已删除')
         return true
       } else {
@@ -160,24 +157,6 @@ export const useMonitorTasks = () => {
   }
 
   /**
-   * 切换展开/收起
-   */
-  const toggleExpand = (taskId: string) => {
-    if (expandedTaskIds.value.has(taskId)) {
-      expandedTaskIds.value.delete(taskId)
-    } else {
-      expandedTaskIds.value.add(taskId)
-    }
-  }
-
-  /**
-   * 判断是否展开
-   */
-  const isExpanded = (taskId: string): boolean => {
-    return expandedTaskIds.value.has(taskId)
-  }
-
-  /**
    * 获取状态文本
    */
   const getStatusText = (status: string): string => {
@@ -224,16 +203,14 @@ export const useMonitorTasks = () => {
    * 计算请求总次数
    */
   const getTotalRequestCount = (task: MonitorTaskItem): number => {
-    if (!task.results || task.results.length === 0) return 0
-    return task.results.reduce((sum, result) => sum + result.checkCount, 0)
+    return task.result?.checkCount || 0
   }
 
   /**
    * 计算请求失败次数
    */
   const getFailedRequestCount = (task: MonitorTaskItem): number => {
-    if (!task.results || task.results.length === 0) return 0
-    return task.results.reduce((sum, result) => sum + (result.errorCount || 0), 0)
+    return task.result?.errorCount || 0
   }
 
   return {
@@ -247,8 +224,6 @@ export const useMonitorTasks = () => {
     deleteTask,
     restartTask,
     refresh,
-    toggleExpand,
-    isExpanded,
     getStatusText,
     getStatusColor,
     formatTime,
