@@ -145,7 +145,7 @@ const serialize = (task: StoredTaskBase): string => {
 /**
  * 反序列化任务（恢复 Date 字段）
  */
-const deserialize = <T extends StoredTaskBase>(kind: TaskKind, row: TaskRow): T => {
+const deserialize = <T extends StoredTaskBase>(row: TaskRow): T => {
   const payload = JSON.parse(row.payload) as Record<string, unknown>
 
   const restored: Record<string, unknown> = {
@@ -275,7 +275,7 @@ export const listTasks = <T extends StoredTaskBase>(kind: TaskKind, userId?: str
       : connection.prepare('SELECT * FROM tasks WHERE kind = ? ORDER BY created_at DESC')
 
     const rows = (userId ? statement.all(kind, userId) : statement.all(kind)) as TaskRow[]
-    return rows.map(row => deserialize<T>(kind, row))
+    return rows.map(row => deserialize<T>(row))
   } catch (error) {
     console.error(`[TaskStore] 查询任务列表失败 (${kind}):`, error)
     return []
@@ -296,7 +296,7 @@ export const getTask = <T extends StoredTaskBase>(kind: TaskKind, taskId: string
       .prepare('SELECT * FROM tasks WHERE kind = ? AND id = ?')
       .get(kind, taskId) as TaskRow | undefined
 
-    return row ? deserialize<T>(kind, row) : null
+    return row ? deserialize<T>(row) : null
   } catch (error) {
     console.error(`[TaskStore] 查询任务 ${taskId} 失败:`, error)
     return null
@@ -317,7 +317,7 @@ export const listRunningTasks = <T extends StoredTaskBase>(kind: TaskKind): T[] 
       .prepare("SELECT * FROM tasks WHERE kind = ? AND status = 'running' ORDER BY created_at ASC")
       .all(kind) as TaskRow[]
 
-    return rows.map(row => deserialize<T>(kind, row))
+    return rows.map(row => deserialize<T>(row))
   } catch (error) {
     console.error(`[TaskStore] 查询运行中任务失败 (${kind}):`, error)
     return []
