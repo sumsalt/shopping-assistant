@@ -3,9 +3,10 @@
  * POST /api/monitor/restart
  */
 
-import { monitorTasks, startMonitorTask } from './create.post'
+import { monitorTasks, startMonitorTask, type MonitorTaskRecord } from './create.post'
 import { createSuccessResponse, createErrorResponse } from '../../utils/response'
 import { getCurrentUser } from '../../utils/session'
+import { getTask, persistTask } from '../../utils/taskStore'
 import type { MonitorTask, StockMonitorConfig } from '@core'
 
 export default defineEventHandler(async (event) => {
@@ -24,8 +25,8 @@ export default defineEventHandler(async (event) => {
       return createErrorResponse('INVALID_PARAMS', '缺少任务 ID')
     }
 
-    // 查询原任务
-    const originalTask = monitorTasks.get(taskId)
+    // 查询原任务（内存优先，重启后从数据库补）
+    const originalTask = monitorTasks.get(taskId) ?? getTask<MonitorTaskRecord>('stock', taskId)
 
     if (!originalTask) {
       return createErrorResponse('NOT_FOUND', '任务不存在')
@@ -60,7 +61,7 @@ export default defineEventHandler(async (event) => {
     }
 
     // 创建新任务
-    monitorTasks.set(newTaskId, {
+    const newTask: MonitorTaskRecord = {
       id: newTaskId,
       userId: originalTask.userId,
       userEmail: originalTask.userEmail,
@@ -68,7 +69,10 @@ export default defineEventHandler(async (event) => {
       config,
       status: 'running',
       createdAt: new Date(),
-    })
+    }
+
+    monitorTasks.set(newTaskId, newTask)
+    persistTask('stock', newTask)
 
     // 启动监控任务
     startMonitorTask(newTaskId, tasks, config)

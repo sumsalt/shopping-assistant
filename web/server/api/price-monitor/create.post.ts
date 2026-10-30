@@ -26,6 +26,7 @@ import {
 } from '@core'
 import { createSuccessResponse, createErrorResponse, ErrorCode } from '../../utils/response'
 import { getCurrentUser } from '../../utils/session'
+import { persistTask, persistTaskSoon, type StoredTaskBase } from '../../utils/taskStore'
 
 /** 单次最多创建的商品数量 */
 const MAX_PRODUCTS_PER_TASK = 20
@@ -54,25 +55,20 @@ export interface PriceChangeRecord extends PriceChangeInfo {
   currency?: string
 }
 
-/** 价格监控任务存储（生产环境应使用数据库或 Redis） */
-export const priceMonitorTasks = new Map<
-  string,
-  {
-    id: string
-    userId: string
-    userEmail: string
-    products: PriceProductInfo[]
-    config: PriceMonitorConfig
-    status: 'running' | 'stopped' | 'completed'
-    createdAt: Date
-    checkCount: number
-    detectedCount: number
-    lastError?: string
-    changes: PriceChangeRecord[]
-    snapshots: Record<string, PriceSnapshotSummary>
-    controller?: AbortController
-  }
->()
+/** 价格监控任务记录 */
+export interface PriceMonitorTaskRecord extends StoredTaskBase {
+  products: PriceProductInfo[]
+  config: PriceMonitorConfig
+  checkCount: number
+  detectedCount: number
+  lastError?: string
+  changes: PriceChangeRecord[]
+  snapshots: Record<string, PriceSnapshotSummary>
+  controller?: AbortController
+}
+
+/** 价格监控任务存储：内存作为运行时副本，落盘由 taskStore 负责 */
+export const priceMonitorTasks = new Map<string, PriceMonitorTaskRecord>()
 
 /** 生成任务 ID */
 const generateTaskId = (): string => {
@@ -100,6 +96,7 @@ export const startPriceMonitorTask = (
       }
       task.checkCount = progress.checkCount
       task.detectedCount = progress.detectedCount
+      persistTaskSoon('price', task)
     },
     (result) => {
       const task = priceMonitorTasks.get(taskId)
@@ -130,6 +127,8 @@ export const startPriceMonitorTask = (
         // 只保留最近 50 条，避免内存无限增长
         task.changes = task.changes.slice(0, 50)
       }
+
+      persistTaskSoon('price', task)
     }
   )
 
@@ -144,6 +143,7 @@ export const startPriceMonitorTask = (
       if (task) {
         task.status = 'completed'
         task.controller = undefined
+        persistTask('price', task)
       }
     })
     .catch((error) => {
@@ -153,6 +153,7 @@ export const startPriceMonitorTask = (
         task.status = 'stopped'
         task.lastError = error instanceof Error ? error.message : String(error)
         task.controller = undefined
+        persistTask('price', task)
       }
     })
 
@@ -334,7 +335,7 @@ export default defineEventHandler(async (event) => {
       }
     })
 
-    priceMonitorTasks.set(taskId, {
+    const taskRecord: PriceMonitorTaskRecord = {
       id: taskId,
       userId: currentUser.username,
       userEmail: currentUser.email,
@@ -346,7 +347,10 @@ export default defineEventHandler(async (event) => {
       detectedCount: 0,
       changes: [],
       snapshots,
-    })
+    }
+
+    priceMonitorTasks.set(taskId, taskRecord)
+    persistTask('price', taskRecord)
 
     // 启动后台监控（基线已建立，只有真实价格变动才会通知）
     startPriceMonitorTask(taskId, tasks, config)

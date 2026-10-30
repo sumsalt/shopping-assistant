@@ -3,9 +3,10 @@
  * GET /api/monitor/list
  */
 
-import { monitorTasks } from './create.post'
+import { monitorTasks, type MonitorTaskRecord } from './create.post'
 import { createSuccessResponse, createErrorResponse } from '../../utils/response'
 import { getCurrentUser } from '../../utils/session'
+import { listTasks } from '../../utils/taskStore'
 
 export default defineEventHandler(async (event) => {
   try {
@@ -15,9 +16,17 @@ export default defineEventHandler(async (event) => {
       return createErrorResponse('UNAUTHORIZED', '请先登录')
     }
 
-    // 筛选当前用户的任务
-    const userTasks = Array.from(monitorTasks.values())
+    // 内存中的任务（含最新进度）
+    const liveTasks = Array.from(monitorTasks.values())
       .filter(task => task.userId === currentUser.username)
+
+    // 仅存在于数据库中的任务（进程重启后依然可查看）
+    const liveIds = new Set(liveTasks.map(task => task.id))
+    const restoredTasks = listTasks<MonitorTaskRecord>('stock', currentUser.username)
+      .filter(task => !liveIds.has(task.id))
+
+    // 筛选当前用户的任务
+    const userTasks = [...liveTasks, ...restoredTasks]
       .map(task => ({
         id: task.id,
         taskCount: task.products.length,
@@ -28,7 +37,7 @@ export default defineEventHandler(async (event) => {
         createdAt: task.createdAt,
         results: task.results,
       }))
-      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
 
     return createSuccessResponse({
       tasks: userTasks,

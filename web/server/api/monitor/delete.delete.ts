@@ -3,9 +3,10 @@
  * DELETE /api/monitor/delete
  */
 
-import { monitorTasks } from './create.post'
+import { monitorTasks, type MonitorTaskRecord } from './create.post'
 import { createSuccessResponse, createErrorResponse } from '../../utils/response'
 import { getCurrentUser } from '../../utils/session'
+import { deleteTask, getTask } from '../../utils/taskStore'
 
 export default defineEventHandler(async (event) => {
   try {
@@ -23,8 +24,8 @@ export default defineEventHandler(async (event) => {
       return createErrorResponse('INVALID_PARAMS', '缺少任务 ID')
     }
 
-    // 查询任务
-    const task = monitorTasks.get(taskId)
+    // 查询任务（内存优先，重启后从数据库补）
+    const task = monitorTasks.get(taskId) ?? getTask<MonitorTaskRecord>('stock', taskId)
 
     if (!task) {
       return createErrorResponse('NOT_FOUND', '任务不存在')
@@ -46,6 +47,7 @@ export default defineEventHandler(async (event) => {
 
     // 删除任务
     monitorTasks.delete(taskId)
+    deleteTask('stock', taskId)
 
     return createSuccessResponse({
       message: '任务已删除',

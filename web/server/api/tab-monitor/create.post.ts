@@ -6,23 +6,22 @@
 import { createCancellableTabMonitor, type TabMonitorTask, type TabMonitorConfig } from '@core'
 import { createSuccessResponse, createErrorResponse, ErrorCode } from '../../utils/response'
 import { getCurrentUser } from '../../utils/session'
+import { persistTask, persistTaskSoon, type StoredTaskBase } from '../../utils/taskStore'
 
-// Tab 监控任务存储（生产环境应使用数据库或 Redis）
-export const tabMonitorTasks = new Map<string, {
-  id: string
-  userId: string
-  userEmail: string
+/** Tab 监控任务记录 */
+export interface TabMonitorTaskRecord extends StoredTaskBase {
   tabId: string
   tabName: string
   config: TabMonitorConfig
-  status: 'running' | 'stopped' | 'completed'
-  createdAt: Date
   checkCount: number
   detectedCount: number
   currentTotal: number
   lastDetectedAt?: Date
   controller?: AbortController
-}>()
+}
+
+// Tab 监控任务存储：内存作为运行时副本，落盘由 taskStore 负责
+export const tabMonitorTasks = new Map<string, TabMonitorTaskRecord>()
 
 // 生成任务 ID
 const generateTaskId = (): string => {
@@ -35,15 +34,19 @@ const generateTaskId = (): string => {
 export const startTabMonitorTask = (
   taskId: string,
   task: TabMonitorTask,
-  config: TabMonitorConfig
+  config: TabMonitorConfig,
+  options: { preserveState?: boolean } = {}
 ): { controller: AbortController; promise: Promise<any> } => {
-  // 初始化任务数据
+  // 初始化任务数据（续跑时保留已有统计）
   const taskData = tabMonitorTasks.get(taskId)
   if (taskData) {
-    taskData.checkCount = 0
-    taskData.detectedCount = 0
-    taskData.currentTotal = 0
-    taskData.lastDetectedAt = undefined
+    if (!options.preserveState) {
+      taskData.checkCount = 0
+      taskData.detectedCount = 0
+      taskData.currentTotal = 0
+      taskData.lastDetectedAt = undefined
+    }
+    persistTaskSoon('tab', taskData)
   }
 
   // 在后台启动监控任务（不等待结果）
@@ -58,6 +61,7 @@ export const startTabMonitorTask = (
         monitorTask.checkCount = progress.checkCount
         monitorTask.detectedCount = progress.detectedCount
         monitorTask.currentTotal = progress.currentTotal
+        persistTaskSoon('tab', monitorTask)
       }
     },
     (result) => {
@@ -68,6 +72,7 @@ export const startTabMonitorTask = (
       if (monitorTask && result.detected && result.changeInfo) {
         monitorTask.detectedCount++
         monitorTask.lastDetectedAt = new Date()
+        persistTaskSoon('tab', monitorTask)
       }
     }
   )
@@ -83,6 +88,7 @@ export const startTabMonitorTask = (
     if (monitorTask) {
       monitorTask.status = 'completed'
       monitorTask.controller = undefined
+      persistTask('tab', monitorTask)
     }
   }).catch((error) => {
     console.error(`Tab 监控任务 ${taskId} 失败:`, error)
@@ -90,6 +96,7 @@ export const startTabMonitorTask = (
     if (monitorTask) {
       monitorTask.status = 'stopped'
       monitorTask.controller = undefined
+      persistTask('tab', monitorTask)
     }
   })
 
@@ -145,7 +152,7 @@ export default defineEventHandler(async (event) => {
     const taskId = generateTaskId()
 
     // 存储任务信息
-    tabMonitorTasks.set(taskId, {
+    const taskRecord: TabMonitorTaskRecord = {
       id: taskId,
       userId: currentUser.username,
       userEmail: currentUser.email,
@@ -157,7 +164,10 @@ export default defineEventHandler(async (event) => {
       checkCount: 0,
       detectedCount: 0,
       currentTotal: 0,
-    })
+    }
+
+    tabMonitorTasks.set(taskId, taskRecord)
+    persistTask('tab', taskRecord)
 
     // 启动监控任务
     startTabMonitorTask(taskId, task, config)

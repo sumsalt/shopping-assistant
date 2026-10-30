@@ -3,9 +3,10 @@
  * DELETE /api/price-monitor/delete
  */
 
-import { priceMonitorTasks } from './create.post'
+import { priceMonitorTasks, type PriceMonitorTaskRecord } from './create.post'
 import { createSuccessResponse, createErrorResponse } from '../../utils/response'
 import { getCurrentUser } from '../../utils/session'
+import { deleteTask, getTask } from '../../utils/taskStore'
 
 export default defineEventHandler(async (event) => {
   try {
@@ -24,6 +25,7 @@ export default defineEventHandler(async (event) => {
     }
 
     const task = priceMonitorTasks.get(taskId)
+      ?? getTask<PriceMonitorTaskRecord>('price', taskId)
 
     if (!task) {
       return createErrorResponse('NOT_FOUND', '任务不存在')
@@ -44,6 +46,7 @@ export default defineEventHandler(async (event) => {
     }
 
     priceMonitorTasks.delete(taskId)
+    deleteTask('price', taskId)
 
     return createSuccessResponse({
       message: '任务已删除',

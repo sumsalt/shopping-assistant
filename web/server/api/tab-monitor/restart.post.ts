@@ -3,9 +3,10 @@
  * POST /api/tab-monitor/restart
  */
 
-import { tabMonitorTasks, startTabMonitorTask } from './create.post'
+import { tabMonitorTasks, startTabMonitorTask, type TabMonitorTaskRecord } from './create.post'
 import { createSuccessResponse, createErrorResponse } from '../../utils/response'
 import { getCurrentUser } from '../../utils/session'
+import { getTask, persistTask } from '../../utils/taskStore'
 import type { TabMonitorTask, TabMonitorConfig } from '@core'
 
 export default defineEventHandler(async (event) => {
@@ -24,8 +25,9 @@ export default defineEventHandler(async (event) => {
       return createErrorResponse('INVALID_PARAMS', '缺少任务 ID')
     }
 
-    // 查询原任务
+    // 查询原任务（内存优先，重启后从数据库补）
     const originalTask = tabMonitorTasks.get(taskId)
+      ?? getTask<TabMonitorTaskRecord>('tab', taskId)
 
     if (!originalTask) {
       return createErrorResponse('NOT_FOUND', '任务不存在')
@@ -55,7 +57,7 @@ export default defineEventHandler(async (event) => {
     }
 
     // 创建新任务
-    tabMonitorTasks.set(newTaskId, {
+    const newTask: TabMonitorTaskRecord = {
       id: newTaskId,
       userId: originalTask.userId,
       userEmail: originalTask.userEmail,
@@ -67,7 +69,10 @@ export default defineEventHandler(async (event) => {
       checkCount: 0,
       detectedCount: 0,
       currentTotal: 0,
-    })
+    }
+
+    tabMonitorTasks.set(newTaskId, newTask)
+    persistTask('tab', newTask)
 
     // 启动监控任务
     startTabMonitorTask(newTaskId, task, config)

@@ -123,16 +123,27 @@ restart() {
     ssh -p "$VPS_PORT" "${VPS_USER}@${VPS_HOST}" << EOF
         cd ${REMOTE_PATH}
         
+        # 任务持久化数据目录（SQLite），不能随 .output 一起删掉
+        mkdir -p ${REMOTE_PATH}/data
+        
         # 检查 PM2 是否安装
         if ! command -v pm2 &> /dev/null; then
             echo "PM2 未安装，正在安装..."
             npm install -g pm2
         fi
+
+        # 检查 Node.js 版本（node:sqlite 需要 >= 22.5）
+        NODE_VERSION=\$(node -v 2>/dev/null || echo "v0")
+        NODE_MAJOR=\$(echo "\$NODE_VERSION" | sed 's/^v//' | cut -d. -f1)
+        if [ "\$NODE_MAJOR" -lt 22 ]; then
+            echo "⚠️  当前 Node.js \$NODE_VERSION 低于 22，任务持久化（node:sqlite）不可用"
+            echo "   请执行: curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt-get install -y nodejs"
+        fi
         
         # 检查应用是否已存在
         if pm2 list | grep -q "${APP_NAME}"; then
             # 重启应用
-            pm2 restart ${APP_NAME}
+            pm2 restart ${APP_NAME} --update-env
         else
             # 首次启动应用
             pm2 start .output/server/index.mjs --name ${APP_NAME}
@@ -173,10 +184,11 @@ init() {
         # 更新包管理器
         sudo apt update
         
-        # 安装 Node.js (如果没有)
-        if ! command -v node &> /dev/null; then
-            echo "安装 Node.js..."
-            curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+        # 安装 Node.js 22（任务持久化使用 node:sqlite，需要 >= 22.5）
+        NODE_MAJOR=$(node -v 2>/dev/null | sed 's/^v//' | cut -d. -f1)
+        if [ -z "$NODE_MAJOR" ] || [ "$NODE_MAJOR" -lt 22 ]; then
+            echo "安装 Node.js 22..."
+            curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
             sudo apt-get install -y nodejs
         fi
         

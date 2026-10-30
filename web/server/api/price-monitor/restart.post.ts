@@ -5,9 +5,10 @@
  * 说明：重新发起会重建基线（首轮不通知），重启期间的价格变化不会补发。
  */
 
-import { priceMonitorTasks, startPriceMonitorTask } from './create.post'
+import { priceMonitorTasks, startPriceMonitorTask, type PriceMonitorTaskRecord } from './create.post'
 import { createSuccessResponse, createErrorResponse } from '../../utils/response'
 import { getCurrentUser } from '../../utils/session'
+import { deleteTask, getTask, persistTask } from '../../utils/taskStore'
 import type { PriceMonitorConfig, PriceMonitorTask } from '@core'
 
 export default defineEventHandler(async (event) => {
@@ -26,8 +27,9 @@ export default defineEventHandler(async (event) => {
       return createErrorResponse('INVALID_PARAMS', '缺少任务 ID')
     }
 
-    // 查询原任务
+    // 查询原任务（内存优先，重启后从数据库补）
     const originalTask = priceMonitorTasks.get(taskId)
+      ?? getTask<PriceMonitorTaskRecord>('price', taskId)
 
     if (!originalTask) {
       return createErrorResponse('NOT_FOUND', '任务不存在')
@@ -47,6 +49,7 @@ export default defineEventHandler(async (event) => {
       }
     }
     priceMonitorTasks.delete(taskId)
+    deleteTask('price', taskId)
 
     // 生成新任务 ID
     const newTaskId = `price_task_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`
@@ -74,7 +77,7 @@ export default defineEventHandler(async (event) => {
     })
 
     // 创建新任务
-    priceMonitorTasks.set(newTaskId, {
+    const newTask: PriceMonitorTaskRecord = {
       id: newTaskId,
       userId: originalTask.userId,
       userEmail: originalTask.userEmail,
@@ -86,7 +89,10 @@ export default defineEventHandler(async (event) => {
       detectedCount: 0,
       changes: [],
       snapshots: { ...originalTask.snapshots },
-    })
+    }
+
+    priceMonitorTasks.set(newTaskId, newTask)
+    persistTask('price', newTask)
 
     // 启动监控任务
     startPriceMonitorTask(newTaskId, tasks, config)

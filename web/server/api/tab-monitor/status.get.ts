@@ -3,9 +3,10 @@
  * GET /api/tab-monitor/status
  */
 
-import { tabMonitorTasks } from './create.post'
+import { tabMonitorTasks, type TabMonitorTaskRecord } from './create.post'
 import { createSuccessResponse, createErrorResponse } from '../../utils/response'
 import { getCurrentUser } from '../../utils/session'
+import { getTask } from '../../utils/taskStore'
 
 export default defineEventHandler(async (event) => {
   try {
@@ -23,8 +24,9 @@ export default defineEventHandler(async (event) => {
       return createErrorResponse('INVALID_PARAMS', '缺少任务 ID')
     }
 
-    // 查询任务
+    // 查询任务（内存优先，重启后从数据库补）
     const task = tabMonitorTasks.get(taskId)
+      ?? getTask<TabMonitorTaskRecord>('tab', taskId)
 
     if (!task) {
       return createErrorResponse('NOT_FOUND', '任务不存在')

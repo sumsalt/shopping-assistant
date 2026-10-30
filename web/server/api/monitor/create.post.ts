@@ -6,6 +6,7 @@
 import { createCancellableMonitor, type MonitorTask, type StockMonitorConfig } from '@core'
 import { createSuccessResponse, createErrorResponse, ErrorCode } from '../../utils/response'
 import { getCurrentUser } from '../../utils/session'
+import { persistTask, persistTaskSoon, type StoredTaskBase } from '../../utils/taskStore'
 
 // 商品信息接口
 interface ProductInfo {
@@ -14,18 +15,16 @@ interface ProductInfo {
   productImage?: string
 }
 
-// 监控任务存储（生产环境应使用数据库或 Redis）
-export const monitorTasks = new Map<string, {
-  id: string
-  userId: string
-  userEmail: string
+// 监控任务记录
+export interface MonitorTaskRecord extends StoredTaskBase {
   products: ProductInfo[]
   config: StockMonitorConfig
-  status: 'running' | 'stopped' | 'completed'
-  createdAt: Date
   results?: any[]
   controller?: AbortController
-}>()
+}
+
+// 监控任务存储：内存作为运行时副本，落盘由 taskStore 负责
+export const monitorTasks = new Map<string, MonitorTaskRecord>()
 
 // 生成任务 ID
 const generateTaskId = (): string => {
@@ -43,13 +42,17 @@ export const startMonitorTask = (
   // 初始化任务结果数组，为每个商品创建初始结果
   const taskData = monitorTasks.get(taskId)
   if (taskData) {
-    taskData.results = tasks.map(task => ({
-      productId: task.request.productId,
-      productName: '',
-      detected: false,
-      checkCount: 0,
-      errorCount: 0,
-    }))
+    // 续跑时保留已有结果，避免重启后进度被清空
+    if (!taskData.results || taskData.results.length === 0) {
+      taskData.results = tasks.map(task => ({
+        productId: task.request.productId,
+        productName: '',
+        detected: false,
+        checkCount: 0,
+        errorCount: 0,
+      }))
+    }
+    persistTaskSoon('stock', taskData)
   }
 
   // 在后台启动监控任务（不等待结果）
@@ -74,6 +77,7 @@ export const startMonitorTask = (
             ...result,
           }
         }
+        persistTaskSoon('stock', task)
       }
     }
   )
@@ -90,6 +94,7 @@ export const startMonitorTask = (
       task.status = 'completed'
       task.results = results
       task.controller = undefined
+      persistTask('stock', task)
     }
   }).catch((error) => {
     console.error(`任务 ${taskId} 失败:`, error)
@@ -97,6 +102,7 @@ export const startMonitorTask = (
     if (task) {
       task.status = 'stopped'
       task.controller = undefined
+      persistTask('stock', task)
     }
   })
 
@@ -148,15 +154,18 @@ export default defineEventHandler(async (event) => {
     const taskId = generateTaskId()
 
     // 存储任务信息
-    monitorTasks.set(taskId, {
+    const taskRecord = {
       id: taskId,
       userId: currentUser.username,
       userEmail: currentUser.email,
       products: body.products,
       config,
-      status: 'running',
+      status: 'running' as const,
       createdAt: new Date(),
-    })
+    }
+
+    monitorTasks.set(taskId, taskRecord)
+    persistTask('stock', taskRecord)
 
     // 启动监控任务
     startMonitorTask(taskId, tasks, config)

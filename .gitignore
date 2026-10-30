@@ -4,6 +4,13 @@ node_modules/
 # 构建产物
 dist/
 
+# 运行时数据（SQLite 任务库）
+data/
+web/data/
+*.db
+*.db-wal
+*.db-shm
+
 # 测试覆盖率
 coverage/
 

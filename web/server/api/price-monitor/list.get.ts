@@ -3,9 +3,10 @@
  * GET /api/price-monitor/list
  */
 
-import { priceMonitorTasks } from './create.post'
+import { priceMonitorTasks, type PriceMonitorTaskRecord } from './create.post'
 import { createSuccessResponse, createErrorResponse } from '../../utils/response'
 import { getCurrentUser } from '../../utils/session'
+import { listTasks } from '../../utils/taskStore'
 
 export default defineEventHandler(async (event) => {
   try {
@@ -15,9 +16,17 @@ export default defineEventHandler(async (event) => {
       return createErrorResponse('UNAUTHORIZED', '请先登录')
     }
 
-    // 筛选当前用户的任务
-    const userTasks = Array.from(priceMonitorTasks.values())
+    // 内存中的任务（含最新进度）
+    const liveTasks = Array.from(priceMonitorTasks.values())
       .filter(task => task.userId === currentUser.username)
+
+    // 仅存在于数据库中的任务（进程重启后依然可查看）
+    const liveIds = new Set(liveTasks.map(task => task.id))
+    const restoredTasks = listTasks<PriceMonitorTaskRecord>('price', currentUser.username)
+      .filter(task => !liveIds.has(task.id))
+
+    // 筛选当前用户的任务
+    const userTasks = [...liveTasks, ...restoredTasks]
       .map(task => ({
         id: task.id,
         products: task.products,
@@ -33,7 +42,7 @@ export default defineEventHandler(async (event) => {
         snapshots: task.snapshots,
         changes: task.changes,
       }))
-      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
 
     return createSuccessResponse({
       tasks: userTasks,
