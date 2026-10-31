@@ -41,6 +41,7 @@ export default defineEventHandler(async (event) => {
         lastError: task.lastError,
         snapshot: task.snapshot,
         changes: task.changes,
+        couponChanges: task.couponChanges ?? [],
       }))
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
 

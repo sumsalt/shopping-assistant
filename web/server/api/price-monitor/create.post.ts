@@ -16,6 +16,8 @@ import {
   DEFAULT_NOTIFY_COOLDOWN,
   DEFAULT_MIN_PRICE_DELTA,
   type AdapterConfig,
+  type CouponInfo,
+  type CouponNewInfo,
   type PriceChangeInfo,
   type PriceMonitorConfig,
   type PriceMonitorTask,
@@ -39,12 +41,24 @@ export interface PriceSnapshotSummary {
   productName: string
   shopPrice: number
   checkedAt: number
+  /** 最近一次快照的红包列表（续跑时重建基线用） */
+  coupons?: CouponInfo[]
+  /** 最近一次快照的满减券列表 */
+  couponsNew?: CouponNewInfo[]
 }
 
 /** 价格变化记录 */
 export interface PriceChangeRecord extends PriceChangeInfo {
   emailSent: boolean
   currency?: string
+}
+
+/** 优惠券变化记录 */
+export interface PriceCouponChangeRecord {
+  added: Array<{ kind: string; label: string }>
+  removed: Array<{ kind: string; label: string }>
+  detectedAt: number
+  emailSent: boolean
 }
 
 /** 价格监控任务记录 */
@@ -55,6 +69,7 @@ export interface PriceMonitorTaskRecord extends StoredTaskBase {
   detectedCount: number
   lastError?: string
   changes: PriceChangeRecord[]
+  couponChanges: PriceCouponChangeRecord[]
   snapshot?: PriceSnapshotSummary
   controller?: AbortController
 }
@@ -101,6 +116,8 @@ export const startPriceMonitorTask = (
           productName: result.productName,
           shopPrice: result.currentPrice,
           checkedAt,
+          coupons: result.coupons,
+          couponsNew: result.couponsNew,
         }
       }
 
@@ -115,6 +132,17 @@ export const startPriceMonitorTask = (
         })
         // 只保留最近 50 条，避免内存无限增长
         record.changes = record.changes.slice(0, 50)
+      }
+
+      if (result.detected && result.couponChangeInfo) {
+        record.couponChanges = record.couponChanges ?? []
+        record.couponChanges.unshift({
+          added: result.couponChangeInfo.added,
+          removed: result.couponChangeInfo.removed,
+          detectedAt: result.couponChangeInfo.detectedAt,
+          emailSent: Boolean(result.emailSent),
+        })
+        record.couponChanges = record.couponChanges.slice(0, 50)
       }
 
       persistTaskSoon('price', record)
@@ -282,6 +310,8 @@ export default defineEventHandler(async (event) => {
       productName: initialSnapshot.productName,
       shopPrice: initialSnapshot.shopPrice,
       checkedAt: initialSnapshot.capturedAt,
+      coupons: initialSnapshot.coupons,
+      couponsNew: initialSnapshot.couponsNew,
     }
 
     const taskRecord: PriceMonitorTaskRecord = {
@@ -295,6 +325,7 @@ export default defineEventHandler(async (event) => {
       checkCount: 0,
       detectedCount: 0,
       changes: [],
+      couponChanges: [],
       snapshot,
     }
 

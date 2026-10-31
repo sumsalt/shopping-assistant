@@ -5,6 +5,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   comparePrice,
+  compareCoupons,
   shouldNotifyPriceChange,
   createCancellablePriceMonitor,
   MIN_PRICE_MONITOR_INTERVAL,
@@ -120,5 +121,53 @@ describe('createCancellablePriceMonitor - 参数校验', () => {
     });
 
     await expect(promise).rejects.toThrow('监控商品不能为空');
+  });
+});
+
+describe('compareCoupons - 优惠券变化判定', () => {
+  it('券列表完全一致时返回 null', () => {
+    const coupons = [{ couponId: '269120', typeTitle: '平台红包', title: '通用红包' }];
+    const couponsNew = [{ couponId: '281895', threshold: 400, reduce: 120 }];
+
+    expect(
+      compareCoupons(
+        createSnapshot(100, { coupons, couponsNew }),
+        createSnapshot(100, { coupons, couponsNew })
+      )
+    ).toBeNull();
+  });
+
+  it('新增满减券时能识别', () => {
+    const change = compareCoupons(
+      createSnapshot(100),
+      createSnapshot(100, { couponsNew: [{ couponId: '281895', threshold: 200, reduce: 35 }] })
+    );
+
+    expect(change).not.toBeNull();
+    expect(change?.added).toEqual([{ kind: '满减券', label: '满200减35' }]);
+    expect(change?.removed).toEqual([]);
+  });
+
+  it('满减门槛变化时表现为一删一增', () => {
+    const change = compareCoupons(
+      createSnapshot(100, { couponsNew: [{ couponId: '281895', threshold: 400, reduce: 120 }] }),
+      createSnapshot(100, { couponsNew: [{ couponId: '281895', threshold: 300, reduce: 120 }] })
+    );
+
+    expect(change?.added).toEqual([{ kind: '满减券', label: '满300减120' }]);
+    expect(change?.removed).toEqual([{ kind: '满减券', label: '满400减120' }]);
+  });
+
+  it('红包失效时能识别，且不受顺序影响', () => {
+    const a = { couponId: '1', typeTitle: '平台红包', title: 'A' };
+    const b = { couponId: '2', typeTitle: '专场红包', title: 'B' };
+
+    const change = compareCoupons(
+      createSnapshot(100, { coupons: [a, b] }),
+      createSnapshot(100, { coupons: [b] })
+    );
+
+    expect(change?.removed).toEqual([{ kind: '红包', label: '平台红包：A' }]);
+    expect(change?.added).toEqual([]);
   });
 });

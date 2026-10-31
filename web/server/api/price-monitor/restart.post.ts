@@ -69,7 +69,6 @@ export default defineEventHandler(async (event) => {
         productId: String(product.productId),
       },
       recipient: originalTask.userEmail,
-      subject: `价格变动提醒：${snapshot?.productName || product.productName || product.productId}`,
       productName: product.productName || snapshot?.productName,
       productImage: product.productImage,
     }
@@ -86,6 +85,7 @@ export default defineEventHandler(async (event) => {
       checkCount: 0,
       detectedCount: 0,
       changes: [],
+      couponChanges: [],
       snapshot: originalTask.snapshot,
     }
 

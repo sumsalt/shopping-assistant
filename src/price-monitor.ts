@@ -10,7 +10,7 @@
 
 import { getAdapter } from './adapters';
 import type { AdapterConfig } from './adapters';
-import type { Platform, PriceSnapshot } from './types';
+import type { CouponInfo, CouponNewInfo, Platform, PriceSnapshot } from './types';
 import { StockCheckError, StockCheckErrorType } from './types';
 import { sendEmail, createPriceChangeTemplate } from './email';
 import { runWithGateContext } from './utils/request-gate';
@@ -58,6 +58,28 @@ export interface PriceChangeInfo {
 }
 
 /**
+ * 单张优惠券的变化项（用于邮件与历史记录展示）
+ */
+export interface CouponChangeItem {
+  /** 券类型 */
+  kind: '红包' | '满减券';
+  /** 展示文案 */
+  label: string;
+}
+
+/**
+ * 优惠券变化信息
+ */
+export interface CouponChangeInfo {
+  /** 新增的券 */
+  added: CouponChangeItem[];
+  /** 失效/被替换的券 */
+  removed: CouponChangeItem[];
+  /** 检测时间（毫秒时间戳） */
+  detectedAt: number;
+}
+
+/**
  * 价格监控任务
  */
 export interface PriceMonitorTask {
@@ -96,6 +118,8 @@ export interface PriceMonitorConfig {
   notifyCooldown?: number;
   /** 初始基线快照（由创建任务时预取） */
   initialSnapshot?: PriceSnapshot;
+  /** 基线里是否已包含优惠券数据（老快照没有券字段，首轮只建立券基线不提醒） */
+  couponBaselineKnown?: boolean;
   /** 续跑时的已检测次数（重启后继续累加，避免进度归零） */
   initialCheckCount?: number;
   /** 续跑时的已通知次数 */
@@ -114,8 +138,14 @@ export interface PriceMonitorResult {
   productName: string;
   /** 本次检测是否触发通知 */
   detected: boolean;
-  /** 价格变化信息（触发通知时） */
+  /** 价格变化信息（触发通知且价格满足条件时） */
   changeInfo?: PriceChangeInfo;
+  /** 优惠券变化信息（触发通知时） */
+  couponChangeInfo?: CouponChangeInfo;
+  /** 当前红包列表（用于落盘基线） */
+  coupons?: CouponInfo[];
+  /** 当前满减券列表（用于落盘基线） */
+  couponsNew?: CouponNewInfo[];
   /** 当前价格 */
   currentPrice?: number;
   /** 发送邮件是否成功 */
@@ -206,6 +236,65 @@ export const comparePrice = (
 };
 
 /**
+ * 把快照里的优惠券整理成可比较的键值对
+ *
+ * 红包按「券 ID + 标题」区分；满减券同一券 ID 可能有多档门槛，按「券 ID + 门槛 + 减免」区分。
+ */
+const collectCoupons = (snapshot: PriceSnapshot): Map<string, CouponChangeItem> => {
+  const coupons = new Map<string, CouponChangeItem>();
+
+  for (const coupon of snapshot.coupons ?? []) {
+    const label = [coupon.typeTitle, coupon.title].filter(Boolean).join('：') || `红包 ${coupon.couponId}`;
+    coupons.set(`coupon:${coupon.couponId}:${label}`, { kind: '红包', label });
+  }
+
+  for (const coupon of snapshot.couponsNew ?? []) {
+    const label = `满${coupon.threshold}减${coupon.reduce}`;
+    coupons.set(`couponNew:${coupon.couponId}:${coupon.threshold}:${coupon.reduce}`, {
+      kind: '满减券',
+      label,
+    });
+  }
+
+  return coupons;
+};
+
+/**
+ * 比较两次快照的优惠券列表
+ *
+ * 只关心券的新增与失效（满减券门槛/金额变了会表现为一删一增），
+ * 没有变化时返回 null。
+ */
+export const compareCoupons = (
+  previous: PriceSnapshot,
+  current: PriceSnapshot
+): CouponChangeInfo | null => {
+  const before = collectCoupons(previous);
+  const after = collectCoupons(current);
+
+  const added: CouponChangeItem[] = [];
+  const removed: CouponChangeItem[] = [];
+
+  for (const [key, item] of after) {
+    if (!before.has(key)) {
+      added.push(item);
+    }
+  }
+
+  for (const [key, item] of before) {
+    if (!after.has(key)) {
+      removed.push(item);
+    }
+  }
+
+  if (added.length === 0 && removed.length === 0) {
+    return null;
+  }
+
+  return { added, removed, detectedAt: current.capturedAt };
+};
+
+/**
  * 判断价格变化是否满足通知条件
  */
 export const shouldNotifyPriceChange = (
@@ -275,6 +364,7 @@ export const createCancellablePriceMonitor = (
         minPriceDelta = DEFAULT_MIN_PRICE_DELTA,
         notifyCooldown = DEFAULT_NOTIFY_COOLDOWN,
         initialSnapshot,
+        couponBaselineKnown: couponBaselineKnownInitial = true,
         initialCheckCount = 0,
         initialDetectedCount = 0,
       } = config;
@@ -303,6 +393,10 @@ export const createCancellablePriceMonitor = (
 
       /** 基线快照，首次检测只建立基线不通知 */
       let snapshot: PriceSnapshot | undefined = initialSnapshot;
+      /** 老任务的快照里没有券数据，首轮只用来建立券基线，不触发提醒 */
+      let couponBaselineKnown = couponBaselineKnownInitial;
+      /** 券基线：冷却期内的变化不推进，等冷却结束后再提醒，避免漏报 */
+      let couponBaseline: PriceSnapshot | undefined = initialSnapshot;
       let lastNotifiedAt = 0;
       let detectedCount = initialDetectedCount;
 
@@ -335,40 +429,68 @@ export const createCancellablePriceMonitor = (
 
           result.productName = current.productName || result.productName;
           result.currentPrice = current.shopPrice;
+          result.coupons = current.coupons;
+          result.couponsNew = current.couponsNew;
 
           if (!snapshot) {
             // 首次检测：只建立基线，不通知
             snapshot = current;
+            couponBaseline = current;
             result.detected = false;
             result.changeInfo = undefined;
+            result.couponChangeInfo = undefined;
           } else {
             const change = comparePrice(snapshot, current, minPriceDelta);
+            const couponChange =
+              couponBaseline && couponBaselineKnown
+                ? compareCoupons(couponBaseline, current)
+                : null;
             const now = Date.now();
             const cooldownPassed = now - lastNotifiedAt >= notifyCooldown * 1000;
 
             // 无论是否通知，都要用最新快照更新基线
             snapshot = current;
+            couponBaselineKnown = true;
 
-            if (change && shouldNotifyPriceChange(change, notifyOn) && cooldownPassed) {
+            // 价格按 notifyOn 过滤；优惠券变化独立判断，不受涨跌方向限制
+            const notifyPrice = Boolean(
+              change && shouldNotifyPriceChange(change, notifyOn) && cooldownPassed
+            );
+            const notifyCoupon = Boolean(couponChange && cooldownPassed);
+
+            // 券变化被冷却挡住时不推进券基线，下一轮还会再比对
+            if (notifyCoupon || !couponChange) {
+              couponBaseline = current;
+            }
+
+            if (notifyPrice || notifyCoupon) {
               result.detected = true;
-              result.changeInfo = change;
+              result.changeInfo = notifyPrice && change ? change : undefined;
+              result.couponChangeInfo = notifyCoupon && couponChange ? couponChange : undefined;
               lastNotifiedAt = now;
               detectedCount++;
 
               // 标题把涨跌方向和幅度放在最前面，邮件列表里一眼能看出变化类型
-              const directionLabel = change.direction === 'down' ? '降价' : '涨价';
-              const percentLabel = Math.abs(change.deltaPercent).toFixed(2);
+              const parts: string[] = [];
+              if (notifyPrice && change) {
+                const directionLabel = change.direction === 'down' ? '降价' : '涨价';
+                parts.push(`${directionLabel} ${Math.abs(change.deltaPercent).toFixed(2)}%`);
+              }
+              if (notifyCoupon) {
+                parts.push('优惠券变化');
+              }
 
               const emailResult = await sendEmail({
                 to: task.recipient,
                 subject:
                   task.subject ||
-                  `【${directionLabel} ${percentLabel}%】${current.productName}`,
+                  `【${parts.join('｜')}】${current.productName}`,
                 html: createPriceChangeTemplate(
                   current.productName,
-                  change,
+                  notifyPrice && change ? change : null,
                   task.productImage || current.productImage,
-                  current.productUrl
+                  current.productUrl,
+                  notifyCoupon && couponChange ? couponChange : undefined
                 ),
               });
 
@@ -381,6 +503,7 @@ export const createCancellablePriceMonitor = (
             } else {
               result.detected = false;
               result.changeInfo = undefined;
+              result.couponChangeInfo = undefined;
             }
           }
 

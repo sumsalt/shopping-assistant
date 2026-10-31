@@ -30,6 +30,14 @@ export interface PriceChangeRecord {
   emailSent: boolean
 }
 
+/** 优惠券变化记录 */
+export interface CouponChangeRecord {
+  added: Array<{ kind: string; label: string }>
+  removed: Array<{ kind: string; label: string }>
+  detectedAt: number
+  emailSent: boolean
+}
+
 /** 价格监控任务 */
 export interface PriceMonitorTaskItem {
   id: string
@@ -45,6 +53,7 @@ export interface PriceMonitorTaskItem {
   lastError?: string
   snapshot?: PriceSnapshotSummary
   changes: PriceChangeRecord[]
+  couponChanges?: CouponChangeRecord[]
 }
 
 /** 任务列表响应 */

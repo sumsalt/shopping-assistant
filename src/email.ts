@@ -572,15 +572,43 @@ export function createPriceChangeTemplate(
     deltaPercent: number;
     direction: 'up' | 'down';
     detectedAt: number;
-  },
+  } | null,
   productImage?: string,
-  productUrl?: string
+  productUrl?: string,
+  couponChange?: {
+    added: Array<{ kind: string; label: string }>;
+    removed: Array<{ kind: string; label: string }>;
+    detectedAt?: number;
+  }
 ): string {
-  const isDrop = change.direction === 'down';
-  const accentColor = isDrop ? '#4CAF50' : '#f44336';
-  const title = isDrop ? '价格下降提醒' : '价格上涨提醒';
-  const sign = change.delta > 0 ? '+' : '';
-  const percentSign = change.deltaPercent > 0 ? '+' : '';
+  const isDrop = change?.direction === 'down';
+  const accentColor = change ? (isDrop ? '#4CAF50' : '#f44336') : '#FF9800';
+  const title = change ? (isDrop ? '价格下降提醒' : '价格上涨提醒') : '优惠券变化提醒';
+  const sign = change && change.delta > 0 ? '+' : '';
+  const percentSign = change && change.deltaPercent > 0 ? '+' : '';
+
+  const escapeHtml = (value: string): string =>
+    value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+
+  const intro = [
+    change ? `价格${isDrop ? '下降' : '上涨'}` : '',
+    couponChange ? '优惠券有变化' : '',
+  ]
+    .filter(Boolean)
+    .join('，');
+
+  const couponHtml = couponChange
+    ? `
+          <div class="coupon-block">
+            <div class="coupon-title">🎟️ 优惠券变化</div>
+            ${(couponChange.added ?? []).length > 0 ? `<div class="coupon-row coupon-add">新增：${couponChange.added.map(item => escapeHtml(item.label)).join('、')}</div>` : ''}
+            ${(couponChange.removed ?? []).length > 0 ? `<div class="coupon-row coupon-remove">失效：${couponChange.removed.map(item => escapeHtml(item.label)).join('、')}</div>` : ''}
+          </div>`
+    : '';
 
   return `
     <!DOCTYPE html>
@@ -657,6 +685,29 @@ export function createPriceChangeTemplate(
           font-size: 16px;
           font-weight: bold;
         }
+        .coupon-block {
+          margin: 20px 0;
+          padding: 15px;
+          background: #fff8e1;
+          border-left: 4px solid #FF9800;
+          border-radius: 6px;
+        }
+        .coupon-title {
+          font-size: 15px;
+          font-weight: bold;
+          color: #E65100;
+          margin-bottom: 8px;
+        }
+        .coupon-row {
+          font-size: 14px;
+          line-height: 1.8;
+        }
+        .coupon-add {
+          color: #2E7D32;
+        }
+        .coupon-remove {
+          color: #999;
+        }
         .link {
           display: block;
           text-align: center;
@@ -682,7 +733,7 @@ export function createPriceChangeTemplate(
         </div>
         <div class="content">
           <p>您好！</p>
-          <p>您监控的商品${isDrop ? '价格下降' : '价格上涨'}了。</p>
+          <p>您监控的商品${intro}。</p>
           ${productImage ? `
           <table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation">
             <tr>
@@ -693,6 +744,7 @@ export function createPriceChangeTemplate(
           </table>
           ` : ''}
           <div class="product-name">${productName}</div>
+          ${change ? `
           <div class="price-row">
             <span class="price-old">¥${change.previousPrice.toFixed(2)}</span>
             <span class="price-arrow">→</span>
@@ -701,10 +753,12 @@ export function createPriceChangeTemplate(
           <div class="price-delta">
             ${sign}${change.delta.toFixed(2)} 元（${percentSign}${change.deltaPercent.toFixed(2)}%）
           </div>
+          ` : ''}
+          ${couponHtml}
           ${productUrl ? `<div class="link"><a href="${productUrl}">查看商品详情</a></div>` : ''}
         </div>
         <div class="footer">
-          <p>检测时间: ${new Date(change.detectedAt).toLocaleString('zh-CN')}</p>
+          <p>检测时间: ${new Date(change?.detectedAt ?? couponChange?.detectedAt ?? Date.now()).toLocaleString('zh-CN')}</p>
           <p>这是一封自动发送的邮件，请勿直接回复。</p>
         </div>
       </div>

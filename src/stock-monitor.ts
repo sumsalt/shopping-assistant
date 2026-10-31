@@ -151,13 +151,6 @@ export const monitorSingleStock = async (
 };
 
 /**
- * 睡眠函数
- */
-const sleep = (ms: number): Promise<void> => {
-  return new Promise(resolve => setTimeout(resolve, ms));
-};
-
-/**
  * 创建可取消的库存监控
  *
  * @param task 监控任务（一个任务只包含一个商品）
@@ -258,8 +251,7 @@ export const createCancellableMonitor = (
             resultCallback(result);
           }
 
-          const randomDelay = Math.random() * 0.5 + 0.7;
-          await sleep(interval * 1000 + randomDelay * 1000);
+          // 请求节奏由全局请求闸门控制（匿名 1 秒 / 登录态 15 秒），这里不再额外 sleep
         } catch (error) {
           result.error = error instanceof Error ? error.message : String(error);
           result.checkCount++;

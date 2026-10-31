@@ -150,7 +150,10 @@
           </div>
 
           <!-- 变化记录 -->
-          <div v-if="task.changes.length > 0" class="mt-4 pt-4 border-t border-gray-100">
+          <div
+            v-if="task.changes.length > 0 || (task.couponChanges?.length ?? 0) > 0"
+            class="mt-4 pt-4 border-t border-gray-100"
+          >
             <p class="text-sm font-medium text-gray-700 mb-2">最近变化</p>
             <div class="space-y-1.5">
               <div
@@ -178,6 +181,36 @@
                 </span>
                 <span
                   v-if="change.emailSent === false"
+                  class="text-xs text-red-500"
+                >
+                  邮件发送失败
+                </span>
+              </div>
+
+              <!-- 优惠券变化 -->
+              <div
+                v-for="(couponChange, index) in (task.couponChanges || []).slice(0, 5)"
+                :key="`coupon-${couponChange.detectedAt}-${index}`"
+                class="flex flex-wrap items-center gap-2 text-sm"
+              >
+                <span class="font-medium text-amber-600">优惠券</span>
+                <span
+                  v-if="couponChange.added.length > 0"
+                  class="text-green-600"
+                >
+                  新增 {{ couponChange.added.map(item => item.label).join('、') }}
+                </span>
+                <span
+                  v-if="couponChange.removed.length > 0"
+                  class="text-gray-400 line-through"
+                >
+                  失效 {{ couponChange.removed.map(item => item.label).join('、') }}
+                </span>
+                <span class="text-xs text-gray-400">
+                  {{ formatTime(couponChange.detectedAt) }}
+                </span>
+                <span
+                  v-if="couponChange.emailSent === false"
                   class="text-xs text-red-500"
                 >
                   邮件发送失败
