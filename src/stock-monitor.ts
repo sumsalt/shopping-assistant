@@ -251,7 +251,7 @@ export const createCancellableMonitor = (
             resultCallback(result);
           }
 
-          // 请求节奏由全局请求闸门控制（匿名 1 秒 / 登录态 15 秒），这里不再额外 sleep
+          // 请求节奏由全局请求闸门控制（匿名 1.5 秒 / 登录态 15 秒），这里不再额外 sleep
         } catch (error) {
           result.error = error instanceof Error ? error.message : String(error);
           result.checkCount++;
