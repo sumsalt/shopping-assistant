@@ -683,7 +683,15 @@ export function createPriceChangeTemplate(
         <div class="content">
           <p>您好！</p>
           <p>您监控的商品${isDrop ? '价格下降' : '价格上涨'}了。</p>
-          ${productImage ? `<img src="${productImage}" alt="${productName}" class="product-image" />` : ''}
+          ${productImage ? `
+          <table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation">
+            <tr>
+              <td align="center" style="text-align: center; padding: 0 0 15px;">
+                <img src="${productImage}" alt="${productName}" width="300" style="display: block; width: 100%; max-width: 300px; height: auto; border-radius: 8px; margin: 0 auto;" />
+              </td>
+            </tr>
+          </table>
+          ` : ''}
           <div class="product-name">${productName}</div>
           <div class="price-row">
             <span class="price-old">¥${change.previousPrice.toFixed(2)}</span>

@@ -43,6 +43,10 @@ export interface TabMonitorConfig {
   maxPrice?: number;
   /** 触发变化的最少商品数量，默认10 */
   minChangeCount?: number;
+  /** 续跑时的已检测次数（重启后继续累加，避免进度归零） */
+  initialCheckCount?: number;
+  /** 续跑时的已通知次数 */
+  initialDetectedCount?: number;
   /** 任务 ID（用于全局请求闸门的公平调度） */
   taskId?: string;
 }
@@ -290,6 +294,8 @@ export const createCancellableTabMonitor = (
       minPrice = 0,
       maxPrice = 0,
       minChangeCount = 10,
+      initialCheckCount = 0,
+      initialDetectedCount = 0,
     } = config;
 
     // 校验参数
@@ -311,8 +317,8 @@ export const createCancellableTabMonitor = (
 
     // 初始化状态
     let previousList: CollectionStockResult[] = [];
-    let checkCount = 0;
-    let detectedCount = 0;
+    let checkCount = initialCheckCount;
+    let detectedCount = initialDetectedCount;
     let errorCount = 0;
     const startTime = Date.now();
 

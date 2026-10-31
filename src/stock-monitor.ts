@@ -29,6 +29,10 @@ export interface StockMonitorConfig {
   duration?: number;
   /** 平台认证配置 */
   adapterConfig?: CheckStockOptions['adapterConfig'];
+  /** 续跑时的已检测次数（重启后继续累加，避免进度归零） */
+  initialCheckCount?: number;
+  /** 续跑时的已出错次数 */
+  initialErrorCount?: number;
   /** 任务 ID（用于全局请求闸门的公平调度） */
   taskId?: string;
 }
@@ -183,6 +187,8 @@ export const createCancellableMonitor = (
         interval = 1,
         duration,
         adapterConfig = {},
+        initialCheckCount = 0,
+        initialErrorCount = 0,
       } = config;
 
       // 校验参数
@@ -202,8 +208,8 @@ export const createCancellableMonitor = (
         productId: task.request.productId,
         productName: '',
         detected: false,
-        checkCount: 0,
-        errorCount: 0,
+        checkCount: initialCheckCount,
+        errorCount: initialErrorCount,
       };
 
       const startTime = Date.now();

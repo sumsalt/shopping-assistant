@@ -96,6 +96,10 @@ export interface PriceMonitorConfig {
   notifyCooldown?: number;
   /** 初始基线快照（由创建任务时预取） */
   initialSnapshot?: PriceSnapshot;
+  /** 续跑时的已检测次数（重启后继续累加，避免进度归零） */
+  initialCheckCount?: number;
+  /** 续跑时的已通知次数 */
+  initialDetectedCount?: number;
   /** 任务 ID（用于全局请求闸门的公平调度） */
   taskId?: string;
 }
@@ -271,6 +275,8 @@ export const createCancellablePriceMonitor = (
         minPriceDelta = DEFAULT_MIN_PRICE_DELTA,
         notifyCooldown = DEFAULT_NOTIFY_COOLDOWN,
         initialSnapshot,
+        initialCheckCount = 0,
+        initialDetectedCount = 0,
       } = config;
 
       // 校验参数
@@ -298,14 +304,14 @@ export const createCancellablePriceMonitor = (
       /** 基线快照，首次检测只建立基线不通知 */
       let snapshot: PriceSnapshot | undefined = initialSnapshot;
       let lastNotifiedAt = 0;
-      let detectedCount = 0;
+      let detectedCount = initialDetectedCount;
 
       const result: PriceMonitorResult = {
         productId: task.request.productId,
         productName: initialSnapshot?.productName || task.productName || '',
         detected: false,
         currentPrice: initialSnapshot?.shopPrice,
-        checkCount: 0,
+        checkCount: initialCheckCount,
         errorCount: 0,
       };
 
@@ -349,13 +355,15 @@ export const createCancellablePriceMonitor = (
               lastNotifiedAt = now;
               detectedCount++;
 
+              // 标题把涨跌方向和幅度放在最前面，邮件列表里一眼能看出变化类型
+              const directionLabel = change.direction === 'down' ? '降价' : '涨价';
+              const percentLabel = Math.abs(change.deltaPercent).toFixed(2);
+
               const emailResult = await sendEmail({
                 to: task.recipient,
                 subject:
                   task.subject ||
-                  `价格变动提醒：${current.productName} ${
-                    change.direction === 'down' ? '降价' : '涨价'
-                  }`,
+                  `【${directionLabel} ${percentLabel}%】${current.productName}`,
                 html: createPriceChangeTemplate(
                   current.productName,
                   change,

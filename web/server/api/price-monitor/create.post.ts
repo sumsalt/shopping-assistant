@@ -269,7 +269,6 @@ export default defineEventHandler(async (event) => {
         productId,
       },
       recipient: currentUser.email,
-      subject: `价格变动提醒：${initialSnapshot.productName || product.productName || productId}`,
       productName: product.productName || initialSnapshot.productName,
       productImage: product.productImage || initialSnapshot.productImage,
     }

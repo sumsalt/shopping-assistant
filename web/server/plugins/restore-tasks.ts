@@ -6,7 +6,7 @@
  * 2. 未到期的重新挂回内存并继续监控，进度沿用重启前的数据
  */
 
-import type { MonitorTask, PriceMonitorTask, TabMonitorTask } from '@core'
+import type { MonitorTask, PriceMonitorTask, PriceSnapshot, TabMonitorTask } from '@core'
 import { monitorTasks, startMonitorTask, type MonitorTaskRecord } from '../api/monitor/create.post'
 import {
   priceMonitorTasks,
@@ -74,6 +74,9 @@ const restoreStockTasks = (): number => {
       startMonitorTask(task.id, request, {
         ...task.config,
         taskId: task.id,
+        // 续跑时接着之前的统计继续累加
+        initialCheckCount: task.result?.checkCount ?? 0,
+        initialErrorCount: task.result?.errorCount ?? 0,
         duration: remaining === Number.POSITIVE_INFINITY ? undefined : Math.floor(remaining),
       })
 
@@ -112,13 +115,31 @@ const restorePriceTasks = (): number => {
       // 重建监控请求（一个任务只监控一个商品）
       const product = task.product
       const snapshot = task.snapshot
+
+      // 续跑用最后一次落盘的快照做基线：config.initialSnapshot 还是创建时的价格，
+      // 拿它比对会把重启前已经发生过的变化再提醒一次
+      const restoredSnapshot: PriceSnapshot | undefined = snapshot
+        ? {
+            platform: 'yishou',
+            productId: String(snapshot.productId),
+            productName: snapshot.productName,
+            productNo: '',
+            productImage: product.productImage || '',
+            productUrl: '',
+            shopPrice: snapshot.shopPrice,
+            authState: 'logged_in',
+            coupons: [],
+            couponsNew: [],
+            capturedAt: snapshot.checkedAt,
+          }
+        : undefined
+
       const request: PriceMonitorTask = {
         request: {
           platform: 'yishou',
           productId: String(product.productId),
         },
         recipient: task.userEmail,
-        subject: `价格变动提醒：${snapshot?.productName || product.productName || product.productId}`,
         productName: product.productName || snapshot?.productName,
         productImage: product.productImage || undefined,
       }
@@ -126,6 +147,9 @@ const restorePriceTasks = (): number => {
       startPriceMonitorTask(task.id, request, {
         ...task.config,
         taskId: task.id,
+        initialSnapshot: restoredSnapshot ?? task.config.initialSnapshot,
+        initialCheckCount: task.checkCount ?? 0,
+        initialDetectedCount: task.detectedCount ?? 0,
         duration: remaining === Number.POSITIVE_INFINITY ? undefined : Math.floor(remaining),
       })
 
@@ -172,6 +196,8 @@ const restoreTabTasks = (): number => {
         {
           ...task.config,
           taskId: task.id,
+          initialCheckCount: task.checkCount ?? 0,
+          initialDetectedCount: task.detectedCount ?? 0,
           duration: remaining === Number.POSITIVE_INFINITY ? undefined : Math.floor(remaining),
         },
         { preserveState: true }
