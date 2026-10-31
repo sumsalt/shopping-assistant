@@ -22,7 +22,7 @@ export const MIN_PRICE_MONITOR_INTERVAL = 60;
 export const DEFAULT_PRICE_MONITOR_INTERVAL = 60;
 
 /** 默认通知冷却时间（秒） */
-export const DEFAULT_NOTIFY_COOLDOWN = 300;
+export const DEFAULT_NOTIFY_COOLDOWN = 60;
 
 /** 默认最小价格变动（元） */
 export const DEFAULT_MIN_PRICE_DELTA = 0.01;
@@ -114,12 +114,10 @@ export interface PriceMonitorConfig {
   notifyOn?: PriceNotifyOn;
   /** 最小价格变动（元），默认 0.01 */
   minPriceDelta?: number;
-  /** 通知冷却时间（秒），默认 300 */
+  /** 通知冷却时间（秒），默认 60 */
   notifyCooldown?: number;
   /** 初始基线快照（由创建任务时预取） */
   initialSnapshot?: PriceSnapshot;
-  /** 基线里是否已包含优惠券数据（老快照没有券字段，首轮只建立券基线不提醒） */
-  couponBaselineKnown?: boolean;
   /** 续跑时的已检测次数（重启后继续累加，避免进度归零） */
   initialCheckCount?: number;
   /** 续跑时的已通知次数 */
@@ -364,7 +362,6 @@ export const createCancellablePriceMonitor = (
         minPriceDelta = DEFAULT_MIN_PRICE_DELTA,
         notifyCooldown = DEFAULT_NOTIFY_COOLDOWN,
         initialSnapshot,
-        couponBaselineKnown: couponBaselineKnownInitial = true,
         initialCheckCount = 0,
         initialDetectedCount = 0,
       } = config;
@@ -393,8 +390,6 @@ export const createCancellablePriceMonitor = (
 
       /** 基线快照，首次检测只建立基线不通知 */
       let snapshot: PriceSnapshot | undefined = initialSnapshot;
-      /** 老任务的快照里没有券数据，首轮只用来建立券基线，不触发提醒 */
-      let couponBaselineKnown = couponBaselineKnownInitial;
       /** 券基线：冷却期内的变化不推进，等冷却结束后再提醒，避免漏报 */
       let couponBaseline: PriceSnapshot | undefined = initialSnapshot;
       let lastNotifiedAt = 0;
@@ -441,16 +436,12 @@ export const createCancellablePriceMonitor = (
             result.couponChangeInfo = undefined;
           } else {
             const change = comparePrice(snapshot, current, minPriceDelta);
-            const couponChange =
-              couponBaseline && couponBaselineKnown
-                ? compareCoupons(couponBaseline, current)
-                : null;
+            const couponChange = couponBaseline ? compareCoupons(couponBaseline, current) : null;
             const now = Date.now();
             const cooldownPassed = now - lastNotifiedAt >= notifyCooldown * 1000;
 
             // 无论是否通知，都要用最新快照更新基线
             snapshot = current;
-            couponBaselineKnown = true;
 
             // 价格按 notifyOn 过滤；优惠券变化独立判断，不受涨跌方向限制
             const notifyPrice = Boolean(

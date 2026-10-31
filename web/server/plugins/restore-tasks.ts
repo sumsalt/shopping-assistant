@@ -149,9 +149,6 @@ const restorePriceTasks = (): number => {
         ...task.config,
         taskId: task.id,
         initialSnapshot: restoredSnapshot ?? task.config.initialSnapshot,
-        // 老快照没有券字段：首轮只建立券基线，避免把已有券当成新增
-        couponBaselineKnown:
-          Array.isArray(snapshot?.coupons) && Array.isArray(snapshot?.couponsNew),
         initialCheckCount: task.checkCount ?? 0,
         initialDetectedCount: task.detectedCount ?? 0,
         duration: remaining === Number.POSITIVE_INFINITY ? undefined : Math.floor(remaining),
