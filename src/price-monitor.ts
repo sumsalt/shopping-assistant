@@ -5,7 +5,7 @@
  * 1. 只监控登录态（uid + token）下的 shop_price，游客价口径不同，不能用于比价
  * 2. 检测到变化后不停止，持续监控直到时长结束或被取消
  * 3. 首次检测只建立基线，不发送通知
- * 4. 有通知冷却时间，避免价格反复抖动导致邮件轰炸
+ * 4. 不做额外通知冷却：检测间隔（最短 60 秒）就是最小提醒间隔
  */
 
 import { getAdapter } from './adapters';
@@ -20,9 +20,6 @@ export const MIN_PRICE_MONITOR_INTERVAL = 60;
 
 /** 默认检测间隔（秒） */
 export const DEFAULT_PRICE_MONITOR_INTERVAL = 60;
-
-/** 默认通知冷却时间（秒） */
-export const DEFAULT_NOTIFY_COOLDOWN = 60;
 
 /** 默认最小价格变动（元） */
 export const DEFAULT_MIN_PRICE_DELTA = 0.01;
@@ -114,8 +111,6 @@ export interface PriceMonitorConfig {
   notifyOn?: PriceNotifyOn;
   /** 最小价格变动（元），默认 0.01 */
   minPriceDelta?: number;
-  /** 通知冷却时间（秒），默认 60 */
-  notifyCooldown?: number;
   /** 初始基线快照（由创建任务时预取） */
   initialSnapshot?: PriceSnapshot;
   /** 续跑时的已检测次数（重启后继续累加，避免进度归零） */
@@ -360,7 +355,6 @@ export const createCancellablePriceMonitor = (
         adapterConfig = {},
         notifyOn = 'any',
         minPriceDelta = DEFAULT_MIN_PRICE_DELTA,
-        notifyCooldown = DEFAULT_NOTIFY_COOLDOWN,
         initialSnapshot,
         initialCheckCount = 0,
         initialDetectedCount = 0,
@@ -390,9 +384,6 @@ export const createCancellablePriceMonitor = (
 
       /** 基线快照，首次检测只建立基线不通知 */
       let snapshot: PriceSnapshot | undefined = initialSnapshot;
-      /** 券基线：冷却期内的变化不推进，等冷却结束后再提醒，避免漏报 */
-      let couponBaseline: PriceSnapshot | undefined = initialSnapshot;
-      let lastNotifiedAt = 0;
       let detectedCount = initialDetectedCount;
 
       const result: PriceMonitorResult = {
@@ -430,35 +421,24 @@ export const createCancellablePriceMonitor = (
           if (!snapshot) {
             // 首次检测：只建立基线，不通知
             snapshot = current;
-            couponBaseline = current;
             result.detected = false;
             result.changeInfo = undefined;
             result.couponChangeInfo = undefined;
           } else {
             const change = comparePrice(snapshot, current, minPriceDelta);
-            const couponChange = couponBaseline ? compareCoupons(couponBaseline, current) : null;
-            const now = Date.now();
-            const cooldownPassed = now - lastNotifiedAt >= notifyCooldown * 1000;
+            const couponChange = compareCoupons(snapshot, current);
 
             // 无论是否通知，都要用最新快照更新基线
             snapshot = current;
 
             // 价格按 notifyOn 过滤；优惠券变化独立判断，不受涨跌方向限制
-            const notifyPrice = Boolean(
-              change && shouldNotifyPriceChange(change, notifyOn) && cooldownPassed
-            );
-            const notifyCoupon = Boolean(couponChange && cooldownPassed);
-
-            // 券变化被冷却挡住时不推进券基线，下一轮还会再比对
-            if (notifyCoupon || !couponChange) {
-              couponBaseline = current;
-            }
+            const notifyPrice = Boolean(change && shouldNotifyPriceChange(change, notifyOn));
+            const notifyCoupon = Boolean(couponChange);
 
             if (notifyPrice || notifyCoupon) {
               result.detected = true;
               result.changeInfo = notifyPrice && change ? change : undefined;
               result.couponChangeInfo = notifyCoupon && couponChange ? couponChange : undefined;
-              lastNotifiedAt = now;
               detectedCount++;
 
               // 标题把涨跌方向和幅度放在最前面，邮件列表里一眼能看出变化类型

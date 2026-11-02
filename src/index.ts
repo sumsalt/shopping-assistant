@@ -79,7 +79,6 @@ export {
   shouldNotifyPriceChange,
   MIN_PRICE_MONITOR_INTERVAL,
   DEFAULT_PRICE_MONITOR_INTERVAL,
-  DEFAULT_NOTIFY_COOLDOWN,
   DEFAULT_MIN_PRICE_DELTA,
 } from './price-monitor';
 export type {

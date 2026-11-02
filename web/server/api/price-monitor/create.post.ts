@@ -13,7 +13,6 @@ import {
   getAdapter,
   MIN_PRICE_MONITOR_INTERVAL,
   DEFAULT_PRICE_MONITOR_INTERVAL,
-  DEFAULT_NOTIFY_COOLDOWN,
   DEFAULT_MIN_PRICE_DELTA,
   type AdapterConfig,
   type CouponInfo,
@@ -281,10 +280,6 @@ export default defineEventHandler(async (event) => {
       minPriceDelta: normalizePositiveNumber(
         body?.config?.minPriceDelta,
         DEFAULT_MIN_PRICE_DELTA
-      ),
-      notifyCooldown: normalizePositiveNumber(
-        body?.config?.notifyCooldown,
-        DEFAULT_NOTIFY_COOLDOWN
       ),
       adapterConfig,
       initialSnapshot,
