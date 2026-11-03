@@ -326,6 +326,7 @@
             </div>
             <p v-if="formData.useActiveWindow" class="mt-2 text-xs text-gray-500">
               时段外任务休眠、不发请求，也不消耗监控时长；结束时间早于开始时间表示跨天（如 22:00–02:00）。
+              进入时段时会重新建立基线，休眠期间的商品变化不会补推。
             </p>
           </div>
 

@@ -346,6 +346,10 @@ export const createCancellableTabMonitor = (
     // 生效时段（可选）：配置后只在时段内检测，时段外休眠
     const activeWindow = normalizeActiveWindow(config.activeWindow);
 
+    // 从时段外休眠醒来后需要先重建基线：休眠可能持续几个小时，
+    // 直接拿休眠前的列表比对，会把休眠期间（非生效时段）的上下架当成「刚发生的变化」推送出去
+    let needBaselineRefresh = false;
+
     /** 已运行时长（秒）：配置了生效时段时只累计时段内的时间，休眠不消耗时长 */
     const getElapsedSeconds = (): number =>
       activeWindow
@@ -356,22 +360,31 @@ export const createCancellableTabMonitor = (
     const adapter = new YishouAdapter(adapterConfig);
 
     // 首次获取商品列表（不发送通知）
-    try {
-      const result: CollectionStockCheckResult = await adapter.getTabGoodsList(
-        tabId,
-        page,
-        pageSize,
-        sort,
-        minPrice,
-        maxPrice
+    // 启动时若正好在生效时段外，就先不建基线：休眠到下一个时段入口再建，
+    // 否则基线会停留在「上次运行的末尾」，进入时段后第一轮必然整批误报
+    if (activeWindow && !isWithinActiveWindow(new Date(), activeWindow)) {
+      needBaselineRefresh = true;
+      console.log(
+        `[Tab监控] 启动时不在生效时段 ${activeWindow.start}-${activeWindow.end}，进入时段后再建立基线，Tab ID: ${tabId}`
       );
-      previousList = [...result.inStockItems, ...result.outOfStockItems];
-      checkCount++;
+    } else {
+      try {
+        const result: CollectionStockCheckResult = await adapter.getTabGoodsList(
+          tabId,
+          page,
+          pageSize,
+          sort,
+          minPrice,
+          maxPrice
+        );
+        previousList = [...result.inStockItems, ...result.outOfStockItems];
+        checkCount++;
 
-      console.log(`[Tab监控] 初始化完成，Tab ID: ${tabId}, 当前商品数: ${previousList.length}`);
-    } catch (error) {
-      console.error('[Tab监控] 初始化失败:', error);
-      throw new Error(`初始化Tab监控失败: ${error instanceof Error ? error.message : String(error)}`);
+        console.log(`[Tab监控] 初始化完成，Tab ID: ${tabId}, 当前商品数: ${previousList.length}`);
+      } catch (error) {
+        console.error('[Tab监控] 初始化失败:', error);
+        throw new Error(`初始化Tab监控失败: ${error instanceof Error ? error.message : String(error)}`);
+      }
     }
 
     // 等待第一次间隔后再开始监控
@@ -413,7 +426,65 @@ export const createCancellableTabMonitor = (
         }
 
         await sleepInterruptible(waitMs, signal);
+
+        // 醒来后进入时段，先重建基线再开始比对
+        needBaselineRefresh = true;
         continue;
+      }
+
+      // 刚进入生效时段：先抓一轮作为新基线，不比对、不推送
+      if (needBaselineRefresh) {
+        try {
+          const result: CollectionStockCheckResult = await adapter.getTabGoodsList(
+            tabId,
+            page,
+            pageSize,
+            sort,
+            minPrice,
+            maxPrice
+          );
+
+          previousList = [...result.inStockItems, ...result.outOfStockItems];
+          checkCount++;
+          needBaselineRefresh = false;
+
+          console.log(
+            `[Tab监控] 已进入生效时段，重建基线，Tab ID: ${tabId}, 当前商品数: ${previousList.length}`
+          );
+
+          if (progressCallback) {
+            progressCallback({
+              elapsedTime,
+              duration,
+              progress: duration ? Math.floor((elapsedTime / duration) * 100) : undefined,
+              checkCount,
+              detectedCount,
+              currentTotal: previousList.length,
+            });
+          }
+
+          // 基线建好后等一个间隔再比对，避免把「建基线」和「检测」压在同一时刻
+          await sleepInterruptible(interval * 1000, signal);
+          continue;
+        } catch (error) {
+          errorCount++;
+          const message = error instanceof Error ? error.message : String(error);
+          console.error('[Tab监控] 进入生效时段后建立基线失败:', error);
+
+          if (resultCallback) {
+            resultCallback({
+              tabId,
+              detected: false,
+              error: message,
+              checkCount,
+              errorCount,
+            });
+          }
+
+          // 保持待重建状态，下一个间隔继续重试，不拿旧基线做比对
+          await sleepInterruptible(interval * 1000, signal);
+          continue;
+        }
       }
 
       let currentList: CollectionStockResult[] = [];
