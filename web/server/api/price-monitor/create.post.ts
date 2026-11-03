@@ -120,9 +120,9 @@ export const startPriceMonitorTask = (
         }
       }
 
-      if (result.error) {
-        record.lastError = result.error
-      }
+      // 每轮结果都会覆盖：成功的一轮 result.error 为空，顺手把上一轮的错误清掉，
+      // 否则一次 502 会一直挂在卡片上，直到任务结束
+      record.lastError = result.error
 
       if (result.detected && result.changeInfo) {
         record.changes.unshift({
