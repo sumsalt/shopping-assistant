@@ -6,7 +6,15 @@
  * 2. 未到期的重新挂回内存并继续监控，进度沿用重启前的数据
  */
 
-import type { MonitorTask, PriceMonitorTask, PriceSnapshot, TabMonitorTask } from '@core'
+import {
+  activeSecondsBetween,
+  normalizeActiveWindow,
+  type ActiveWindow,
+  type MonitorTask,
+  type PriceMonitorTask,
+  type PriceSnapshot,
+  type TabMonitorTask,
+} from '@core'
 import { monitorTasks, startMonitorTask, type MonitorTaskRecord } from '../api/monitor/create.post'
 import {
   priceMonitorTasks,
@@ -28,14 +36,25 @@ let restored = false
  *
  * @returns 剩余秒数；配置为无限时长时返回 Infinity
  */
-const getRemainingSeconds = (task: { createdAt: Date; config: { duration?: number } }): number => {
+const getRemainingSeconds = (task: {
+  createdAt: Date
+  config: { duration?: number; activeWindow?: ActiveWindow }
+}): number => {
   const duration = task.config?.duration
 
   if (!duration || !Number.isFinite(duration)) {
     return Number.POSITIVE_INFINITY
   }
 
-  const elapsed = (Date.now() - new Date(task.createdAt).getTime()) / 1000
+  const createdAt = new Date(task.createdAt)
+  const now = new Date()
+
+  // 配了生效时段的任务，休眠时间不消耗时长，按「时段内累计秒数」计算已运行时间
+  const window = normalizeActiveWindow(task.config?.activeWindow)
+  const elapsed = window
+    ? activeSecondsBetween(createdAt, now, window)
+    : (now.getTime() - createdAt.getTime()) / 1000
+
   return Math.max(0, duration - elapsed)
 }
 

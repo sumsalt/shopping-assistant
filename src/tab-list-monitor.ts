@@ -12,6 +12,13 @@ import {
   loadEmailConfigFromEnv,
 } from './email';
 import { runWithGateContext } from './utils/request-gate';
+import {
+  activeSecondsBetween,
+  isWithinActiveWindow,
+  msUntilActiveWindowStart,
+  normalizeActiveWindow,
+  type ActiveWindow,
+} from './utils/active-window';
 
 // SMTP 配置来自环境变量（SMTP_PASS 等），代码里不保存授权码
 const emailConfig = loadEmailConfigFromEnv();
@@ -43,6 +50,8 @@ export interface TabMonitorConfig {
   maxPrice?: number;
   /** 触发变化的最少商品数量，默认10 */
   minChangeCount?: number;
+  /** 每日生效时段（可选）：只在这个时间段内检测，时段外休眠且不计入监控时长 */
+  activeWindow?: ActiveWindow;
   /** 续跑时的已检测次数（重启后继续累加，避免进度归零） */
   initialCheckCount?: number;
   /** 续跑时的已通知次数 */
@@ -132,10 +141,22 @@ export type TabProgressCallback = (progress: TabMonitorProgress) => void;
 export type TabResultCallback = (result: TabMonitorResult) => void;
 
 /**
- * 睡眠函数
+ * 可被取消打断的睡眠：任务停止时立即结束等待（休眠可能是几个小时）
  */
-const sleep = (ms: number): Promise<void> => {
-  return new Promise(resolve => setTimeout(resolve, ms));
+const sleepInterruptible = (ms: number, signal: AbortSignal): Promise<void> => {
+  if (signal.aborted || ms <= 0) {
+    return Promise.resolve();
+  }
+
+  return new Promise<void>((resolve) => {
+    const onDone = () => {
+      clearTimeout(timer);
+      signal.removeEventListener('abort', onDone);
+      resolve();
+    };
+    const timer = setTimeout(onDone, ms);
+    signal.addEventListener('abort', onDone, { once: true });
+  });
 };
 
 /**
@@ -322,6 +343,15 @@ export const createCancellableTabMonitor = (
     let errorCount = 0;
     const startTime = Date.now();
 
+    // 生效时段（可选）：配置后只在时段内检测，时段外休眠
+    const activeWindow = normalizeActiveWindow(config.activeWindow);
+
+    /** 已运行时长（秒）：配置了生效时段时只累计时段内的时间，休眠不消耗时长 */
+    const getElapsedSeconds = (): number =>
+      activeWindow
+        ? Math.floor(activeSecondsBetween(new Date(startTime), new Date(), activeWindow))
+        : Math.floor((Date.now() - startTime) / 1000);
+
     // 创建适配器
     const adapter = new YishouAdapter(adapterConfig);
 
@@ -345,7 +375,7 @@ export const createCancellableTabMonitor = (
     }
 
     // 等待第一次间隔后再开始监控
-    await sleep(interval * 1000);
+    await sleepInterruptible(interval * 1000, signal);
 
     // 主监控循环
     while (true) {
@@ -354,11 +384,36 @@ export const createCancellableTabMonitor = (
         break;
       }
 
-      const elapsedTime = Math.floor((Date.now() - startTime) / 1000);
+      const elapsedTime = getElapsedSeconds();
 
-      // 检查是否达到总时长限制
+      // 检查是否达到总时长限制（休眠不计时，不会因为停在时段外而被判到期）
       if (duration && elapsedTime >= duration) {
         break;
+      }
+
+      // 不在生效时段：休眠到下次开始，期间不发请求、不消耗监控时长
+      if (activeWindow && !isWithinActiveWindow(new Date(), activeWindow)) {
+        const waitMs = msUntilActiveWindowStart(new Date(), activeWindow);
+
+        console.log(
+          `[Tab监控] 不在生效时段 ${activeWindow.start}-${activeWindow.end}，休眠 ${Math.round(
+            waitMs / 1000
+          )} 秒后继续，Tab ID: ${tabId}`
+        );
+
+        if (progressCallback) {
+          progressCallback({
+            elapsedTime,
+            duration,
+            progress: duration ? Math.floor((elapsedTime / duration) * 100) : undefined,
+            checkCount,
+            detectedCount,
+            currentTotal: previousList.length,
+          });
+        }
+
+        await sleepInterruptible(waitMs, signal);
+        continue;
       }
 
       let currentList: CollectionStockResult[] = [];
@@ -491,12 +546,12 @@ export const createCancellableTabMonitor = (
       }
 
       // 检查是否接近总时长限制
-      if (duration && elapsedTime + interval >= duration) {
+      if (duration && getElapsedSeconds() + interval >= duration) {
         break;
       }
 
       // 等待下一次检测
-      await sleep(interval * 1000);
+      await sleepInterruptible(interval * 1000, signal);
     }
 
     // 返回最终结果

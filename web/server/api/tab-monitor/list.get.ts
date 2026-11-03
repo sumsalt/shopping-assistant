@@ -34,6 +34,7 @@ export default defineEventHandler(async (event) => {
         status: task.status,
         interval: task.config.interval,
         duration: task.config.duration,
+        activeWindow: task.config.activeWindow,
         createdAt: task.createdAt,
         checkCount: task.checkCount,
         detectedCount: task.detectedCount,

@@ -16,6 +16,8 @@ interface TabMonitorTaskItem {
   currentTotal: number
   lastDetectedAt?: Date
   recipient: string
+  /** 每日生效时段（可选） */
+  activeWindow?: { start: string; end: string }
 }
 
 // 任务列表响应类型

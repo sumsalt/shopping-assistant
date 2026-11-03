@@ -97,6 +97,20 @@
                 </svg>
                 <span class="text-gray-600">最多 {{ task.duration }} 秒</span>
               </div>
+              <div
+                v-if="task.activeWindow"
+                class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border"
+                :class="isInActiveWindow(task)
+                  ? 'bg-gray-50 border-gray-100'
+                  : 'bg-amber-50 border-amber-100'"
+              >
+                <svg class="w-4 h-4 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span :class="isInActiveWindow(task) ? 'text-gray-600' : 'text-amber-700 font-medium'">
+                  时段 {{ task.activeWindow.start }}–{{ task.activeWindow.end }}{{ isInActiveWindow(task) ? '' : '（休眠中）' }}
+                </span>
+              </div>
             </div>
           </div>
 
@@ -282,6 +296,39 @@
             </div>
           </div>
 
+          <!-- 生效时段（可选） -->
+          <div class="border border-gray-200 rounded-lg p-4">
+            <label class="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                v-model="formData.useActiveWindow"
+                type="checkbox"
+                class="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              <span class="text-sm font-medium text-gray-700">只在指定时段运行（可选）</span>
+            </label>
+            <div v-if="formData.useActiveWindow" class="mt-3 grid grid-cols-2 gap-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1.5">每天开始时间</label>
+                <input
+                  v-model="formData.windowStart"
+                  type="time"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                />
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1.5">每天结束时间</label>
+                <input
+                  v-model="formData.windowEnd"
+                  type="time"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                />
+              </div>
+            </div>
+            <p v-if="formData.useActiveWindow" class="mt-2 text-xs text-gray-500">
+              时段外任务休眠、不发请求，也不消耗监控时长；结束时间早于开始时间表示跨天（如 22:00–02:00）。
+            </p>
+          </div>
+
           <!-- 排序方式和最小变化数量 -->
           <div class="grid grid-cols-2 gap-4">
             <div>
@@ -396,6 +443,22 @@ const formData = ref({
   duration: 86400,
   sort: 1,
   minChangeCount: 10,
+  useActiveWindow: false,
+  windowStart: '09:00',
+  windowEnd: '23:00',
+})
+
+// 默认表单值（重置用）
+const defaultFormData = () => ({
+  tabId: '',
+  tabName: '',
+  interval: 60,
+  duration: 86400,
+  sort: 1,
+  minChangeCount: 10,
+  useActiveWindow: false,
+  windowStart: '09:00',
+  windowEnd: '23:00',
 })
 
 // 选择 Tab 时的处理
@@ -412,6 +475,30 @@ const handleSelectTabFromDropdown = () => {
   if (selectedTabOption.value) {
     handleSelectTab(selectedTabOption.value)
   }
+}
+
+// 当前是否在该任务的生效时段内（仅用于展示「休眠中」）
+const isInActiveWindow = (task: { activeWindow?: { start: string; end: string } }): boolean => {
+  const window = task.activeWindow
+  if (!window) {
+    return true
+  }
+
+  const toMinutes = (value: string) => {
+    const [hour, minute] = value.split(':').map(Number)
+    return hour * 60 + minute
+  }
+
+  const start = toMinutes(window.start)
+  const end = toMinutes(window.end)
+  if (start === end) {
+    return true
+  }
+
+  const now = new Date()
+  const current = now.getHours() * 60 + now.getMinutes()
+
+  return start < end ? current >= start && current < end : current >= start || current < end
 }
 
 // 正在添加
@@ -447,18 +534,15 @@ const handleAddTask = async () => {
     return
   }
 
-  const taskId = await createTabMonitorTask(formData.value)
+  const { useActiveWindow, windowStart, windowEnd, ...rest } = formData.value
+  const taskId = await createTabMonitorTask({
+    ...rest,
+    ...(useActiveWindow ? { activeWindow: { start: windowStart, end: windowEnd } } : {}),
+  })
   if (taskId) {
     showAddDialog.value = false
     // 重置表单
-    formData.value = {
-      tabId: '',
-      tabName: '',
-      interval: 60,
-      duration: 86400,
-      sort: 1,
-      minChangeCount: 10,
-    }
+    formData.value = defaultFormData()
     // 刷新任务列表
     await fetchTasks()
   }

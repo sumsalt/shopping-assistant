@@ -16,6 +16,8 @@ interface TabMonitorConfig {
   minPrice?: number
   maxPrice?: number
   minChangeCount?: number
+  /** 每日生效时段（可选） */
+  activeWindow?: { start: string; end: string }
   adapterConfig?: Record<string, any>
 }
 
@@ -112,6 +114,7 @@ export const useTabMonitor = () => {
         minPrice: config.minPrice || 0,
         maxPrice: config.maxPrice || 0,
         minChangeCount: config.minChangeCount || 10,
+        ...(config.activeWindow ? { activeWindow: config.activeWindow } : {}),
         adapterConfig: {
           openid: userConfig.openid || '',
           model: userConfig.model || '',

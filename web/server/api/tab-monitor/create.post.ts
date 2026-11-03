@@ -3,7 +3,12 @@
  * POST /api/tab-monitor/create
  */
 
-import { createCancellableTabMonitor, type TabMonitorTask, type TabMonitorConfig } from '@core'
+import {
+  createCancellableTabMonitor,
+  normalizeActiveWindow,
+  type TabMonitorTask,
+  type TabMonitorConfig,
+} from '@core'
 import { createSuccessResponse, createErrorResponse, ErrorCode } from '../../utils/response'
 import { getCurrentUser } from '../../utils/session'
 import { persistTask, persistTaskSoon, type StoredTaskBase } from '../../utils/taskStore'
@@ -134,6 +139,15 @@ export default defineEventHandler(async (event) => {
       tabName: body.tabName,
     }
 
+    // 生效时段（可选）：格式 HH:mm，允许跨天
+    const activeWindow = normalizeActiveWindow(body.config?.activeWindow)
+    if (body.config?.activeWindow && !activeWindow) {
+      return createErrorResponse(
+        ErrorCode.INVALID_PARAMS,
+        '生效时段格式不正确，应为 HH:mm（如 09:00），且开始与结束时间不能相同'
+      )
+    }
+
     // 构建监控配置
     const config: TabMonitorConfig = {
       tabId: body.tabId,
@@ -146,6 +160,7 @@ export default defineEventHandler(async (event) => {
       maxPrice: body.config?.maxPrice || 0,
       minChangeCount: body.config?.minChangeCount || 10,
       adapterConfig: body.config?.adapterConfig || {},
+      ...(activeWindow ? { activeWindow } : {}),
     }
 
     // 生成任务 ID
