@@ -74,6 +74,14 @@
                 {{ getStatusText(task.status) }}
               </UiBadge>
               <h3 class="text-lg font-semibold text-gray-900">{{ task.tabName }}</h3>
+              <span
+                class="text-xs px-2 py-0.5 rounded border"
+                :class="task.mode === 'diff'
+                  ? 'bg-indigo-50 text-indigo-600 border-indigo-100'
+                  : 'bg-emerald-50 text-emerald-600 border-emerald-100'"
+              >
+                {{ task.mode === 'diff' ? '逐轮对比' : '累计新商品' }}
+              </span>
               <span class="text-sm text-gray-500">
                 {{ formatTime(task.createdAt) }}
               </span>
@@ -137,7 +145,10 @@
               <span class="text-purple-700 font-medium">{{ task.currentTotal }}</span>
               <span class="text-purple-600">当前商品数</span>
             </div>
-            <div class="flex items-center gap-1.5 px-3 py-1.5 bg-teal-50 rounded-lg border border-teal-100">
+            <div
+              v-if="task.mode !== 'diff'"
+              class="flex items-center gap-1.5 px-3 py-1.5 bg-teal-50 rounded-lg border border-teal-100"
+            >
               <svg class="w-4 h-4 text-teal-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
               </svg>
@@ -216,9 +227,9 @@
     </div>
 
     <!-- 新增监控对话框 -->
-    <UiDialog v-model:open="showAddDialog" title="新增 Tab 监控">
-      <form @submit.prevent="handleAddTask">
-        <div class="space-y-4">
+    <UiDialog v-model:open="showAddDialog" title="新增 Tab 监控" size="lg">
+      <form id="tabMonitorForm" @submit.prevent="handleAddTask">
+        <div class="space-y-5">
           <!-- Tab 选择（快速选择） -->
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1.5">
@@ -303,80 +314,144 @@
             </div>
           </div>
 
-          <!-- 生效时段（可选） -->
-          <div class="border border-gray-200 rounded-lg p-4">
-            <label class="flex items-center gap-2 cursor-pointer select-none">
-              <input
-                v-model="formData.useActiveWindow"
-                type="checkbox"
-                class="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-              />
-              <span class="text-sm font-medium text-gray-700">只在指定时段运行（可选）</span>
-            </label>
-            <div v-if="formData.useActiveWindow" class="mt-3 grid grid-cols-2 gap-4">
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1.5">每天开始时间</label>
+          <!-- 监控模式 -->
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1.5">监控模式</label>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <label
+                class="flex items-start gap-2.5 p-3 rounded-lg border cursor-pointer transition-colors"
+                :class="formData.mode === 'accumulate'
+                  ? 'border-blue-500 bg-blue-50/60'
+                  : 'border-gray-200 hover:border-gray-300'"
+              >
                 <input
-                  v-model="formData.windowStart"
-                  type="time"
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                  v-model="formData.mode"
+                  type="radio"
+                  value="accumulate"
+                  class="mt-0.5 w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
                 />
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1.5">每天结束时间</label>
+                <span>
+                  <span class="block text-sm font-medium text-gray-900">累计新商品</span>
+                  <span class="block mt-1 text-xs text-gray-500 leading-relaxed">
+                    记住任务内出现过的所有商品，累计够数量才提醒一次；反复上下架不重复提醒。
+                  </span>
+                </span>
+              </label>
+
+              <label
+                class="flex items-start gap-2.5 p-3 rounded-lg border cursor-pointer transition-colors"
+                :class="formData.mode === 'diff'
+                  ? 'border-blue-500 bg-blue-50/60'
+                  : 'border-gray-200 hover:border-gray-300'"
+              >
                 <input
-                  v-model="formData.windowEnd"
-                  type="time"
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                  v-model="formData.mode"
+                  type="radio"
+                  value="diff"
+                  class="mt-0.5 w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
                 />
-              </div>
+                <span>
+                  <span class="block text-sm font-medium text-gray-900">逐轮对比</span>
+                  <span class="block mt-1 text-xs text-gray-500 leading-relaxed">
+                    每轮和上一轮对比，新增 + 下架达到数量就提醒，邮件里同时列出新增和下架商品。
+                  </span>
+                </span>
+              </label>
             </div>
-            <p v-if="formData.useActiveWindow" class="mt-2 text-xs text-gray-500">
-              时段外任务休眠、不发请求，也不消耗监控时长；结束时间早于开始时间表示跨天（如 22:00–02:00）。
-              进入时段时会重新建立基线，休眠期间的商品变化不会补推。
+          </div>
+
+          <!-- 触发阈值 -->
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1.5">
+              {{ formData.mode === 'accumulate' ? '累计新增多少件商品后提醒' : '每轮变化多少件商品后提醒' }}
+            </label>
+            <input
+              v-model.number="formData.minChangeCount"
+              type="number"
+              min="1"
+              placeholder="默认 10"
+              class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+            />
+            <p class="mt-1 text-xs text-gray-500">
+              <template v-if="formData.mode === 'accumulate'">
+                任务内按商品去重累计，凑够这个数量才发一次邮件；同一商品反复上下架只记一次。
+              </template>
+              <template v-else>
+                每轮与上一轮对比，新增和下架商品合计达到这个数量就发一次邮件；反复上下架会反复提醒。
+              </template>
             </p>
           </div>
 
-          <!-- 排序方式和最小变化数量 -->
-          <div class="grid grid-cols-2 gap-4">
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1.5">
-                价格排序方式
-              </label>
-              <div class="relative">
-                <select
-                  v-model.number="formData.sort"
-                  class="w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-white appearance-none"
-                >
-                  <option :value="1">默认排序</option>
-                  <option :value="3">从高到低</option>
-                  <option :value="4">从低到高</option>
-                </select>
-                <svg class="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-                </svg>
+          <!-- 高级选项（默认收起，避免表单过长） -->
+          <details class="border border-gray-200 rounded-lg">
+            <summary class="flex items-center justify-between gap-2 px-4 py-3 cursor-pointer select-none">
+              <span class="text-sm font-medium text-gray-700">高级选项</span>
+              <span class="text-xs text-gray-400">生效时段 · 排序方式</span>
+            </summary>
+
+            <div class="px-4 pb-4 pt-1 space-y-4 border-t border-gray-100">
+              <!-- 生效时段（可选） -->
+              <div class="pt-3">
+                <label class="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    v-model="formData.useActiveWindow"
+                    type="checkbox"
+                    class="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span class="text-sm font-medium text-gray-700">只在指定时段运行（可选）</span>
+                </label>
+                <div v-if="formData.useActiveWindow" class="mt-3 grid grid-cols-2 gap-4">
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1.5">每天开始时间</label>
+                    <input
+                      v-model="formData.windowStart"
+                      type="time"
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                    />
+                  </div>
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1.5">每天结束时间</label>
+                    <input
+                      v-model="formData.windowEnd"
+                      type="time"
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                    />
+                  </div>
+                </div>
+                <p v-if="formData.useActiveWindow" class="mt-2 text-xs text-gray-500">
+                  时段外任务休眠、不发请求，也不消耗监控时长；结束时间早于开始时间表示跨天（如 22:00–02:00）。
+                  进入时段时会重新建立基线，休眠期间的商品变化不会补推。
+                </p>
+              </div>
+
+              <!-- 排序方式 -->
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1.5">
+                  价格排序方式
+                </label>
+                <div class="relative">
+                  <select
+                    v-model.number="formData.sort"
+                    class="w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-white appearance-none"
+                  >
+                    <option :value="1">默认排序</option>
+                    <option :value="3">从高到低</option>
+                    <option :value="4">从低到高</option>
+                  </select>
+                  <svg class="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                  </svg>
+                </div>
+                <p class="mt-1 text-xs text-gray-500">只影响抓取到的商品顺序，不改变监控范围</p>
               </div>
             </div>
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1.5">
-                累计新增多少件商品后提醒
-              </label>
-              <input
-                v-model.number="formData.minChangeCount"
-                type="number"
-                min="1"
-                placeholder="默认 10"
-                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
-              />
-              <p class="mt-1 text-xs text-gray-500">
-                任务内按商品去重累计，凑够这个数量才发一次邮件；同一商品反复上下架只记一次。
-              </p>
-            </div>
-          </div>
+          </details>
         </div>
+      </form>
 
-        <!-- 对话框底部按钮 -->
-        <div class="flex items-center justify-end gap-3 mt-6 pt-4 border-t border-gray-200">
+      <!-- 底部按钮固定，不随表单滚动 -->
+      <template #footer>
+        <div class="flex items-center justify-end gap-3">
           <UiButton
             type="button"
             variant="outline"
@@ -386,13 +461,14 @@
           </UiButton>
           <UiButton
             type="submit"
+            form="tabMonitorForm"
             :loading="isAdding"
             :disabled="isAdding"
           >
             创建监控
           </UiButton>
         </div>
-      </form>
+      </template>
     </UiDialog>
   </div>
 </template>
@@ -452,6 +528,7 @@ const formData = ref({
   interval: 60,
   duration: 86400,
   sort: 1,
+  mode: 'accumulate' as 'accumulate' | 'diff',
   minChangeCount: 10,
   useActiveWindow: false,
   windowStart: '09:00',
@@ -465,6 +542,7 @@ const defaultFormData = () => ({
   interval: 60,
   duration: 86400,
   sort: 1,
+  mode: 'accumulate' as 'accumulate' | 'diff',
   minChangeCount: 10,
   useActiveWindow: false,
   windowStart: '09:00',

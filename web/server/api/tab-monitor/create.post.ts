@@ -159,9 +159,13 @@ export default defineEventHandler(async (event) => {
       )
     }
 
+    // 监控模式：accumulate 累计新商品（默认）/ diff 逐轮对比
+    const mode = body.config?.mode === 'diff' ? 'diff' : 'accumulate'
+
     // 构建监控配置
     const config: TabMonitorConfig = {
       tabId: body.tabId,
+      mode,
       interval: body.config?.interval || 300,
       duration: body.config?.duration || 2 * 60 * 60,
       page: body.config?.page || 1,

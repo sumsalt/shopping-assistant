@@ -32,6 +32,7 @@ export default defineEventHandler(async (event) => {
         tabId: task.tabId,
         tabName: task.tabName,
         status: task.status,
+        mode: task.config.mode ?? 'accumulate',
         interval: task.config.interval,
         duration: task.config.duration,
         activeWindow: task.config.activeWindow,

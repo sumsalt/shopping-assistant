@@ -27,7 +27,8 @@
         >
           <div
             v-if="open"
-            class="relative bg-white rounded-lg shadow-xl max-w-md w-full max-h-[90vh] flex flex-col"
+            class="relative bg-white rounded-lg shadow-xl w-full max-h-[90vh] flex flex-col"
+            :class="sizeClass"
             @click.stop
           >
             <!-- 标题 -->
@@ -57,12 +58,26 @@ interface Props {
   open: boolean
   title?: string
   closeOnClickBackdrop?: boolean
+  /** 对话框宽度：表单较长的场景用 lg / xl */
+  size?: 'sm' | 'md' | 'lg' | 'xl'
 }
 
 // 默认属性
 const props = withDefaults(defineProps<Props>(), {
   title: '',
   closeOnClickBackdrop: true,
+  size: 'md',
+})
+
+// 宽度映射
+const sizeClass = computed(() => {
+  const map: Record<string, string> = {
+    sm: 'max-w-sm',
+    md: 'max-w-md',
+    lg: 'max-w-2xl',
+    xl: 'max-w-4xl',
+  }
+  return map[props.size] || map.md
 })
 
 // 定义事件

@@ -371,29 +371,59 @@ export function createBackInStockTemplate(
   `;
 }
 
+/** 邮件里展示的商品字段 */
+interface TabMailProduct {
+  productId: string;
+  productName: string;
+  price: number;
+  productUrl: string;
+  productImage: string;
+}
+
+/** 累计模式的提醒内容：只关心新商品 */
+interface TabAccumulateMailInfo {
+  mode: 'accumulate';
+  newProducts: TabMailProduct[];
+  currentTotal: number;
+  seenTotal: number;
+}
+
+/** 逐轮对比模式的提醒内容：本轮新增 + 下架 */
+interface TabDiffMailInfo {
+  mode: 'diff';
+  changeType: 'list_changed' | 'count_changed' | 'both';
+  previousTotal: number;
+  currentTotal: number;
+  newProducts: TabMailProduct[];
+  removedProducts: TabMailProduct[];
+}
+
 /**
- * 创建邮件模板 - Tab 新商品提醒
+ * 创建邮件模板 - Tab 提醒
  *
- * 只展示新发现的商品，不展示下架商品。
+ * 按任务选择的监控模式渲染：累计模式只列新商品，对比模式列本轮新增与下架。
  *
  * @param tabName Tab名称
- * @param info 新商品信息
+ * @param info 提醒内容
  * @param tabId Tab ID
  * @returns HTML 邮件内容
  */
 export function createTabChangeTemplate(
   tabName: string,
-  info: {
-    newProducts: Array<{
-      productId: string;
-      productName: string;
-      price: number;
-      productUrl: string;
-      productImage: string;
-    }>;
-    currentTotal: number;
-    seenTotal: number;
-  },
+  info: TabAccumulateMailInfo | TabDiffMailInfo,
+  tabId: string
+): string {
+  return info.mode === 'diff'
+    ? createTabDiffTemplate(tabName, info, tabId)
+    : createTabAccumulateTemplate(tabName, info, tabId);
+}
+
+/**
+ * 累计模式：只展示新发现的商品，不展示下架商品
+ */
+function createTabAccumulateTemplate(
+  tabName: string,
+  info: TabAccumulateMailInfo,
   tabId: string
 ): string {
   const productsHtml = info.newProducts
@@ -520,6 +550,179 @@ export function createTabChangeTemplate(
         <div class="footer">
           <p>检测时间: ${new Date().toLocaleString('zh-CN')}</p>
           <p>同一商品只记录一次，反复上下架不会重复提醒。</p>
+          <p>这是一封自动发送的邮件，请勿直接回复。</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+}
+
+/**
+ * 逐轮对比模式：展示本轮新增与下架的商品
+ */
+function createTabDiffTemplate(
+  tabName: string,
+  info: TabDiffMailInfo,
+  tabId: string
+): string {
+  const changeTypeText = {
+    list_changed: '商品列表变化',
+    count_changed: '商品总数变化',
+    both: '商品列表和总数变化',
+  }[info.changeType];
+
+  const newProductsHtml = info.newProducts.length > 0 ? `
+    <div style="margin-top: 20px;">
+      <h3 style="color: #4CAF50; margin-bottom: 15px;">✨ 新增商品 (${info.newProducts.length})</h3>
+      ${info.newProducts.slice(0, 10).map(product => `
+        <div style="background: #f0fdf4; padding: 15px; margin-bottom: 10px; border-radius: 6px; border-left: 4px solid #4CAF50;">
+          <table width="100%" cellpadding="0" cellspacing="0">
+            <tr>
+              <td align="center" style="text-align: center;">
+                <img src="${product.productImage}" alt="${product.productName}" width="400" style="width: 100%; max-width: 400px; height: auto; object-fit: cover; border-radius: 4px; display: block; margin: 0 auto;" />
+              </td>
+            </tr>
+          </table>
+          <div style="font-weight: bold; color: #333; margin-bottom: 5px; text-align: center;">${product.productName}</div>
+          <div style="color: #e53935; font-weight: bold; text-align: center;">¥${product.price.toFixed(2)}</div>
+        </div>
+      `).join('')}
+      ${info.newProducts.length > 10 ? `<p style="color: #999; font-size: 12px; text-align: center;">... 还有 ${info.newProducts.length - 10} 个新增商品</p>` : ''}
+    </div>
+  ` : '';
+
+  const removedProductsHtml = info.removedProducts.length > 0 ? `
+    <div style="margin-top: 20px;">
+      <h3 style="color: #f44336; margin-bottom: 15px;">❌ 删除商品 (${info.removedProducts.length})</h3>
+      ${info.removedProducts.slice(0, 10).map(product => `
+        <div style="background: #fef2f2; padding: 15px; margin-bottom: 10px; border-radius: 6px; border-left: 4px solid #f44336;">
+          <table width="100%" cellpadding="0" cellspacing="0">
+            <tr>
+              <td align="center" style="text-align: center;">
+                <img src="${product.productImage}" alt="${product.productName}" width="400" style="width: 100%; max-width: 400px; height: auto; object-fit: cover; border-radius: 4px; display: block; opacity: 0.6;" />
+              </td>
+            </tr>
+          </table>
+          <div style="font-weight: bold; color: #333; margin-bottom: 5px; text-align: center;">${product.productName}</div>
+          <div style="color: #666; text-align: center;">¥${product.price.toFixed(2)}</div>
+        </div>
+      `).join('')}
+      ${info.removedProducts.length > 10 ? `<p style="color: #999; font-size: 12px; text-align: center;">... 还有 ${info.removedProducts.length - 10} 个删除商品</p>` : ''}
+    </div>
+  ` : '';
+
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <style>
+        body {
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+          line-height: 1.6;
+          color: #333;
+          max-width: 800px;
+          margin: 0 auto;
+          padding: 20px;
+        }
+        .container {
+          background: #f9f9f9;
+          border-radius: 8px;
+          padding: 30px;
+        }
+        .header {
+          text-align: center;
+          margin-bottom: 30px;
+          border-bottom: 2px solid #e0e0e0;
+          padding-bottom: 20px;
+        }
+        .header h1 {
+          color: #FF9800;
+          margin: 0;
+        }
+        .summary {
+          background: white;
+          padding: 20px;
+          border-radius: 6px;
+          margin-bottom: 20px;
+          display: flex;
+          justify-content: space-around;
+        }
+        .summary-item {
+          text-align: center;
+        }
+        .summary-number {
+          font-size: 32px;
+          font-weight: bold;
+        }
+        .summary-previous {
+          color: #2196F3;
+        }
+        .summary-current {
+          color: #4CAF50;
+        }
+        .summary-diff {
+          color: #FF9800;
+        }
+        .summary-label {
+          color: #666;
+          margin-top: 5px;
+        }
+        .change-type {
+          background: #FFF3E0;
+          padding: 15px;
+          border-radius: 6px;
+          margin-bottom: 20px;
+          text-align: center;
+          font-weight: bold;
+          color: #FF6F00;
+        }
+        .footer {
+          text-align: center;
+          margin-top: 30px;
+          color: #999;
+          font-size: 12px;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>🔔 Tab商品列表变化提醒</h1>
+        </div>
+        
+        <div style="background: white; padding: 20px; border-radius: 6px; margin-bottom: 20px;">
+          <h3 style="margin-top: 0;">${tabName}</h3>
+          <p style="color: #666; font-size: 14px;">Tab ID: ${tabId}</p>
+        </div>
+
+        <div class="change-type">
+          变化类型: ${changeTypeText}
+        </div>
+
+        <div class="summary">
+          <div class="summary-item">
+            <div class="summary-number summary-previous">${info.previousTotal}</div>
+            <div class="summary-label">变化前</div>
+          </div>
+          <div class="summary-item">
+            <div class="summary-number summary-diff">
+              ${info.currentTotal > info.previousTotal ? '+' : ''}${info.currentTotal - info.previousTotal}
+            </div>
+            <div class="summary-label">变化量</div>
+          </div>
+          <div class="summary-item">
+            <div class="summary-number summary-current">${info.currentTotal}</div>
+            <div class="summary-label">变化后</div>
+          </div>
+        </div>
+
+        ${newProductsHtml}
+        ${removedProductsHtml}
+
+        <div class="footer">
+          <p>检测时间: ${new Date().toLocaleString('zh-CN')}</p>
           <p>这是一封自动发送的邮件，请勿直接回复。</p>
         </div>
       </div>

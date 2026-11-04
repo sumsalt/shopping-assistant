@@ -8,6 +8,8 @@ interface TabMonitorTaskItem {
   tabId: string
   tabName: string
   status: 'running' | 'stopped' | 'completed'
+  /** 监控模式：accumulate 累计新商品 / diff 逐轮对比 */
+  mode?: 'accumulate' | 'diff'
   interval: number
   duration: number
   createdAt: Date

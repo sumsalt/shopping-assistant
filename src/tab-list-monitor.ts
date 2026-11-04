@@ -48,7 +48,13 @@ export interface TabMonitorConfig {
   minPrice?: number;
   /** 最高价格，默认为0 */
   maxPrice?: number;
-  /** 触发提醒的累计新增商品数（任务内累计，默认10） */
+  /**
+   * 监控模式：
+   * - accumulate（默认）：任务内记住所有出现过的商品，累计新商品达到阈值才提醒，反复上下架不重复提醒
+   * - diff：每轮与上一轮对比，新增 + 下架数量达到阈值就提醒
+   */
+  mode?: TabMonitorMode;
+  /** 触发提醒的阈值（accumulate 下是累计新增数，diff 下是单轮变化数，默认10） */
   minChangeCount?: number;
   /** 每日生效时段（可选）：只在这个时间段内检测，时段外休眠且不计入监控时长 */
   activeWindow?: ActiveWindow;
@@ -75,11 +81,17 @@ export interface TabMonitorTask {
 }
 
 /**
- * Tab 新商品提醒信息
+ * Tab 监控模式
+ */
+export type TabMonitorMode = 'accumulate' | 'diff';
+
+/**
+ * Tab 新商品提醒信息（累计模式）
  *
  * 任务内按商品 ID 去重累积：同一商品反复上下架只会被记一次，不会重复提醒。
  */
-export interface TabChangeInfo {
+export interface TabAccumulateChangeInfo {
+  mode: 'accumulate';
   /** 本次提醒的新商品（累计达到阈值时一次性推送） */
   newProducts: CollectionStockResult[];
   /** 当前在架商品总数 */
@@ -87,6 +99,28 @@ export interface TabChangeInfo {
   /** 任务累计记录过的商品数（去重） */
   seenTotal: number;
 }
+
+/**
+ * Tab 列表变化信息（逐轮对比模式）
+ */
+export interface TabDiffChangeInfo {
+  mode: 'diff';
+  /** 变化类型 */
+  changeType: 'list_changed' | 'count_changed' | 'both';
+  /** 变化前商品总数 */
+  previousTotal: number;
+  /** 变化后商品总数 */
+  currentTotal: number;
+  /** 本轮新增商品 */
+  newProducts: CollectionStockResult[];
+  /** 本轮下架商品 */
+  removedProducts: CollectionStockResult[];
+}
+
+/**
+ * 提醒内容：累计模式给新商品，对比模式给本轮增删
+ */
+export type TabChangeInfo = TabAccumulateChangeInfo | TabDiffChangeInfo;
 
 /**
  * 监控结果
@@ -157,6 +191,54 @@ const sleepInterruptible = (ms: number, signal: AbortSignal): Promise<void> => {
     const timer = setTimeout(onDone, ms);
     signal.addEventListener('abort', onDone, { once: true });
   });
+};
+
+/**
+ * 比较两次商品列表的差异（逐轮对比模式使用）
+ *
+ * @param previousList 上一轮的商品列表
+ * @param currentList 本轮的商品列表
+ * @returns 变化信息；无任何变化时返回 null
+ */
+const compareProductLists = (
+  previousList: CollectionStockResult[],
+  currentList: CollectionStockResult[]
+): Omit<TabDiffChangeInfo, 'mode'> | null => {
+  const previousIds = new Set(previousList.map(item => item.productId));
+  const currentIds = new Set(currentList.map(item => item.productId));
+
+  const previousTotal = previousList.length;
+  const currentTotal = currentList.length;
+
+  const countChanged = previousTotal !== currentTotal;
+  const newIds = [...currentIds].filter(id => !previousIds.has(id));
+  const removedIds = [...previousIds].filter(id => !currentIds.has(id));
+  const listChanged = newIds.length > 0 || removedIds.length > 0;
+
+  if (!countChanged && !listChanged) {
+    return null;
+  }
+
+  const currentMap = new Map(currentList.map(item => [item.productId, item]));
+  const previousMap = new Map(previousList.map(item => [item.productId, item]));
+
+  const newProducts = newIds.map(id => currentMap.get(id)!);
+  const removedProducts = removedIds.map(id => previousMap.get(id)!);
+
+  let changeType: TabDiffChangeInfo['changeType'] = 'both';
+  if (countChanged && !listChanged) {
+    changeType = 'count_changed';
+  } else if (!countChanged && listChanged) {
+    changeType = 'list_changed';
+  }
+
+  return {
+    changeType,
+    previousTotal,
+    currentTotal,
+    newProducts,
+    removedProducts,
+  };
 };
 
 /**
@@ -287,6 +369,9 @@ export const createCancellableTabMonitor = (
       throw new Error('循环总时长必须大于 0');
     }
 
+    // 监控模式：老任务没有该字段，按累计模式处理（与线上已有行为一致）
+    const mode: TabMonitorMode = config.mode === 'diff' ? 'diff' : 'accumulate';
+
     // 初始化状态
     let previousList: CollectionStockResult[] = [];
     let checkCount = initialCheckCount;
@@ -294,7 +379,7 @@ export const createCancellableTabMonitor = (
     let errorCount = 0;
     const startTime = Date.now();
 
-    // 任务内已见过的商品 ID：同一商品反复上下架只记一次，不会重复提醒
+    // 任务内已见过的商品 ID（仅累计模式使用）：同一商品反复上下架只记一次，不会重复提醒
     const seenProductIds = new Set<string>(config.initialSeenProductIds ?? []);
     // 已发现但还没达到提醒阈值的新商品，凑够 minChangeCount 个再一次性推送
     let pendingNewProducts: CollectionStockResult[] = [];
@@ -326,7 +411,7 @@ export const createCancellableTabMonitor = (
         checkCount,
         detectedCount,
         currentTotal: previousList.length,
-        seenTotal: seenProductIds.size,
+        seenTotal: mode === 'accumulate' ? seenProductIds.size : 0,
         ...(newlySeenProductIds && newlySeenProductIds.length > 0 ? { newlySeenProductIds } : {}),
       });
     };
@@ -351,12 +436,15 @@ export const createCancellableTabMonitor = (
       const list = [...result.inStockItems, ...result.outOfStockItems];
       const newlySeen: CollectionStockResult[] = [];
 
-      for (const item of list) {
-        if (seenProductIds.has(item.productId)) {
-          continue;
+      // 逐轮对比模式不需要已见集合
+      if (mode === 'accumulate') {
+        for (const item of list) {
+          if (seenProductIds.has(item.productId)) {
+            continue;
+          }
+          seenProductIds.add(item.productId);
+          newlySeen.push(item);
         }
-        seenProductIds.add(item.productId);
-        newlySeen.push(item);
       }
 
       return { list, newlySeen };
@@ -480,77 +568,132 @@ export const createCancellableTabMonitor = (
 
         currentList = [...result.inStockItems, ...result.outOfStockItems];
         checkCount++;
-        previousList = currentList;
 
-        // 只认「从没出现过的商品」：反复上下架的老商品已经在集合里，不会重复计入
-        const newlySeen: CollectionStockResult[] = [];
-        for (const item of currentList) {
-          if (seenProductIds.has(item.productId)) {
-            continue;
-          }
-          seenProductIds.add(item.productId);
-          newlySeen.push(item);
-        }
+        if (mode === 'diff') {
+          // 逐轮对比：本轮与上一轮相比，新增 + 下架合计达到阈值就提醒
+          const comparison = compareProductLists(previousList, currentList);
+          const changeCount = comparison
+            ? comparison.newProducts.length + comparison.removedProducts.length
+            : 0;
 
-        if (newlySeen.length > 0) {
-          newlySeenIds = newlySeen.map(item => item.productId);
-          pendingNewProducts.push(...newlySeen);
+          if (comparison && changeCount >= minChangeCount) {
+            detected = true;
+            changeInfo = { mode: 'diff', ...comparison };
 
-          console.log(
-            `[Tab监控] 本轮发现 ${newlySeen.length} 个新商品，累计待提醒 ${pendingNewProducts.length}/${minChangeCount}，Tab ID: ${tabId}`
-          );
-        }
+            console.log(
+              `[Tab监控] 本轮变化 ${changeCount} 个（新增 ${comparison.newProducts.length} / 下架 ${comparison.removedProducts.length}），达到阈值 ${minChangeCount}，Tab ID: ${tabId}`
+            );
 
-        // 累计新商品达到阈值：把这一批新商品一次性推送出去
-        if (pendingNewProducts.length >= minChangeCount) {
-          const batch = pendingNewProducts;
-
-          detected = true;
-          changeInfo = {
-            newProducts: batch,
-            currentTotal: currentList.length,
-            seenTotal: seenProductIds.size,
-          };
-
-          console.log(
-            `[Tab监控] 累计新商品达到阈值，发送提醒 ${batch.length} 个，Tab ID: ${tabId}`
-          );
-
-          const emailResult = await sendEmail({
-            to: task.recipient,
-            subject:
-              task.subject ||
-              `🔔 ${task.tabName || 'Tab商品列表'} 新增 ${batch.length} 个商品`,
-            html: createTabChangeTemplate(task.tabName || 'Tab商品列表', changeInfo, tabId),
-          });
-
-          if (resultCallback) {
-            resultCallback({
-              tabId,
-              detected,
-              changeInfo,
-              emailSent: emailResult.success,
-              error: emailResult.success ? undefined : emailResult.error,
-              checkCount,
-              errorCount,
+            const emailResult = await sendEmail({
+              to: task.recipient,
+              subject:
+                task.subject ||
+                `🔔 ${task.tabName || 'Tab商品列表'} 有 ${changeCount} 个商品变化`,
+              html: createTabChangeTemplate(task.tabName || 'Tab商品列表', changeInfo, tabId),
             });
-          }
 
-          if (emailResult.success) {
-            // 推送成功才清空待提醒队列；失败保留，下一轮继续重试，避免漏报
-            pendingNewProducts = [];
-            detectedCount++;
+            if (resultCallback) {
+              resultCallback({
+                tabId,
+                detected,
+                changeInfo,
+                emailSent: emailResult.success,
+                error: emailResult.success ? undefined : emailResult.error,
+                checkCount,
+                errorCount,
+              });
+            }
+
+            if (emailResult.success) {
+              detectedCount++;
+            } else {
+              errorCount++;
+            }
           } else {
-            errorCount++;
-          }
-        } else {
-          console.log(
-            `[Tab监控] 本轮无新商品或累计不足阈值（${pendingNewProducts.length}/${minChangeCount}），Tab ID: ${tabId}, 当前商品数: ${currentList.length}`
-          );
+            console.log(
+              `[Tab监控] 本轮变化 ${changeCount}/${minChangeCount}，未达阈值，Tab ID: ${tabId}, 当前商品数: ${currentList.length}`
+            );
 
-          if (resultCallback) {
-            resultCallback({ tabId, detected: false, checkCount, errorCount });
+            if (resultCallback) {
+              resultCallback({ tabId, detected: false, checkCount, errorCount });
+            }
           }
+
+          previousList = currentList;
+        } else {
+          // 累计模式：只认「从没出现过的商品」，反复上下架的老商品不会重复计入
+          const newlySeen: CollectionStockResult[] = [];
+          for (const item of currentList) {
+            if (seenProductIds.has(item.productId)) {
+              continue;
+            }
+            seenProductIds.add(item.productId);
+            newlySeen.push(item);
+          }
+
+          if (newlySeen.length > 0) {
+            newlySeenIds = newlySeen.map(item => item.productId);
+            pendingNewProducts.push(...newlySeen);
+
+            console.log(
+              `[Tab监控] 本轮发现 ${newlySeen.length} 个新商品，累计待提醒 ${pendingNewProducts.length}/${minChangeCount}，Tab ID: ${tabId}`
+            );
+          }
+
+          // 累计新商品达到阈值：把这一批新商品一次性推送出去
+          if (pendingNewProducts.length >= minChangeCount) {
+            const batch = pendingNewProducts;
+
+            detected = true;
+            changeInfo = {
+              mode: 'accumulate',
+              newProducts: batch,
+              currentTotal: currentList.length,
+              seenTotal: seenProductIds.size,
+            };
+
+            console.log(
+              `[Tab监控] 累计新商品达到阈值，发送提醒 ${batch.length} 个，Tab ID: ${tabId}`
+            );
+
+            const emailResult = await sendEmail({
+              to: task.recipient,
+              subject:
+                task.subject ||
+                `🔔 ${task.tabName || 'Tab商品列表'} 新增 ${batch.length} 个商品`,
+              html: createTabChangeTemplate(task.tabName || 'Tab商品列表', changeInfo, tabId),
+            });
+
+            if (resultCallback) {
+              resultCallback({
+                tabId,
+                detected,
+                changeInfo,
+                emailSent: emailResult.success,
+                error: emailResult.success ? undefined : emailResult.error,
+                checkCount,
+                errorCount,
+              });
+            }
+
+            if (emailResult.success) {
+              // 推送成功才清空待提醒队列；失败保留，下一轮继续重试，避免漏报
+              pendingNewProducts = [];
+              detectedCount++;
+            } else {
+              errorCount++;
+            }
+          } else {
+            console.log(
+              `[Tab监控] 本轮无新商品或累计不足阈值（${pendingNewProducts.length}/${minChangeCount}），Tab ID: ${tabId}, 当前商品数: ${currentList.length}`
+            );
+
+            if (resultCallback) {
+              resultCallback({ tabId, detected: false, checkCount, errorCount });
+            }
+          }
+
+          previousList = currentList;
         }
       } catch (error) {
         errorCount++;

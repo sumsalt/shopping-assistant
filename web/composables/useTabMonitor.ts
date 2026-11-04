@@ -16,6 +16,8 @@ interface TabMonitorConfig {
   minPrice?: number
   maxPrice?: number
   minChangeCount?: number
+  /** 监控模式：accumulate 累计新商品 / diff 逐轮对比 */
+  mode?: 'accumulate' | 'diff'
   /** 每日生效时段（可选） */
   activeWindow?: { start: string; end: string }
   adapterConfig?: Record<string, any>
@@ -114,6 +116,7 @@ export const useTabMonitor = () => {
         minPrice: config.minPrice || 0,
         maxPrice: config.maxPrice || 0,
         minChangeCount: config.minChangeCount || 10,
+        mode: config.mode ?? 'accumulate',
         ...(config.activeWindow ? { activeWindow: config.activeWindow } : {}),
         adapterConfig: {
           openid: userConfig.openid || '',

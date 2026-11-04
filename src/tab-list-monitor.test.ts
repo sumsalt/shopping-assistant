@@ -6,9 +6,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 /** 邮件模板入参（只关心断言用到的字段） */
 type TemplateInfo = {
+  mode?: 'accumulate' | 'diff'
   newProducts: Array<{ productId: string }>
+  removedProducts?: Array<{ productId: string }>
   currentTotal: number
-  seenTotal: number
+  seenTotal?: number
 }
 
 const mocks = vi.hoisted(() => ({
@@ -104,6 +106,40 @@ describe('monitorTabList 累积新商品', () => {
     // 后面两轮：不再有新商品（3、4 是老人），不重复提醒
     await vi.advanceTimersByTimeAsync(2 * 60_000)
     expect(mocks.sendEmail).toHaveBeenCalledTimes(1)
+
+    controller.abort()
+  })
+
+  it('逐轮对比模式：每轮新增/下架合计达到阈值就提醒', async () => {
+    queueLists(
+      ['1', '2', '3'], // 初始化基线
+      ['1', '2', '3', '4', '5'], // 新增 2 个 → 达到阈值 2，提醒
+      ['1', '2', '3'], // 下架 4、5 → 又达到阈值，再次提醒（对比模式特性）
+      ['1', '2', '3'], // 无变化
+      ['1', '2', '3', '4'] // 只新增 1 个，不足阈值
+    )
+
+    const { controller } = createCancellableTabMonitor(
+      { recipient: 'dev@example.com', tabName: '测试 Tab' },
+      { tabId: '146453', interval: 60, mode: 'diff', minChangeCount: 2 }
+    )
+
+    await vi.advanceTimersByTimeAsync(0) // 初始化
+    await vi.advanceTimersByTimeAsync(60_000) // 新增 4、5 → 第 1 次提醒
+    expect(mocks.sendEmail).toHaveBeenCalledTimes(1)
+
+    const first = mocks.templates.at(-1)!
+    expect(first.mode).toBe('diff')
+    expect(first.newProducts.map(p => p.productId)).toEqual(['4', '5'])
+
+    await vi.advanceTimersByTimeAsync(60_000) // 下架 4、5 → 第 2 次提醒
+    expect(mocks.sendEmail).toHaveBeenCalledTimes(2)
+
+    const second = mocks.templates.at(-1)!
+    expect(second.removedProducts?.map(p => p.productId)).toEqual(['4', '5'])
+
+    await vi.advanceTimersByTimeAsync(2 * 60_000) // 无变化 / 只变 1 个
+    expect(mocks.sendEmail).toHaveBeenCalledTimes(2)
 
     controller.abort()
   })
