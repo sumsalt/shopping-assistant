@@ -14,6 +14,8 @@ interface TabMonitorTaskItem {
   checkCount: number
   detectedCount: number
   currentTotal: number
+  /** 任务累计记录过的商品数（去重） */
+  seenCount?: number
   lastDetectedAt?: Date
   recipient: string
   /** 每日生效时段（可选） */

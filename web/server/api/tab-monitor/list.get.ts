@@ -39,6 +39,7 @@ export default defineEventHandler(async (event) => {
         checkCount: task.checkCount,
         detectedCount: task.detectedCount,
         currentTotal: task.currentTotal,
+        seenCount: task.seenProductIds?.length ?? 0,
         lastDetectedAt: task.lastDetectedAt,
         recipient: task.userEmail,
       }))

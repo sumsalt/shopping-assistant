@@ -4,7 +4,7 @@
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
       <div>
         <h1 class="text-xl sm:text-2xl font-bold text-gray-900">Tab 监控任务</h1>
-        <p class="mt-1 text-sm text-gray-500">管理 Tab 商品列表监控任务</p>
+        <p class="mt-1 text-sm text-gray-500">监控 Tab 商品列表，累计发现新商品后邮件提醒</p>
       </div>
       <div class="flex items-center gap-2 sm:gap-3">
         <UiButton
@@ -128,7 +128,7 @@
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
               </svg>
               <span class="text-green-700 font-medium">{{ task.detectedCount }}</span>
-              <span class="text-green-600">次变化</span>
+              <span class="text-green-600">次提醒</span>
             </div>
             <div class="flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 rounded-lg border border-purple-100">
               <svg class="w-4 h-4 text-purple-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -136,6 +136,13 @@
               </svg>
               <span class="text-purple-700 font-medium">{{ task.currentTotal }}</span>
               <span class="text-purple-600">当前商品数</span>
+            </div>
+            <div class="flex items-center gap-1.5 px-3 py-1.5 bg-teal-50 rounded-lg border border-teal-100">
+              <svg class="w-4 h-4 text-teal-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+              </svg>
+              <span class="text-teal-700 font-medium">{{ task.seenCount ?? 0 }}</span>
+              <span class="text-teal-600">已记录商品</span>
             </div>
             <div v-if="task.lastDetectedAt" class="flex items-center gap-1.5 px-3 py-1.5 bg-orange-50 rounded-lg border border-orange-100">
               <svg class="w-4 h-4 text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -179,7 +186,7 @@
           <div v-if="task.detectedCount > 0" class="mt-4">
             <div class="bg-green-50 rounded-lg p-3 border border-green-100">
               <p class="text-sm font-medium text-green-800 mb-2">
-                ✓ 已检测到 {{ task.detectedCount }} 次商品列表变化
+                ✓ 已推送 {{ task.detectedCount }} 次新商品提醒
               </p>
               <p v-if="task.lastDetectedAt" class="text-xs text-green-700">
                 最近一次变化: {{ formatLastDetected(task.lastDetectedAt) }}
@@ -352,7 +359,7 @@
             </div>
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-1.5">
-                触发变化的最少商品数
+                累计新增多少件商品后提醒
               </label>
               <input
                 v-model.number="formData.minChangeCount"
@@ -361,7 +368,9 @@
                 placeholder="默认 10"
                 class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
               />
-              <p class="mt-1 text-xs text-gray-500">只有变化商品数量达到此值才会发送通知</p>
+              <p class="mt-1 text-xs text-gray-500">
+                任务内按商品去重累计，凑够这个数量才发一次邮件；同一商品反复上下架只记一次。
+              </p>
             </div>
           </div>
         </div>

@@ -21,6 +21,8 @@ export interface TabMonitorTaskRecord extends StoredTaskBase {
   checkCount: number
   detectedCount: number
   currentTotal: number
+  /** 任务内已见过的商品 ID（去重），重启后继续沿用，避免反复上下架重复提醒 */
+  seenProductIds?: string[]
   lastDetectedAt?: Date
   controller?: AbortController
 }
@@ -66,16 +68,25 @@ export const startTabMonitorTask = (
         monitorTask.checkCount = progress.checkCount
         monitorTask.detectedCount = progress.detectedCount
         monitorTask.currentTotal = progress.currentTotal
+
+        // 任务内「已见过商品」集合：只增不减，重启续跑时继续沿用
+        if (progress.newlySeenProductIds?.length) {
+          const seen = new Set(monitorTask.seenProductIds ?? [])
+          for (const productId of progress.newlySeenProductIds) {
+            seen.add(productId)
+          }
+          monitorTask.seenProductIds = [...seen]
+        }
+
         persistTaskSoon('tab', monitorTask)
       }
     },
     (result) => {
       console.log(`Tab 监控任务 ${taskId} 结果:`, result)
 
-      // 更新任务数据
+      // 更新任务数据（推送次数由进度回调带上来，这里只记录最近一次提醒时间）
       const monitorTask = tabMonitorTasks.get(taskId)
-      if (monitorTask && result.detected && result.changeInfo) {
-        monitorTask.detectedCount++
+      if (monitorTask && result.detected && result.emailSent) {
         monitorTask.lastDetectedAt = new Date()
         persistTaskSoon('tab', monitorTask)
       }
@@ -132,10 +143,10 @@ export default defineEventHandler(async (event) => {
       return createErrorResponse(ErrorCode.INVALID_PARAMS, '收件人邮箱不能为空')
     }
 
-    // 构建监控任务
+    // 构建监控任务（主题由监控核心按「新增 N 个商品」动态生成）
     const task: TabMonitorTask = {
       recipient: body.recipient,
-      subject: body.subject || `🔔 ${body.tabName} 变化提醒`,
+      ...(body.subject ? { subject: body.subject } : {}),
       tabName: body.tabName,
     }
 
@@ -179,6 +190,7 @@ export default defineEventHandler(async (event) => {
       checkCount: 0,
       detectedCount: 0,
       currentTotal: 0,
+      seenProductIds: [],
     }
 
     tabMonitorTasks.set(taskId, taskRecord)

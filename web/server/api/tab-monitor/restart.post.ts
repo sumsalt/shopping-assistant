@@ -44,7 +44,6 @@ export default defineEventHandler(async (event) => {
     // 构建监控任务
     const task: TabMonitorTask = {
       recipient: originalTask.userEmail,
-      subject: `🔔 ${originalTask.tabName} 变化提醒`,
       tabName: originalTask.tabName,
     }
 
@@ -69,6 +68,7 @@ export default defineEventHandler(async (event) => {
       checkCount: 0,
       detectedCount: 0,
       currentTotal: 0,
+      seenProductIds: [],
     }
 
     tabMonitorTasks.set(newTaskId, newTask)

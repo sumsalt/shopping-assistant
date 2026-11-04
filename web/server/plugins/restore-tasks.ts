@@ -206,7 +206,6 @@ const restoreTabTasks = (): number => {
 
       const request: TabMonitorTask = {
         recipient: task.userEmail,
-        subject: `🔔 ${task.tabName} 变化提醒`,
         tabName: task.tabName,
       }
 
@@ -218,6 +217,8 @@ const restoreTabTasks = (): number => {
           taskId: task.id,
           initialCheckCount: task.checkCount ?? 0,
           initialDetectedCount: task.detectedCount ?? 0,
+          // 续跑时继续沿用已见商品集合：重启前见过的商品不会再被当成新商品
+          initialSeenProductIds: task.seenProductIds ?? [],
           duration: remaining === Number.POSITIVE_INFINITY ? undefined : Math.floor(remaining),
         },
         { preserveState: true }
