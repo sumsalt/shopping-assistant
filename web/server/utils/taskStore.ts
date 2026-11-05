@@ -9,32 +9,9 @@
  * 运行要求：Node.js >= 22.5（node:sqlite）
  */
 
-import { mkdirSync } from 'node:fs'
-import { createRequire } from 'node:module'
-import { resolve } from 'node:path'
+import { closeDb, getDb } from './db'
 
-/**
- * node:sqlite 只在 Node 22+ 提供，而项目 @types/node 仍是 20.x，
- * 这里通过 createRequire 拿到运行时模块并自行声明最小类型，避免类型版本耦合。
- */
-interface SqliteStatement {
-  run(...params: unknown[]): unknown
-  get(...params: unknown[]): unknown
-  all(...params: unknown[]): unknown
-}
-
-interface SqliteDatabase {
-  exec(sql: string): void
-  prepare(sql: string): SqliteStatement
-  close(): void
-}
-
-interface SqliteModule {
-  DatabaseSync: new (path: string) => SqliteDatabase
-}
-
-const require = createRequire(import.meta.url)
-const { DatabaseSync } = require('node:sqlite') as SqliteModule
+// 数据目录 / 数据库路径由 db 模块统一管理
 
 /** 任务种类 */
 export type TaskKind = 'stock' | 'price' | 'tab'
@@ -63,70 +40,14 @@ interface TaskRow {
   payload: string
 }
 
-/** 数据目录（可通过 DATA_DIR 覆盖，默认 <cwd>/data） */
-const DATA_DIR = process.env.DATA_DIR
-  ? resolve(process.env.DATA_DIR)
-  : resolve(process.cwd(), 'data')
-
-/** 数据库文件路径 */
-const DB_PATH = resolve(DATA_DIR, 'tasks.db')
-
 /** 进度类写入的最小间隔（毫秒） */
 const PERSIST_THROTTLE_MS = 1000
-
-let db: SqliteDatabase | null = null
-let dbErrorLogged = false
 
 /** 节流定时器：key 为 `${kind}:${id}` */
 const pendingTimers = new Map<string, ReturnType<typeof setTimeout>>()
 
 /** 节流待写入任务：key -> { kind, task } */
 const pendingTasks = new Map<string, { kind: TaskKind; task: StoredTaskBase }>()
-
-/**
- * 获取数据库连接（懒初始化，进程内单例）
- */
-const getDb = (): SqliteDatabase | null => {
-  if (db) {
-    return db
-  }
-
-  try {
-    // 目录 700：任务数据包含登录态凭证，仅服务进程用户可读
-    mkdirSync(DATA_DIR, { recursive: true, mode: 0o700 })
-    const instance = new DatabaseSync(DB_PATH)
-
-    // WAL 模式：写入不阻塞读取，异常退出后也能保持一致性
-    instance.exec('PRAGMA journal_mode = WAL')
-    instance.exec('PRAGMA synchronous = NORMAL')
-
-    instance.exec(`
-      CREATE TABLE IF NOT EXISTS tasks (
-        kind TEXT NOT NULL,
-        id TEXT NOT NULL,
-        user_id TEXT NOT NULL,
-        user_email TEXT NOT NULL,
-        status TEXT NOT NULL,
-        created_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL,
-        payload TEXT NOT NULL,
-        PRIMARY KEY (kind, id)
-      )
-    `)
-    instance.exec('CREATE INDEX IF NOT EXISTS idx_tasks_kind_user ON tasks (kind, user_id)')
-    instance.exec('CREATE INDEX IF NOT EXISTS idx_tasks_kind_status ON tasks (kind, status)')
-
-    db = instance
-    console.log(`[TaskStore] 已启用任务持久化: ${DB_PATH}`)
-    return db
-  } catch (error) {
-    if (!dbErrorLogged) {
-      dbErrorLogged = true
-      console.error('[TaskStore] 初始化失败，任务将仅保存在内存中:', error)
-    }
-    return null
-  }
-}
 
 /**
  * 序列化任务（去掉不可序列化的 controller，Date 转 ISO）
@@ -342,16 +263,9 @@ export const flushPendingTasks = (): void => {
 }
 
 /**
- * 关闭数据库连接
+ * 落盘待写入任务并关闭数据库连接
  */
 export const closeTaskStore = (): void => {
   flushPendingTasks()
-  if (db) {
-    try {
-      db.close()
-    } catch {
-      // 忽略关闭异常
-    }
-    db = null
-  }
+  closeDb()
 }
