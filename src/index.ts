@@ -46,6 +46,7 @@ export {
   monitorStock,
   monitorSingleStock,
   createCancellableMonitor,
+  MIN_STOCK_MONITOR_INTERVAL,
 } from './stock-monitor';
 export type {
   StockMonitorConfig,

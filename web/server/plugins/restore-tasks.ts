@@ -8,6 +8,7 @@
 
 import {
   activeSecondsBetween,
+  MIN_STOCK_MONITOR_INTERVAL,
   normalizeActiveWindow,
   type ActiveWindow,
   type MonitorTask,
@@ -71,6 +72,12 @@ const restoreStockTasks = (): number => {
         task.status = 'completed'
         persistTask('stock', task)
         continue
+      }
+
+      // 历史任务的间隔可能低于新的下限（1 秒），续跑时统一抬到最小间隔
+      if (task.config.interval !== undefined && task.config.interval < MIN_STOCK_MONITOR_INTERVAL) {
+        task.config.interval = MIN_STOCK_MONITOR_INTERVAL
+        persistTask('stock', task)
       }
 
       task.status = 'running'

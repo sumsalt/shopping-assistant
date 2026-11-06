@@ -7,7 +7,7 @@
  *
  * 分桶规则：
  * - 有登录态（uid）：按账号分桶，默认 15 秒放行一次，多账号互不影响
- * - 无登录态：所有匿名请求共享一个桶，默认 1.5 秒放行一次（同出口 IP 共享配额）
+ * - 无登录态：所有匿名请求共享一个桶，默认 1 秒放行一次（同出口 IP 共享配额）
  *
  * 公平策略：每个任务一个 FIFO 子队列，令牌就绪时按任务轮转（round-robin）取队首，
  * 大任务不会饿死小任务；同一任务同一时刻只有 1 个在途请求（任务循环本身串行）。
@@ -62,7 +62,7 @@ const readEnvInt = (name: string, fallback: number): number => {
 
 const options: GateOptions = {
   authIntervalMs: readEnvInt('GATE_AUTH_INTERVAL_MS', 15_000),
-  anonIntervalMs: readEnvInt('GATE_ANON_INTERVAL_MS', 1_500),
+  anonIntervalMs: readEnvInt('GATE_ANON_INTERVAL_MS', 1_000),
   maxWaitMs: readEnvInt('GATE_MAX_WAIT_MS', 10 * 60_000),
 };
 

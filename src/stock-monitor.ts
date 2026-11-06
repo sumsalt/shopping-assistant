@@ -19,11 +19,35 @@ if (emailConfig) {
   configureEmailService(emailConfig);
 }
 
+/** 库存监控的最小检测间隔（秒）：低于此值按此值执行 */
+export const MIN_STOCK_MONITOR_INTERVAL = 2;
+
+/** 可被取消打断的等待，返回时表示已经等够时间或任务被中止 */
+const sleepInterruptible = (ms: number, signal: AbortSignal): Promise<void> =>
+  new Promise((resolve) => {
+    if (ms <= 0 || signal.aborted) {
+      resolve();
+      return;
+    }
+
+    const onAbort = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
+
 /**
  * 库存监控配置
  */
 export interface StockMonitorConfig {
-  /** 循环间隔时间（秒），默认 60 秒 */
+  /** 循环间隔时间（秒），默认 2 秒，最小 2 秒 */
   interval?: number;
   /** 循环总时长（秒），不传则无限循环 */
   duration?: number;
@@ -177,7 +201,7 @@ export const createCancellableMonitor = (
     },
     async (): Promise<MonitorResult> => {
       const {
-        interval = 1,
+        interval = MIN_STOCK_MONITOR_INTERVAL,
         duration,
         adapterConfig = {},
         initialCheckCount = 0,
@@ -192,6 +216,9 @@ export const createCancellableMonitor = (
       if (interval <= 0) {
         throw new Error('循环间隔时间必须大于 0');
       }
+
+      // 实际生效间隔：低于最小间隔的配置（含历史任务里的 1 秒）一律按最小间隔执行
+      const effectiveInterval = Math.max(MIN_STOCK_MONITOR_INTERVAL, interval);
 
       if (duration !== undefined && duration <= 0) {
         throw new Error('循环总时长必须大于 0');
@@ -214,7 +241,8 @@ export const createCancellableMonitor = (
           break;
         }
 
-        const elapsedTime = Math.floor((Date.now() - startTime) / 1000);
+        const cycleStartedAt = Date.now();
+        const elapsedTime = Math.floor((cycleStartedAt - startTime) / 1000);
 
         // 检查是否达到总时长限制
         if (duration && elapsedTime >= duration) {
@@ -251,7 +279,7 @@ export const createCancellableMonitor = (
             resultCallback(result);
           }
 
-          // 请求节奏由全局请求闸门控制（匿名 1.5 秒 / 登录态 15 秒），这里不再额外 sleep
+          // 请求节奏由全局请求闸门控制（匿名 1 秒 / 登录态 15 秒），轮次节奏由下方 sleep 控制
         } catch (error) {
           result.error = error instanceof Error ? error.message : String(error);
           result.checkCount++;
@@ -276,9 +304,15 @@ export const createCancellableMonitor = (
           break;
         }
 
-        if (duration && elapsedTime + interval >= duration) {
+        if (duration && elapsedTime + effectiveInterval >= duration) {
           break;
         }
+
+        // 轮次之间至少间隔 effectiveInterval 秒（从本轮开始算，含请求耗时）
+        await sleepInterruptible(
+          effectiveInterval * 1000 - (Date.now() - cycleStartedAt),
+          signal
+        );
       }
 
       return result;

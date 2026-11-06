@@ -1,5 +1,8 @@
 import type { UserConfig } from '@/types'
 
+/** 库存监控的最小检测间隔（秒），与后端 MIN_STOCK_MONITOR_INTERVAL 保持一致 */
+export const MIN_STOCK_MONITOR_INTERVAL = 2
+
 // 监控任务类型
 interface MonitorTask {
   request: {
@@ -108,7 +111,7 @@ export const useMonitor = () => {
     try {
       // 构建监控配置
       const monitorConfig: MonitorConfig = {
-        interval: config?.interval || 1,
+        interval: config?.interval || MIN_STOCK_MONITOR_INTERVAL,
         duration: config?.duration || 3 * 60 * 60,
         adapterConfig: {
           // 暂时不使用登录态

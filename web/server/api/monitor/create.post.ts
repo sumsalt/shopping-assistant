@@ -7,6 +7,7 @@
 
 import {
   createCancellableMonitor,
+  MIN_STOCK_MONITOR_INTERVAL,
   type MonitorResult,
   type MonitorTask,
   type StockMonitorConfig,
@@ -137,9 +138,22 @@ export default defineEventHandler(async (event) => {
       productImage: product.productImage,
     }
 
+    // 校验间隔（硬下限 2 秒）
+    const rawInterval = body.config?.interval
+    const interval =
+      rawInterval === undefined || rawInterval === null || rawInterval === ''
+        ? MIN_STOCK_MONITOR_INTERVAL
+        : Number(rawInterval)
+    if (!Number.isFinite(interval) || interval < MIN_STOCK_MONITOR_INTERVAL) {
+      return createErrorResponse(
+        ErrorCode.INVALID_PARAMS,
+        `检测间隔不能小于 ${MIN_STOCK_MONITOR_INTERVAL} 秒`
+      )
+    }
+
     // 构建监控配置
     const config: StockMonitorConfig = {
-      interval: body.config?.interval || 1,
+      interval,
       duration: body.config?.duration || 3 * 60 * 60,
       adapterConfig: body.config?.adapterConfig || {},
     }
