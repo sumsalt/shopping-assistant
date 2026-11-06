@@ -60,6 +60,7 @@ export type {
 export {
   monitorTabList,
   createCancellableTabMonitor,
+  MAX_TAB_PAGE_COUNT,
 } from './tab-list-monitor';
 export type {
   TabMonitorConfig,

@@ -42,6 +42,8 @@ export interface TabMonitorConfig {
   page?: number;
   /** 每页数量，默认为20 */
   pageSize?: number;
+  /** 每轮抓取的页数，默认为1；每多抓一页会多一次请求 */
+  pageCount?: number;
   /** 排序方式，默认为1 */
   sort?: number;
   /** 最低价格，默认为0 */
@@ -84,6 +86,9 @@ export interface TabMonitorTask {
  * Tab 监控模式
  */
 export type TabMonitorMode = 'accumulate' | 'diff';
+
+/** 单轮最多抓取的页数（每页一次请求，受全局请求闸门限制，页数越多单轮耗时越长） */
+export const MAX_TAB_PAGE_COUNT = 20;
 
 /**
  * Tab 新商品提醒信息（累计模式）
@@ -344,6 +349,7 @@ export const createCancellableTabMonitor = (
       tabId,
       page = 1,
       pageSize = 20,
+      pageCount = 1,
       sort = 1,
       minPrice = 0,
       maxPrice = 0,
@@ -416,24 +422,72 @@ export const createCancellableTabMonitor = (
       });
     };
 
+    // 单轮抓取页数：至少 1 页，最多 MAX_TAB_PAGE_COUNT 页
+    const pagesToFetch = Math.min(
+      MAX_TAB_PAGE_COUNT,
+      Math.max(1, Math.floor(pageCount) || 1)
+    );
+
     // 创建适配器
     const adapter = new YishouAdapter(adapterConfig);
+
+    /**
+     * 按配置的页数抓取列表，并合并去重
+     *
+     * - 从 page 开始连续抓取 pageCount 页
+     * - 某一页返回空列表时提前结束（后面不会有数据了，省掉多余请求）
+     * - 同一商品出现在多页（排序抖动 / 翻页期间上下架）时按 productId 去重
+     * - 任何一页报错都会中断本轮，不返回「半份列表」，避免把缺失的商品当成新商品
+     */
+    const fetchPages = async (): Promise<{
+      list: CollectionStockResult[];
+      pagesFetched: number;
+    }> => {
+      const merged: CollectionStockResult[] = [];
+      const seenIds = new Set<string>();
+      let pagesFetched = 0;
+
+      for (let offset = 0; offset < pagesToFetch; offset++) {
+        const currentPage = page + offset;
+        const result: CollectionStockCheckResult = await adapter.getTabGoodsList(
+          tabId,
+          currentPage,
+          pageSize,
+          sort,
+          minPrice,
+          maxPrice
+        );
+        pagesFetched++;
+
+        const items = [...result.inStockItems, ...result.outOfStockItems];
+        if (items.length === 0) {
+          break;
+        }
+
+        for (const item of items) {
+          if (seenIds.has(item.productId)) {
+            continue;
+          }
+          seenIds.add(item.productId);
+          merged.push(item);
+        }
+      }
+
+      if (pagesToFetch > 1) {
+        console.log(
+          `[Tab监控] 本轮抓取 ${pagesFetched}/${pagesToFetch} 页，合并后 ${merged.length} 个商品，Tab ID: ${tabId}`
+        );
+      }
+
+      return { list: merged, pagesFetched };
+    };
 
     /** 抓取当前列表，并把其中没见过的商品记入已见集合 */
     const fetchAndMarkSeen = async (): Promise<{
       list: CollectionStockResult[];
       newlySeen: CollectionStockResult[];
     }> => {
-      const result: CollectionStockCheckResult = await adapter.getTabGoodsList(
-        tabId,
-        page,
-        pageSize,
-        sort,
-        minPrice,
-        maxPrice
-      );
-
-      const list = [...result.inStockItems, ...result.outOfStockItems];
+      const { list } = await fetchPages();
       const newlySeen: CollectionStockResult[] = [];
 
       // 逐轮对比模式不需要已见集合
@@ -556,17 +610,10 @@ export const createCancellableTabMonitor = (
       let newlySeenIds: string[] | undefined;
 
       try {
-        // 获取当前商品列表
-        const result: CollectionStockCheckResult = await adapter.getTabGoodsList(
-          tabId,
-          page,
-          pageSize,
-          sort,
-          minPrice,
-          maxPrice
-        );
+        // 获取当前商品列表（按配置的页数抓取并合并）
+        const { list: fetchedList } = await fetchPages();
 
-        currentList = [...result.inStockItems, ...result.outOfStockItems];
+        currentList = fetchedList;
         checkCount++;
 
         if (mode === 'diff') {

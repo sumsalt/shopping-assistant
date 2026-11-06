@@ -12,6 +12,8 @@ interface TabMonitorConfig {
   duration?: number
   page?: number
   pageSize?: number
+  /** 每轮抓取页数，默认 1 */
+  pageCount?: number
   sort?: number
   minPrice?: number
   maxPrice?: number
@@ -112,6 +114,7 @@ export const useTabMonitor = () => {
         duration: config.duration || 2 * 60 * 60, // 默认 2 小时
         page: config.page || 1,
         pageSize: config.pageSize || 20,
+        pageCount: config.pageCount || 1,
         sort: config.sort || 1,
         minPrice: config.minPrice || 0,
         maxPrice: config.maxPrice || 0,

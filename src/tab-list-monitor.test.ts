@@ -284,3 +284,115 @@ describe('monitorTabList 生效时段', () => {
     controller.abort()
   })
 })
+
+describe('monitorTabList 多页抓取', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(2026, 10, 3, 10, 0, 0))
+    mocks.getTabGoodsList.mockReset()
+    mocks.sendEmail.mockReset()
+    mocks.sendEmail.mockResolvedValue({ success: true })
+    mocks.templates.length = 0
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('按配置页数逐页抓取，合并去重后作为一轮列表', async () => {
+    queueLists(
+      ['1', '2'], // 第 1 页
+      ['2', '3'], // 第 2 页（2 与上一页重复）
+      ['4'], // 第 3 页
+      ['1', '2'], // 第 2 轮第 1 页
+      ['3', '4'], // 第 2 轮第 2 页
+      [] // 第 2 轮第 3 页为空 → 提前结束
+    )
+
+    const totals: number[] = []
+    const { controller } = createCancellableTabMonitor(
+      { recipient: 'dev@example.com', tabName: '测试 Tab' },
+      { tabId: '146453', interval: 60, pageCount: 3, minChangeCount: 10 },
+      (progress) => {
+        totals.push(progress.currentTotal)
+      }
+    )
+
+    // 初始化：抓 3 页
+    await vi.advanceTimersByTimeAsync(0)
+    expect(mocks.getTabGoodsList).toHaveBeenCalledTimes(3)
+    expect(mocks.getTabGoodsList.mock.calls.map(call => call[1])).toEqual([1, 2, 3])
+    expect(totals.at(-1)).toBe(4) // 1,2,3,4 去重后 4 个
+
+    // 第 2 轮：第 3 页为空，请求到空页就停止（不再往后翻）
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(mocks.getTabGoodsList).toHaveBeenCalledTimes(6)
+    expect(mocks.getTabGoodsList.mock.calls.at(-1)?.[1]).toBe(3)
+    expect(totals.at(-1)).toBe(4)
+
+    controller.abort()
+  })
+
+  it('某一页失败时整轮作废，不拿半份列表当基线', async () => {
+    mocks.getTabGoodsList
+      .mockResolvedValueOnce(listResult(['1', '2'])) // 初始化第 1 页
+      .mockResolvedValueOnce(listResult(['3'])) // 初始化第 2 页
+      .mockResolvedValueOnce(listResult(['1', '2'])) // 第 1 轮第 1 页
+      .mockRejectedValueOnce(new Error('第 2 页超时')) // 第 1 轮第 2 页失败
+      .mockResolvedValueOnce(listResult(['1', '2'])) // 第 2 轮第 1 页
+      .mockResolvedValueOnce(listResult(['3'])) // 第 2 轮第 2 页
+
+    const errors: string[] = []
+    const { controller } = createCancellableTabMonitor(
+      { recipient: 'dev@example.com', tabName: '测试 Tab' },
+      { tabId: '146453', interval: 60, pageCount: 2, minChangeCount: 1 },
+      undefined,
+      (result) => {
+        if (result.error) {
+          errors.push(result.error)
+        }
+      }
+    )
+
+    await vi.advanceTimersByTimeAsync(0) // 初始化成功
+    await vi.advanceTimersByTimeAsync(60_000) // 第 1 轮第 2 页失败
+    expect(errors).toEqual(['第 2 页超时'])
+    // 如果用了半份列表（只有 1、2），3 会被当成新商品并触发提醒
+    expect(mocks.sendEmail).toHaveBeenCalledTimes(0)
+
+    await vi.advanceTimersByTimeAsync(60_000) // 重试成功，列表与基线一致
+    expect(mocks.sendEmail).toHaveBeenCalledTimes(0)
+
+    controller.abort()
+  })
+
+  it('页数超过上限时按上限抓取', async () => {
+    queueLists(...Array.from({ length: 25 }, (_, i) => [`${i}`]))
+
+    const { controller } = createCancellableTabMonitor(
+      { recipient: 'dev@example.com', tabName: '测试 Tab' },
+      { tabId: '146453', interval: 60, pageCount: 999, minChangeCount: 10 }
+    )
+
+    await vi.advanceTimersByTimeAsync(0)
+    expect(mocks.getTabGoodsList).toHaveBeenCalledTimes(20)
+    expect(mocks.getTabGoodsList.mock.calls.at(-1)?.[1]).toBe(20)
+
+    controller.abort()
+  })
+
+  it('页数为 0 或负数时按 1 页处理', async () => {
+    queueLists(['1'], ['2'])
+
+    const { controller } = createCancellableTabMonitor(
+      { recipient: 'dev@example.com', tabName: '测试 Tab' },
+      { tabId: '146453', interval: 60, pageCount: 0, minChangeCount: 10 }
+    )
+
+    await vi.advanceTimersByTimeAsync(0)
+    expect(mocks.getTabGoodsList).toHaveBeenCalledTimes(1)
+    expect(mocks.getTabGoodsList.mock.calls[0][1]).toBe(1)
+
+    controller.abort()
+  })
+})

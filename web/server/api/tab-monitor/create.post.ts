@@ -6,6 +6,7 @@
 import {
   createCancellableTabMonitor,
   normalizeActiveWindow,
+  MAX_TAB_PAGE_COUNT,
   type TabMonitorTask,
   type TabMonitorConfig,
 } from '@core'
@@ -162,6 +163,19 @@ export default defineEventHandler(async (event) => {
     // 监控模式：accumulate 累计新商品（默认）/ diff 逐轮对比
     const mode = body.config?.mode === 'diff' ? 'diff' : 'accumulate'
 
+    // 每轮抓取页数：默认 1 页
+    const rawPageCount = body.config?.pageCount
+    const pageCount =
+      rawPageCount === undefined || rawPageCount === null || rawPageCount === ''
+        ? 1
+        : Number(rawPageCount)
+    if (!Number.isInteger(pageCount) || pageCount < 1 || pageCount > MAX_TAB_PAGE_COUNT) {
+      return createErrorResponse(
+        ErrorCode.INVALID_PARAMS,
+        `抓取页数需为 1-${MAX_TAB_PAGE_COUNT} 的整数`
+      )
+    }
+
     // 构建监控配置
     const config: TabMonitorConfig = {
       tabId: body.tabId,
@@ -170,6 +184,7 @@ export default defineEventHandler(async (event) => {
       duration: body.config?.duration || 2 * 60 * 60,
       page: body.config?.page || 1,
       pageSize: body.config?.pageSize || 20,
+      pageCount,
       sort: body.config?.sort || 1,
       minPrice: body.config?.minPrice || 0,
       maxPrice: body.config?.maxPrice || 0,

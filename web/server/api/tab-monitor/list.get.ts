@@ -34,6 +34,7 @@ export default defineEventHandler(async (event) => {
         status: task.status,
         mode: task.config.mode ?? 'accumulate',
         interval: task.config.interval,
+        pageCount: task.config.pageCount ?? 1,
         duration: task.config.duration,
         activeWindow: task.config.activeWindow,
         createdAt: task.createdAt,

@@ -12,6 +12,8 @@ interface TabMonitorTaskItem {
   mode?: 'accumulate' | 'diff'
   interval: number
   duration: number
+  /** 每轮抓取页数（默认 1） */
+  pageCount?: number
   createdAt: Date
   checkCount: number
   detectedCount: number

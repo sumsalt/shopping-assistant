@@ -106,6 +106,15 @@
                 <span class="text-gray-600">最多 {{ task.duration }} 秒</span>
               </div>
               <div
+                v-if="(task.pageCount ?? 1) > 1"
+                class="flex items-center gap-1.5 px-3 py-1.5 bg-gray-50 rounded-lg border border-gray-100"
+              >
+                <svg class="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                <span class="text-gray-600">每轮 {{ task.pageCount }} 页</span>
+              </div>
+              <div
                 v-if="task.activeWindow"
                 class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border"
                 :class="isInActiveWindow(task)
@@ -284,8 +293,8 @@
             </div>
           </div>
 
-          <!-- 检测间隔和监控时长 -->
-          <div class="grid grid-cols-2 gap-4">
+          <!-- 检测间隔、监控时长和抓取页数 -->
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-1.5">
                 检测间隔（秒）
@@ -297,7 +306,7 @@
                 placeholder="默认 60 秒（1 分钟）"
                 class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
               />
-              <p class="mt-1 text-xs text-gray-500">建议设置为 60 秒以上，避免频繁请求</p>
+              <p class="mt-1 text-xs text-gray-500">建议 60 秒以上，避免频繁请求</p>
             </div>
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-1.5">
@@ -311,6 +320,20 @@
                 class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
               />
               <p class="mt-1 text-xs text-gray-500">设置为 0 表示无限监控</p>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1.5">
+                抓取页数
+              </label>
+              <input
+                v-model.number="formData.pageCount"
+                type="number"
+                min="1"
+                max="20"
+                placeholder="默认 1 页"
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+              />
+              <p class="mt-1 text-xs text-gray-500">每页 20 条，最多 20 页；多一页多一次请求</p>
             </div>
           </div>
 
@@ -527,6 +550,7 @@ const formData = ref({
   tabName: '',
   interval: 60,
   duration: 86400,
+  pageCount: 1,
   sort: 1,
   mode: 'accumulate' as 'accumulate' | 'diff',
   minChangeCount: 10,
@@ -541,6 +565,7 @@ const defaultFormData = () => ({
   tabName: '',
   interval: 60,
   duration: 86400,
+  pageCount: 1,
   sort: 1,
   mode: 'accumulate' as 'accumulate' | 'diff',
   minChangeCount: 10,
