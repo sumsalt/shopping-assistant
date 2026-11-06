@@ -241,8 +241,7 @@ export const createCancellableMonitor = (
           break;
         }
 
-        const cycleStartedAt = Date.now();
-        const elapsedTime = Math.floor((cycleStartedAt - startTime) / 1000);
+        const elapsedTime = Math.floor((Date.now() - startTime) / 1000);
 
         // 检查是否达到总时长限制
         if (duration && elapsedTime >= duration) {
@@ -308,11 +307,8 @@ export const createCancellableMonitor = (
           break;
         }
 
-        // 轮次之间至少间隔 effectiveInterval 秒（从本轮开始算，含请求耗时）
-        await sleepInterruptible(
-          effectiveInterval * 1000 - (Date.now() - cycleStartedAt),
-          signal
-        );
+        // 每轮跑完固定等一个间隔，实际请求快慢再由闸门控制，不追求精确节奏
+        await sleepInterruptible(effectiveInterval * 1000, signal);
       }
 
       return result;
