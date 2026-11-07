@@ -39,6 +39,10 @@ export interface TabSeenProductItem {
   price: number
   productImage?: string
   productUrl?: string
+  /** 供应商标识（用于店铺黑名单） */
+  supplyId?: string
+  /** 市场名称（辅助识别店铺） */
+  marketName?: string
   /** 首次发现时间（ISO 字符串） */
   firstSeenAt: string
 }

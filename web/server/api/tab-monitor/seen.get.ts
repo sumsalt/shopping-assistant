@@ -11,6 +11,7 @@ import { tabMonitorTasks, type TabMonitorTaskRecord } from './create.post'
 import { createSuccessResponse, createErrorResponse, ErrorCode } from '../../utils/response'
 import { getCurrentUser } from '../../utils/session'
 import { listTasks } from '../../utils/taskStore'
+import { listBlacklistedSupplyIds } from '../../utils/shopBlacklistStore'
 
 export default defineEventHandler(async (event) => {
   try {
@@ -47,8 +48,15 @@ export default defineEventHandler(async (event) => {
           firstSeenAt: new Date(task!.createdAt).toISOString(),
         }))
 
+    // 店铺黑名单：已经记录过的商品也要隐藏（取消黑名单后会自动恢复显示）
+    const blacklisted = new Set(listBlacklistedSupplyIds(currentUser.username))
+    const visibleProducts =
+      blacklisted.size > 0
+        ? products.filter(item => !item.supplyId || !blacklisted.has(item.supplyId))
+        : products
+
     // 按首次发现时间倒序（同一轮发现的保持原有顺序）
-    const sorted = [...products].sort(
+    const sorted = [...visibleProducts].sort(
       (a, b) => new Date(b.firstSeenAt).getTime() - new Date(a.firstSeenAt).getTime()
     )
 

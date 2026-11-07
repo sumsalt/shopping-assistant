@@ -306,6 +306,8 @@ export interface CollectionStockResult {
   productImage: string;
   /** 市场名称 */
   marketName: string;
+  /** 供应商标识（一手 supply_id，用于店铺黑名单过滤） */
+  supplyId?: string;
   /** 7日销量 */
   salesOf7: number;
   /** 状态描述信息 */

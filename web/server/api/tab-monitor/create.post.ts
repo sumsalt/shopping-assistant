@@ -15,6 +15,7 @@ import {
 import { createSuccessResponse, createErrorResponse, ErrorCode } from '../../utils/response'
 import { getCurrentUser } from '../../utils/session'
 import { persistTask, persistTaskSoon, type StoredTaskBase } from '../../utils/taskStore'
+import { listBlacklistedSupplyIds } from '../../utils/shopBlacklistStore'
 
 /** Tab 监控任务记录 */
 export interface TabMonitorTaskRecord extends StoredTaskBase {
@@ -204,6 +205,8 @@ export default defineEventHandler(async (event) => {
       // 累计模式首次创建时翻页抓全部商品，把已有商品全部记为已见
       fullInitialScan: mode === 'accumulate',
       ...(activeWindow ? { activeWindow } : {}),
+      // 每轮实时读取店铺黑名单，运行中拉黑也能立刻生效
+      getBlacklistedSuppliers: () => listBlacklistedSupplyIds(currentUser.username),
     }
 
     // 生成任务 ID

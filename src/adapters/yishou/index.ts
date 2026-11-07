@@ -294,6 +294,7 @@ export const mapTabItemToResult = (data: YishouTabGoodsData): CollectionStockRes
     productUrl: `${YISHOU_GOODS_URL_PREFIX}${data.goods_id}`,
     productImage: data.goods_img || data.goods_thumb,
     marketName: data.one_market_name,
+    ...(data.supply_id ? { supplyId: String(data.supply_id) } : {}),
     salesOf7: data.sales_of_7 || 0,
     message: getCollectionItemMessage(data, inStock),
     collectId: '0', // Tab 商品无收藏ID，设为默认值

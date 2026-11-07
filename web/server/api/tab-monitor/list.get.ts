@@ -7,6 +7,7 @@ import { tabMonitorTasks, type TabMonitorTaskRecord } from './create.post'
 import { createSuccessResponse, createErrorResponse } from '../../utils/response'
 import { getCurrentUser } from '../../utils/session'
 import { listTasks } from '../../utils/taskStore'
+import { listBlacklistedSupplyIds } from '../../utils/shopBlacklistStore'
 
 export default defineEventHandler(async (event) => {
   try {
@@ -14,6 +15,21 @@ export default defineEventHandler(async (event) => {
     const currentUser = getCurrentUser(event)
     if (!currentUser) {
       return createErrorResponse('UNAUTHORIZED', '请先登录')
+    }
+
+    // 店铺黑名单：卡片上的「已记录商品」要和弹窗里看到的一致，先把黑名单商品排除
+    const blacklisted = new Set(listBlacklistedSupplyIds(currentUser.username))
+
+    // 统计累计商品数（黑名单店铺的商品不展示，也不计入）
+    const countSeen = (task: TabMonitorTaskRecord): number => {
+      if (task.seenProducts?.length) {
+        return blacklisted.size
+          ? task.seenProducts.filter(
+              item => !item.supplyId || !blacklisted.has(item.supplyId)
+            ).length
+          : task.seenProducts.length
+      }
+      return task.seenProductIds?.length ?? 0
     }
 
     // 内存中的任务（含最新进度）
@@ -41,7 +57,7 @@ export default defineEventHandler(async (event) => {
         checkCount: task.checkCount,
         detectedCount: task.detectedCount,
         currentTotal: task.currentTotal,
-        seenCount: task.seenProducts?.length ?? task.seenProductIds?.length ?? 0,
+        seenCount: countSeen(task),
         lastDetectedAt: task.lastDetectedAt,
         recipient: task.userEmail,
       }))

@@ -78,6 +78,14 @@ export interface TabMonitorConfig {
   initialDetectedCount?: number;
   /** 任务 ID（用于全局请求闸门的公平调度） */
   taskId?: string;
+  /**
+   * 店铺黑名单（供应商标识集合）的读取函数
+   *
+   * 每轮抓取前调用一次，返回需要过滤掉的 supplyId：
+   * - 命中黑名单的商品不参与比对、不记入累计商品、不触发提醒
+   * - 传函数而不是数组，是为了让用户在任务运行中把店铺加入黑名单后立即生效
+   */
+  getBlacklistedSuppliers?: () => string[] | Promise<string[]>;
 }
 
 /**
@@ -94,6 +102,10 @@ export interface TabSeenProduct {
   productImage?: string;
   /** 商品链接 */
   productUrl?: string;
+  /** 供应商标识（用于店铺黑名单） */
+  supplyId?: string;
+  /** 市场名称（辅助识别店铺） */
+  marketName?: string;
   /** 首次发现时间（ISO 字符串，落盘后仍可读） */
   firstSeenAt: string;
 }
@@ -460,6 +472,8 @@ export const createCancellableTabMonitor = (
           price: item.price,
           ...(item.productImage ? { productImage: item.productImage } : {}),
           ...(item.productUrl ? { productUrl: item.productUrl } : {}),
+          ...(item.supplyId ? { supplyId: item.supplyId } : {}),
+          ...(item.marketName ? { marketName: item.marketName } : {}),
           firstSeenAt: now,
         };
         records.push(record);
@@ -519,6 +533,29 @@ export const createCancellableTabMonitor = (
     const adapter = new YishouAdapter(adapterConfig);
 
     /**
+     * 读取当前店铺黑名单（每轮读取一次，用户运行中新增黑名单也能立即生效）
+     *
+     * 读取失败时按「没有黑名单」处理：宁可多抓一点，也不要因为配置读取异常把整轮监控搞挂
+     */
+    const resolveBlacklistedSuppliers = async (): Promise<Set<string>> => {
+      if (!config.getBlacklistedSuppliers) {
+        return new Set();
+      }
+
+      try {
+        const ids = await config.getBlacklistedSuppliers();
+        return new Set(
+          (ids ?? [])
+            .map(id => String(id).trim())
+            .filter(Boolean)
+        );
+      } catch (error) {
+        console.warn(`[Tab监控] 读取店铺黑名单失败，本轮不做过滤，Tab ID: ${tabId}`, error);
+        return new Set();
+      }
+    };
+
+    /**
      * 抓取列表，按页合并去重
      *
      * @param pages 最多抓多少页（默认每轮配置的页数）
@@ -571,13 +608,26 @@ export const createCancellableTabMonitor = (
         }
       }
 
-      if (pages > 1 && pages === pagesToFetch) {
+      // 店铺黑名单：直接丢掉整条商品，既不参与比对也不进入累计记录
+      const blacklisted = await resolveBlacklistedSuppliers();
+      const list =
+        blacklisted.size > 0
+          ? merged.filter(item => !item.supplyId || !blacklisted.has(item.supplyId))
+          : merged;
+
+      if (list.length !== merged.length) {
         console.log(
-          `[Tab监控] 本轮抓取 ${pagesFetched}/${pages} 页，合并后 ${merged.length} 个商品，Tab ID: ${tabId}`
+          `[Tab监控] 已过滤 ${merged.length - list.length} 个黑名单店铺商品，Tab ID: ${tabId}`
         );
       }
 
-      return { list: merged, pagesFetched };
+      if (pages > 1 && pages === pagesToFetch) {
+        console.log(
+          `[Tab监控] 本轮抓取 ${pagesFetched}/${pages} 页，合并后 ${list.length} 个商品，Tab ID: ${tabId}`
+        );
+      }
+
+      return { list, pagesFetched };
     };
 
     /** 抓取当前列表，并把其中没见过的商品记入已见集合 */

@@ -28,6 +28,7 @@ import {
   type TabMonitorTaskRecord,
 } from '../api/tab-monitor/create.post'
 import { closeTaskStore, listRunningTasks, persistTask } from '../utils/taskStore'
+import { listBlacklistedSupplyIds } from '../utils/shopBlacklistStore'
 
 /** 避免开发环境热更新时重复执行 */
 let restored = false
@@ -241,6 +242,8 @@ const restoreTabTasks = (): number => {
           // 续跑时继续沿用已见商品集合：重启前见过的商品不会再被当成新商品
           initialSeenProducts: task.seenProducts ?? [],
           initialSeenProductIds: task.seenProductIds ?? [],
+          // 续跑时同样实时读取店铺黑名单
+          getBlacklistedSuppliers: () => listBlacklistedSupplyIds(task.userId),
           duration: remaining === Number.POSITIVE_INFINITY ? undefined : Math.floor(remaining),
         },
         { preserveState: true }

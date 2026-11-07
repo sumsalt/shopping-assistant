@@ -43,12 +43,17 @@ import type { TabMonitorProgress } from './tab-list-monitor'
 import type { CollectionStockResult } from './types'
 
 /** 构造一个最小可用的商品条目 */
-const item = (productId: string): CollectionStockResult =>
-  ({ productId, productName: `商品${productId}`, price: 100 }) as CollectionStockResult
+const item = (productId: string, supplyId?: string): CollectionStockResult =>
+  ({
+    productId,
+    productName: `商品${productId}`,
+    price: 100,
+    ...(supplyId ? { supplyId } : {}),
+  }) as CollectionStockResult
 
 /** 构造一次 Tab 列表查询结果 */
 const listResult = (ids: string[]) => ({
-  inStockItems: ids.map(item),
+  inStockItems: ids.map(id => item(id)),
   outOfStockItems: [],
 })
 
@@ -56,6 +61,13 @@ const listResult = (ids: string[]) => ({
 const queueLists = (...lists: string[][]) => {
   for (const ids of lists) {
     mocks.getTabGoodsList.mockResolvedValueOnce(listResult(ids))
+  }
+}
+
+/** 按顺序给出每一轮的商品条目（可带供应商标识） */
+const queueItems = (...lists: CollectionStockResult[][]) => {
+  for (const items of lists) {
+    mocks.getTabGoodsList.mockResolvedValueOnce({ inStockItems: items, outOfStockItems: [] })
   }
 }
 
@@ -502,6 +514,90 @@ describe('monitorTabList 累计模式全量初始化', () => {
     expect(progresses.at(-1)?.seenTotal).toBe(3)
     expect(progresses.at(-1)?.newlySeenProducts?.map(item => item.productId)).toEqual(['3'])
     expect(mocks.sendEmail).toHaveBeenCalledTimes(0)
+
+    controller.abort()
+  })
+})
+
+describe('monitorTabList 店铺黑名单', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(2026, 10, 3, 10, 0, 0))
+    mocks.getTabGoodsList.mockReset()
+    mocks.sendEmail.mockReset()
+    mocks.sendEmail.mockResolvedValue({ success: true })
+    mocks.templates.length = 0
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('黑名单店铺的商品不记入累计，也不触发提醒', async () => {
+    queueItems(
+      [item('1', 's1'), item('2', 's2')], // 基线：s2 在黑名单里，只剩 1
+      [item('1', 's1'), item('2', 's2'), item('3', 's2'), item('4', 's1')]
+    )
+
+    const progresses: TabMonitorProgress[] = []
+    const { controller } = createCancellableTabMonitor(
+      { recipient: 'dev@example.com', tabName: '测试 Tab' },
+      {
+        tabId: '146453',
+        interval: 60,
+        pageCount: 1,
+        minChangeCount: 1,
+        getBlacklistedSuppliers: () => ['s2'],
+      },
+      progress => progresses.push(progress)
+    )
+
+    await vi.advanceTimersByTimeAsync(0)
+    // 基线里只有 s1 的 1 被记录
+    expect(progresses.at(-1)?.seenTotal).toBe(1)
+
+    await vi.advanceTimersByTimeAsync(60_000)
+
+    // 新一轮 s2 的 2、3 被过滤，只有 4 是新商品
+    expect(progresses.at(-1)?.currentTotal).toBe(2)
+    const sent = mocks.templates.at(-1)!
+    expect(sent.newProducts.map(p => p.productId)).toEqual(['4'])
+
+    controller.abort()
+  })
+
+  it('运行中把店铺加入黑名单，下一轮立即生效', async () => {
+    let blacklist: string[] = []
+
+    queueItems(
+      [item('1', 's1'), item('2', 's2')],
+      [item('1', 's1'), item('2', 's2')],
+      [item('1', 's1'), item('2', 's2')]
+    )
+
+    const progresses: TabMonitorProgress[] = []
+    const { controller } = createCancellableTabMonitor(
+      { recipient: 'dev@example.com', tabName: '测试 Tab' },
+      {
+        tabId: '146453',
+        interval: 60,
+        pageCount: 1,
+        minChangeCount: 10,
+        getBlacklistedSuppliers: () => blacklist,
+      },
+      progress => progresses.push(progress)
+    )
+
+    await vi.advanceTimersByTimeAsync(0)
+    expect(progresses.at(-1)?.currentTotal).toBe(2)
+
+    blacklist = ['s2']
+    await vi.advanceTimersByTimeAsync(60_000)
+
+    // 下一轮开始就不再抓黑名单店铺的商品
+    expect(progresses.at(-1)?.currentTotal).toBe(1)
+    // 已经记录过的商品不会被清掉（取消黑名单后还能看到）
+    expect(progresses.at(-1)?.seenTotal).toBe(2)
 
     controller.abort()
   })

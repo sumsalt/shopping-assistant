@@ -79,6 +79,23 @@ const createTables = (instance: SqliteDatabase): void => {
     )
   `)
   instance.exec('CREATE INDEX IF NOT EXISTS idx_shops_user ON shops (user_id, updated_at DESC)')
+
+  // 店铺黑名单：按供应商标识过滤 Tab 商品，与评分表分开，语义更清晰
+  instance.exec(`
+    CREATE TABLE IF NOT EXISTS shop_blacklist (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      supply_id TEXT NOT NULL,
+      name TEXT NOT NULL DEFAULT '',
+      market_name TEXT NOT NULL DEFAULT '',
+      note TEXT NOT NULL DEFAULT '',
+      created_at INTEGER NOT NULL,
+      UNIQUE (user_id, supply_id)
+    )
+  `)
+  instance.exec(
+    'CREATE INDEX IF NOT EXISTS idx_shop_blacklist_user ON shop_blacklist (user_id, created_at DESC)'
+  )
 }
 
 /**

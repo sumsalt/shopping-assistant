@@ -13,6 +13,14 @@
           variant="outline"
           size="sm"
           class="whitespace-nowrap"
+          @click="navigateTo('/shops/blacklist')"
+        >
+          黑名单
+        </UiButton>
+        <UiButton
+          variant="outline"
+          size="sm"
+          class="whitespace-nowrap"
           :disabled="isLoading"
           @click="handleRefresh"
         >

@@ -32,8 +32,21 @@
             @click.stop
           >
             <!-- 标题 -->
-            <div v-if="title" class="px-6 py-4 border-b border-gray-200 flex-shrink-0">
+            <div
+              v-if="title"
+              class="px-6 py-4 border-b border-gray-200 flex-shrink-0 flex items-start justify-between gap-3"
+            >
               <h3 class="text-lg font-semibold text-gray-900">{{ title }}</h3>
+              <button
+                type="button"
+                class="-mr-2 -mt-1 p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors cursor-pointer"
+                aria-label="关闭"
+                @click="close"
+              >
+                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
             </div>
 
             <!-- 内容（小屏可滚动） -->
@@ -90,5 +103,10 @@ const handleBackdropClick = () => {
   if (props.closeOnClickBackdrop) {
     emit('update:open', false)
   }
+}
+
+// 关闭按钮
+const close = () => {
+  emit('update:open', false)
 }
 </script>

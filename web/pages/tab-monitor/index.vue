@@ -525,51 +525,81 @@
         <div v-else-if="seenItems.length === 0" class="py-12 text-center text-sm text-gray-500">
           暂无记录，任务发现新商品后会出现在这里
         </div>
-        <div v-else class="max-h-[60vh] overflow-y-auto divide-y divide-gray-100">
+        <div
+          v-else
+          ref="seenListRef"
+          class="max-h-[65vh] overflow-y-auto divide-y divide-gray-100"
+          @scroll.passive="handleSeenScroll"
+        >
           <div
             v-for="item in seenItems"
             :key="item.productId"
-            class="flex items-center gap-3 py-3"
+            class="flex items-start gap-3 py-3"
           >
-            <img
+            <a
               v-if="item.productImage"
-              :src="item.productImage"
-              :alt="item.productName"
-              class="w-12 h-12 rounded object-cover bg-gray-100 shrink-0"
-              loading="lazy"
-            />
-            <div v-else class="w-12 h-12 rounded bg-gray-100 shrink-0"></div>
+              :href="item.productUrl || undefined"
+              :target="item.productUrl ? '_blank' : undefined"
+              rel="noopener noreferrer"
+              class="shrink-0"
+            >
+              <img
+                :src="item.productImage"
+                :alt="item.productName"
+                class="w-24 h-24 rounded-lg object-cover bg-gray-100"
+                loading="lazy"
+              />
+            </a>
+            <div v-else class="w-24 h-24 rounded-lg bg-gray-100 shrink-0"></div>
+
             <div class="min-w-0 flex-1">
               <a
                 v-if="item.productUrl"
                 :href="item.productUrl"
                 target="_blank"
                 rel="noopener noreferrer"
-                class="block text-sm text-gray-900 hover:text-blue-600 break-words"
+                class="block text-xs leading-5 text-gray-700 hover:text-blue-600 line-clamp-2"
               >
                 {{ item.productName || `商品 ${item.productId}` }}
               </a>
-              <span v-else class="block text-sm text-gray-900 break-words">
+              <span v-else class="block text-xs leading-5 text-gray-700 line-clamp-2">
                 {{ item.productName || `商品 ${item.productId}` }}
               </span>
-              <div class="mt-1 flex items-center gap-3 text-xs text-gray-500">
+
+              <div class="mt-1 flex items-center gap-2 text-xs">
                 <span class="text-red-600 font-medium">¥{{ formatSeenPrice(item.price) }}</span>
-                <span>首次发现 {{ formatSeenTime(item.firstSeenAt) }}</span>
+                <span class="text-gray-400">{{ formatSeenTime(item.firstSeenAt) }}</span>
+              </div>
+
+              <div class="mt-1.5 flex items-center justify-between gap-2">
+                <span
+                  class="min-w-0 truncate text-[11px] text-gray-400"
+                  :title="formatSeenShopFull(item)"
+                >
+                  {{ formatSeenShop(item) }}
+                </span>
+                <button
+                  v-if="item.supplyId"
+                  type="button"
+                  class="shrink-0 rounded px-1.5 py-0.5 text-[11px] text-gray-500 hover:bg-red-50 hover:text-red-600 cursor-pointer"
+                  :disabled="blacklistingSupplyId === item.supplyId"
+                  @click="blacklistSeenItem(item)"
+                >
+                  {{ blacklistingSupplyId === item.supplyId ? '加入中' : '拉黑' }}
+                </button>
               </div>
             </div>
           </div>
-        </div>
 
-        <div v-if="seenHasMore" class="pt-1 text-center">
-          <UiButton
-            variant="outline"
-            size="sm"
-            :loading="seenLoadingMore"
-            :disabled="seenLoadingMore"
-            @click="loadMoreSeen"
+          <div v-if="seenLoadingMore" class="py-3 text-center text-xs text-gray-400">
+            加载更多...
+          </div>
+          <div
+            v-else-if="!seenHasMore && seenItems.length > 0"
+            class="py-3 text-center text-xs text-gray-400"
           >
-            加载更多
-          </UiButton>
+            已经到底了
+          </div>
         </div>
       </div>
     </UiDialog>
@@ -609,6 +639,12 @@ const seenTotal = ref(0)
 const seenHasMore = ref(false)
 const seenLoading = ref(false)
 const seenLoadingMore = ref(false)
+/** 列表滚动容器（滚动到底自动加载下一页） */
+const seenListRef = ref<HTMLElement | null>(null)
+/** 正在拉黑的供应商标识，避免重复点击 */
+const blacklistingSupplyId = ref('')
+
+const toast = useToast()
 
 const SEEN_PAGE_SIZE = 50
 
@@ -629,6 +665,9 @@ const openSeenDialog = async (task: { id: string; tabName: string }) => {
     seenHasMore.value = data.hasMore
   }
   seenLoading.value = false
+
+  // 一页没填满容器时用户看不到滚动条，也就触发不了加载，主动补几页
+  await fillSeenList()
 }
 
 // 加载更多
@@ -641,12 +680,102 @@ const loadMoreSeen = async () => {
   try {
     const data = await fetchSeenProducts(seenTaskId.value, seenItems.value.length, SEEN_PAGE_SIZE)
     if (data) {
+      // 空页说明数据已经到底，避免滚动反复请求同一页
+      if (data.items.length === 0) {
+        seenHasMore.value = false
+        return
+      }
+
       seenItems.value = [...seenItems.value, ...data.items]
       seenTotal.value = data.total
       seenHasMore.value = data.hasMore
     }
   } finally {
     seenLoadingMore.value = false
+  }
+}
+
+// 滚动到底部自动加载下一页
+const handleSeenScroll = (event: Event) => {
+  const el = event.target as HTMLElement | null
+  if (!el || seenLoadingMore.value || !seenHasMore.value) {
+    return
+  }
+
+  if (el.scrollTop + el.clientHeight >= el.scrollHeight - 120) {
+    void loadMoreSeen()
+  }
+}
+
+// 内容不足一屏时补页（最多补 3 次，避免接口异常时死循环）
+const fillSeenList = async (depth = 0): Promise<void> => {
+  if (depth >= 3) {
+    return
+  }
+
+  await nextTick()
+  const el = seenListRef.value
+  if (!el || !seenHasMore.value) {
+    return
+  }
+
+  if (el.scrollHeight <= el.clientHeight + 24) {
+    await loadMoreSeen()
+    await fillSeenList(depth + 1)
+  }
+}
+
+// 店铺展示文案：一手列表接口只有供应商标识，没有店铺名称
+const formatSeenShop = (item: TabSeenProductItem): string =>
+  item.supplyId ? `供应商 ${item.supplyId}` : '店铺未知'
+
+// 完整文案（带市场名）：拉黑确认时用，便于确认是哪家
+const formatSeenShopFull = (item: TabSeenProductItem): string =>
+  item.supplyId
+    ? [item.marketName, `供应商 ${item.supplyId}`].filter(Boolean).join(' · ')
+    : '店铺未知'
+
+// 把商品所属店铺加入黑名单：加入后该店铺商品不再被抓取，也不再出现在累计记录里
+const blacklistSeenItem = async (item: TabSeenProductItem) => {
+  const supplyId = item.supplyId
+  if (!supplyId || blacklistingSupplyId.value) {
+    return
+  }
+
+  const confirmed = await confirmSeenBlacklist({
+    title: '加入店铺黑名单',
+    message: `确定拉黑「${formatSeenShopFull(item)}」吗？之后该店铺的商品不再被抓取，也不会写进提醒邮件。`,
+    confirmText: '拉黑',
+    type: 'danger',
+  })
+  if (!confirmed) {
+    return
+  }
+
+  blacklistingSupplyId.value = supplyId
+  try {
+    const response = await $fetch<{
+      success: boolean
+      error?: { message?: string }
+    }>('/api/shops/blacklist/create', {
+      method: 'POST',
+      body: { supplyId, marketName: item.marketName },
+    })
+
+    if (!response.success) {
+      toast.error(response.error?.message || '加入黑名单失败')
+      return
+    }
+
+    // 同一店铺在本地列表里的其他商品也一并移除
+    const removed = seenItems.value.filter(seen => seen.supplyId === supplyId).length
+    seenItems.value = seenItems.value.filter(seen => seen.supplyId !== supplyId)
+    seenTotal.value = Math.max(0, seenTotal.value - removed)
+    toast.success('已加入店铺黑名单，之后不再抓取该店铺商品')
+  } catch (err) {
+    toast.error(err instanceof Error ? err.message : '网络请求失败')
+  } finally {
+    blacklistingSupplyId.value = ''
   }
 }
 
@@ -668,7 +797,8 @@ const formatSeenTime = (iso: string): string => {
 const { createTabMonitorTask, isLoading: isCreating } = useTabMonitor()
 
 // 使用确认弹窗
-const { danger: confirmDelete, warning: confirmRestart } = useConfirmDialog()
+const { danger: confirmDelete, warning: confirmRestart, confirm: confirmSeenBlacklist } =
+  useConfirmDialog()
 
 // 对话框显示状态
 const showAddDialog = ref(false)
