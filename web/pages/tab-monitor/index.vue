@@ -598,6 +598,12 @@
                 >
                   ¥{{ formatSeenPrice(item.price) }}
                 </span>
+                <span
+                  class="absolute bottom-1.5 right-1.5 rounded bg-black/55 px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-white"
+                  :title="`首次发现 ${formatSeenTime(item.firstSeenAt)}`"
+                >
+                  {{ formatSeenClock(item.firstSeenAt) }}
+                </span>
               </a>
 
               <div class="px-2 py-1.5">
@@ -847,6 +853,16 @@ const formatSeenTime = (iso: string): string => {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(
     date.getHours()
   )}:${pad(date.getMinutes())}`
+}
+
+const formatSeenClock = (iso: string): string => {
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) {
+    return '-'
+  }
+
+  const pad = (value: number) => String(value).padStart(2, '0')
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
 
 // 使用 Tab 监控 composable
