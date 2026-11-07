@@ -44,6 +44,14 @@ export interface TabMonitorConfig {
   pageSize?: number;
   /** 每轮抓取的页数，默认为1；每多抓一页会多一次请求 */
   pageCount?: number;
+  /**
+   * 定时全量抓取间隔（秒），0 / 不传表示关闭
+   *
+   * 开启后每隔该时间会翻页抓取全部商品（最多 MAX_TAB_INIT_PAGE_COUNT 页），
+   * 把常规只抓前几页时漏掉的靠后新商品补进累计记录。仅累计模式生效，
+   * 逐轮对比模式因为列表规模会突然变化，不适合全量轮。
+   */
+  fullScanInterval?: number;
   /** 排序方式，默认为1 */
   sort?: number;
   /** 最低价格，默认为0 */
@@ -96,6 +104,8 @@ export interface TabSeenProduct {
   productId: string;
   /** 商品名称 */
   productName: string;
+  /** 不带店铺名的商品名称（接口 goods_name_without_brand_name，用于卡片展示） */
+  shortName?: string;
   /** 价格 */
   price: number;
   /** 商品图片 */
@@ -398,6 +408,7 @@ export const createCancellableTabMonitor = (
       page = 1,
       pageSize = 20,
       pageCount = 1,
+      fullScanInterval = 0,
       sort = 1,
       minPrice = 0,
       maxPrice = 0,
@@ -423,6 +434,10 @@ export const createCancellableTabMonitor = (
       throw new Error('循环总时长必须大于 0');
     }
 
+    if (!Number.isFinite(fullScanInterval) || fullScanInterval < 0) {
+      throw new Error('全量抓取间隔不能为负数');
+    }
+
     // 监控模式：老任务没有该字段，按累计模式处理（与线上已有行为一致）
     const mode: TabMonitorMode = config.mode === 'diff' ? 'diff' : 'accumulate';
 
@@ -432,6 +447,8 @@ export const createCancellableTabMonitor = (
     let detectedCount = initialDetectedCount;
     let errorCount = 0;
     const startTime = Date.now();
+    // 上次全量抓取时间：初始化若已全量翻页，成功后会刷新为当前时间
+    let lastFullScanAt = startTime;
 
     // 任务内已见过的商品（仅累计模式使用）：同一商品反复上下架只记一次，不会重复提醒
     // 续跑时优先用带时间的 initialSeenProducts；老任务只有 ID，按任务启动时间补齐
@@ -471,6 +488,7 @@ export const createCancellableTabMonitor = (
         const record: TabSeenProduct = {
           productId: item.productId,
           productName: item.productName,
+          ...(item.productNameWithoutBrand ? { shortName: item.productNameWithoutBrand } : {}),
           price: item.price,
           ...(item.productImage ? { productImage: item.productImage } : {}),
           ...(item.productUrl ? { productUrl: item.productUrl } : {}),
@@ -603,10 +621,10 @@ export const createCancellableTabMonitor = (
           merged.push(item);
         }
 
-        // 全量初始化页数多，每 10 页打一条进度，避免日志刷屏
+        // 全量抓取页数多，每 10 页打一条进度，避免日志刷屏
         if (pages > pagesToFetch && pagesFetched % 10 === 0) {
           console.log(
-            `[Tab监控] 初始化翻页中：已抓 ${pagesFetched} 页 / ${merged.length} 个商品，Tab ID: ${tabId}`
+            `[Tab监控] 全量翻页中：已抓 ${pagesFetched} 页 / ${merged.length} 个商品，Tab ID: ${tabId}`
           );
         }
       }
@@ -679,6 +697,9 @@ export const createCancellableTabMonitor = (
         const { list, newlySeen, pagesFetched } = await fetchAndMarkSeen(initPages);
         previousList = list;
         checkCount++;
+        if (initPages === MAX_TAB_INIT_PAGE_COUNT) {
+          lastFullScanAt = Date.now();
+        }
 
         console.log(
           `[Tab监控] 初始化完成，Tab ID: ${tabId}, 翻页 ${pagesFetched} 页, 本次抓取商品数: ${previousList.length}, 累计已记录: ${seenProducts.length}`
@@ -780,8 +801,28 @@ export const createCancellableTabMonitor = (
       let newlySeenProducts: TabSeenProduct[] | undefined;
 
       try {
+        // 定时全量更新（仅累计模式）：到点就翻页抓一遍全部商品，
+        // 把常规只抓前几页时漏掉的靠后新商品补进累计记录。
+        // 失败时不刷新时间戳，下一轮继续尝试全量，避免漏掉这一轮
+        const dueFullScan =
+          mode === 'accumulate' &&
+          fullScanInterval > 0 &&
+          Date.now() - lastFullScanAt >= fullScanInterval * 1000;
+        const roundPages = dueFullScan ? MAX_TAB_INIT_PAGE_COUNT : pagesToFetch;
+
+        if (dueFullScan) {
+          console.log(`[Tab监控] 定时全量更新开始（最多 ${roundPages} 页），Tab ID: ${tabId}`);
+        }
+
         // 获取当前商品列表（按配置的页数抓取并合并）
-        const { list: fetchedList } = await fetchPages();
+        const { list: fetchedList, pagesFetched } = await fetchPages(roundPages);
+
+        if (dueFullScan) {
+          lastFullScanAt = Date.now();
+          console.log(
+            `[Tab监控] 定时全量更新完成，翻页 ${pagesFetched} 页，抓取 ${fetchedList.length} 个商品，Tab ID: ${tabId}`
+          );
+        }
 
         currentList = fetchedList;
         checkCount++;

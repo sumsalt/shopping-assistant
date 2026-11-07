@@ -115,6 +115,15 @@
                 <span class="text-gray-600">每轮 {{ task.pageCount }} 页</span>
               </div>
               <div
+                v-if="task.fullScanInterval"
+                class="flex items-center gap-1.5 px-3 py-1.5 bg-teal-50 rounded-lg border border-teal-100"
+              >
+                <svg class="w-4 h-4 text-teal-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                <span class="text-teal-700 font-medium">全量更新 每 {{ formatFullScanInterval(task.fullScanInterval) }}</span>
+              </div>
+              <div
                 v-if="task.activeWindow"
                 class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border"
                 :class="isInActiveWindow(task)
@@ -395,6 +404,33 @@
             </div>
           </div>
 
+          <!-- 定时全量抓取（仅累计模式） -->
+          <div v-if="formData.mode === 'accumulate'">
+            <label class="block text-sm font-medium text-gray-700 mb-1.5">
+              定时全量抓取
+            </label>
+            <div class="relative">
+              <select
+                v-model.number="formData.fullScanInterval"
+                class="w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-white appearance-none"
+              >
+                <option :value="0">关闭（每轮只抓设定页数）</option>
+                <option :value="1800">每 30 分钟</option>
+                <option :value="3600">每 1 小时</option>
+                <option :value="7200">每 2 小时</option>
+                <option :value="21600">每 6 小时</option>
+                <option :value="43200">每 12 小时</option>
+                <option :value="86400">每 24 小时</option>
+              </select>
+              <svg class="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+              </svg>
+            </div>
+            <p class="mt-1 text-xs text-gray-500">
+              每隔该时间翻页抓取全部商品（最多 100 页），补齐常规只抓前几页时漏掉的新商品；间隔需小于监控时长，全量轮发现的新商品照常计入提醒。
+            </p>
+          </div>
+
           <!-- 触发阈值 -->
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1.5">
@@ -564,22 +600,30 @@
                 </span>
               </a>
 
-              <div class="flex items-center gap-1 px-2 py-1.5">
-                <span
-                  class="min-w-0 flex-1 truncate text-[11px] text-gray-600"
-                  :title="formatSeenShopFull(item)"
+              <div class="px-2 py-1.5">
+                <p
+                  class="truncate text-xs font-medium text-gray-800"
+                  :title="formatSeenTitle(item)"
                 >
-                  {{ formatSeenShop(item) }}
-                </span>
-                <button
-                  v-if="item.supplyId"
-                  type="button"
-                  class="shrink-0 rounded px-1 py-0.5 text-[11px] text-gray-400 hover:bg-red-50 hover:text-red-600 cursor-pointer"
-                  :disabled="blacklistingSupplyId === item.supplyId"
-                  @click="blacklistSeenItem(item)"
-                >
-                  {{ blacklistingSupplyId === item.supplyId ? '加入中' : '拉黑' }}
-                </button>
+                  {{ formatSeenName(item) }}
+                </p>
+                <div class="mt-0.5 flex items-center justify-between gap-1">
+                  <span
+                    class="min-w-0 flex-1 truncate text-[11px] text-gray-500"
+                    :title="formatSeenShopFull(item)"
+                  >
+                    {{ formatSeenShop(item) }}
+                  </span>
+                  <button
+                    v-if="item.supplyId"
+                    type="button"
+                    class="shrink-0 rounded px-1 py-0.5 text-[11px] text-gray-400 hover:bg-red-50 hover:text-red-600 cursor-pointer"
+                    :disabled="blacklistingSupplyId === item.supplyId"
+                    @click="blacklistSeenItem(item)"
+                  >
+                    {{ blacklistingSupplyId === item.supplyId ? '加入中' : '拉黑' }}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -732,9 +776,16 @@ const formatSeenShopFull = (item: TabSeenProductItem): string => {
   return item.marketName ? `${name} · ${item.marketName}` : name
 }
 
-// 图片悬浮提示：商品名 + 首次发现时间
+// 图片悬浮提示：完整商品名 + 首次发现时间
 const formatSeenTitle = (item: TabSeenProductItem): string =>
-  `${item.productName || `商品 ${item.productId}`} · 首次发现 ${formatSeenTime(item.firstSeenAt)}`
+  `${item.productName || formatSeenName(item)} · 首次发现 ${formatSeenTime(item.firstSeenAt)}`
+
+// 卡片名称：优先用接口算好的「不带店铺名」短名，老数据兜底去掉【店铺名】前缀
+const formatSeenName = (item: TabSeenProductItem): string =>
+  item.displayName ||
+  item.shortName ||
+  item.productName?.replace(/^\s*【[^】]*】\s*/, '').trim() ||
+  `商品 ${item.productId}`
 
 // 把商品所属店铺加入黑名单：加入后该店铺商品不再被抓取，也不再出现在累计记录里
 const blacklistSeenItem = async (item: TabSeenProductItem) => {
@@ -833,6 +884,7 @@ const formData = ref({
   interval: 60,
   duration: 86400,
   pageCount: 1,
+  fullScanInterval: 0,
   sort: 1,
   mode: 'accumulate' as 'accumulate' | 'diff',
   minChangeCount: 10,
@@ -848,6 +900,7 @@ const defaultFormData = () => ({
   interval: 60,
   duration: 86400,
   pageCount: 1,
+  fullScanInterval: 0,
   sort: 1,
   mode: 'accumulate' as 'accumulate' | 'diff',
   minChangeCount: 10,
@@ -870,6 +923,14 @@ const handleSelectTabFromDropdown = () => {
   if (selectedTabOption.value) {
     handleSelectTab(selectedTabOption.value)
   }
+}
+
+// 全量抓取间隔展示
+const formatFullScanInterval = (seconds?: number): string => {
+  if (!seconds) return ''
+  return seconds < 3600
+    ? `${Math.round(seconds / 60)} 分钟`
+    : `${Number((seconds / 3600).toFixed(1))} 小时`
 }
 
 // 当前是否在该任务的生效时段内（仅用于展示「休眠中」）
@@ -932,6 +993,7 @@ const handleAddTask = async () => {
   const { useActiveWindow, windowStart, windowEnd, ...rest } = formData.value
   const taskId = await createTabMonitorTask({
     ...rest,
+    fullScanInterval: rest.mode === 'accumulate' ? rest.fullScanInterval : 0,
     ...(useActiveWindow ? { activeWindow: { start: windowStart, end: windowEnd } } : {}),
   })
   if (taskId) {

@@ -82,6 +82,8 @@
           <option :value="21600">6 小时</option>
           <option :value="43200">12 小时</option>
           <option :value="86400">24 小时</option>
+          <option :value="172800">48 小时</option>
+          <option :value="259200">72 小时</option>
         </select>
       </div>
 

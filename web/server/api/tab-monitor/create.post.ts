@@ -188,6 +188,24 @@ export default defineEventHandler(async (event) => {
       )
     }
 
+    // 定时全量抓取间隔（秒）：0 关闭，累计模式才生效
+    const rawFullScanInterval = body.config?.fullScanInterval
+    const fullScanInterval =
+      rawFullScanInterval === undefined || rawFullScanInterval === null || rawFullScanInterval === ''
+        ? 0
+        : Number(rawFullScanInterval)
+    if (
+      !Number.isInteger(fullScanInterval) ||
+      fullScanInterval < 0 ||
+      (fullScanInterval > 0 && fullScanInterval < 60) ||
+      fullScanInterval > 7 * 24 * 3600
+    ) {
+      return createErrorResponse(
+        ErrorCode.INVALID_PARAMS,
+        '全量抓取间隔需为 0（关闭）或 60-604800 秒的整数'
+      )
+    }
+
     // 构建监控配置
     const config: TabMonitorConfig = {
       tabId: body.tabId,
@@ -197,6 +215,8 @@ export default defineEventHandler(async (event) => {
       page: body.config?.page || 1,
       pageSize: body.config?.pageSize || 20,
       pageCount,
+      // 逐轮对比模式列表规模会随全量轮剧烈波动，不支持定时全量
+      fullScanInterval: mode === 'accumulate' ? fullScanInterval : 0,
       sort: body.config?.sort || 1,
       minPrice: body.config?.minPrice || 0,
       maxPrice: body.config?.maxPrice || 0,

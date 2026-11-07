@@ -224,6 +224,8 @@ export interface YishouTabGoodsData {
   goods_no: string;
   /** 商品名称 */
   goods_name: string;
+  /** 去掉店铺/品牌名的商品名称（接口可选返回） */
+  goods_name_without_brand_name?: string;
   /** 品牌名称 */
   brand_name: string;
   /** 拿货价 */
@@ -292,7 +294,9 @@ export interface CollectionStockResult {
   productId: string;
   /** 商品名称 */
   productName: string;
-  /** 品牌名称 */
+  /** 去掉店铺/品牌名的商品名称，用于卡片展示 */
+  productNameWithoutBrand?: string;
+  /** 品牌名称（多数情况下就是店铺名） */
   brandName: string;
   /** 商品货号 */
   productNo: string;

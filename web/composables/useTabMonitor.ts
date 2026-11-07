@@ -14,6 +14,8 @@ interface TabMonitorConfig {
   pageSize?: number
   /** 每轮抓取页数，默认 1 */
   pageCount?: number
+  /** 定时全量抓取间隔（秒），0 关闭，仅累计模式生效 */
+  fullScanInterval?: number
   sort?: number
   minPrice?: number
   maxPrice?: number
@@ -115,6 +117,7 @@ export const useTabMonitor = () => {
         page: config.page || 1,
         pageSize: config.pageSize || 20,
         pageCount: config.pageCount || 1,
+        fullScanInterval: config.fullScanInterval || 0,
         sort: config.sort || 1,
         minPrice: config.minPrice || 0,
         maxPrice: config.maxPrice || 0,

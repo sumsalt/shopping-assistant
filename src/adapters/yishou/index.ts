@@ -287,6 +287,9 @@ export const mapTabItemToResult = (data: YishouTabGoodsData): CollectionStockRes
     platform: 'yishou',
     productId: data.goods_id,
     productName: data.goods_name,
+    ...(data.goods_name_without_brand_name
+      ? { productNameWithoutBrand: data.goods_name_without_brand_name }
+      : {}),
     brandName: data.brand_name,
     productNo: data.goods_no,
     inStock,

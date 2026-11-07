@@ -81,6 +81,18 @@ export default defineEventHandler(async (event) => {
     const limit =
       Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(200, Math.floor(rawLimit)) : 50
 
+    // 卡片上展示「不带店铺名的商品名」：新记录直接用接口给的短名，
+    // 老记录没有该字段时，退化为去掉开头的「【店铺名】」前缀
+    const stripShopPrefix = (name: string): string =>
+      name.replace(/^\s*【[^】]*】\s*/, '').trim() || name.trim()
+    const items = sorted.slice(offset, offset + limit).map(item => ({
+      ...item,
+      displayName:
+        item.shortName?.trim() ||
+        stripShopPrefix(item.productName || '') ||
+        `商品 ${item.productId}`,
+    }))
+
     return createSuccessResponse({
       taskId,
       tabName: task.tabName,
@@ -88,7 +100,7 @@ export default defineEventHandler(async (event) => {
       offset,
       limit,
       hasMore: offset + limit < sorted.length,
-      items: sorted.slice(offset, offset + limit),
+      items,
     })
   } catch (error: unknown) {
     console.error('查询 Tab 累计商品失败:', error)

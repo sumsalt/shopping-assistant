@@ -14,6 +14,8 @@ interface TabMonitorTaskItem {
   duration: number
   /** 每轮抓取页数（默认 1） */
   pageCount?: number
+  /** 定时全量抓取间隔（秒），0 关闭 */
+  fullScanInterval?: number
   createdAt: Date
   checkCount: number
   detectedCount: number
@@ -36,6 +38,10 @@ interface TabTaskListResponse {
 export interface TabSeenProductItem {
   productId: string
   productName: string
+  /** 卡片展示用的短名称（不带店铺名，由接口计算） */
+  displayName?: string
+  /** 不带店铺名的商品名称（新记录） */
+  shortName?: string
   price: number
   productImage?: string
   productUrl?: string

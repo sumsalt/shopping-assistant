@@ -518,10 +518,16 @@ describe('monitorTabList 累计模式全量初始化', () => {
     controller.abort()
   })
 
-  it('累计记录带上店铺名与市场，供页面展示', async () => {
+  it('累计记录带上店铺名、市场与不带店铺名的商品名，供页面展示', async () => {
     mocks.getTabGoodsList.mockResolvedValueOnce({
       inStockItems: [
-        { ...item('1'), brandName: '阿刁的店', marketName: '广州沙河' } as CollectionStockResult,
+        {
+          ...item('1'),
+          brandName: '阿刁的店',
+          marketName: '广州沙河',
+          productName: '【阿刁的店】复古针织马甲',
+          productNameWithoutBrand: '复古针织马甲',
+        } as CollectionStockResult,
       ],
       outOfStockItems: [],
     })
@@ -537,6 +543,46 @@ describe('monitorTabList 累计模式全量初始化', () => {
     const seen = progresses.at(-1)?.newlySeenProducts?.[0]
     expect(seen?.shopName).toBe('阿刁的店')
     expect(seen?.marketName).toBe('广州沙河')
+    expect(seen?.shortName).toBe('复古针织马甲')
+    expect(seen?.productName).toBe('【阿刁的店】复古针织马甲')
+
+    controller.abort()
+  })
+
+  it('定时全量抓取：到间隔后翻页抓全部商品', async () => {
+    // 每页给一个商品，第 3 页起为空（提前结束，避免测试里翻满 100 页）
+    mocks.getTabGoodsList.mockImplementation(async (_tabId: string, page: number) =>
+      page > 2 ? listResult([]) : listResult([`p${page}`])
+    )
+
+    const { controller } = createCancellableTabMonitor(
+      { recipient: 'dev@example.com', tabName: '测试 Tab' },
+      { tabId: '146453', interval: 60, pageCount: 1, fullScanInterval: 120 }
+    )
+
+    await vi.advanceTimersByTimeAsync(0) // 初始化：1 页
+    await vi.advanceTimersByTimeAsync(60_000) // 常规轮：1 页
+    expect(mocks.getTabGoodsList.mock.calls.map(call => call[1])).toEqual([1, 1])
+
+    await vi.advanceTimersByTimeAsync(60_000) // 到 120 秒：全量轮，翻 1、2、3(空) 页
+    expect(mocks.getTabGoodsList.mock.calls.map(call => call[1])).toEqual([1, 1, 1, 2, 3])
+
+    controller.abort()
+  })
+
+  it('逐轮对比模式忽略全量抓取间隔', async () => {
+    mocks.getTabGoodsList.mockImplementation(async (_tabId: string, page: number) =>
+      page > 2 ? listResult([]) : listResult([`p${page}`])
+    )
+
+    const { controller } = createCancellableTabMonitor(
+      { recipient: 'dev@example.com', tabName: '测试 Tab' },
+      { tabId: '146453', interval: 60, pageCount: 1, mode: 'diff', fullScanInterval: 120 }
+    )
+
+    await vi.advanceTimersByTimeAsync(0) // 初始化
+    await vi.advanceTimersByTimeAsync(120_000) // 两轮常规检测，都不翻页
+    expect(mocks.getTabGoodsList.mock.calls.map(call => call[1])).toEqual([1, 1, 1])
 
     controller.abort()
   })
