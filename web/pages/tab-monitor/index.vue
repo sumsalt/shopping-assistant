@@ -173,12 +173,12 @@
           </div>
 
           <!-- 操作按钮行 -->
-          <div class="flex items-center gap-2 pt-3 border-t border-gray-100">
+          <div class="flex flex-wrap items-center gap-2 pt-3 border-t border-gray-100">
             <UiButton
               v-if="task.mode !== 'diff' && (task.seenCount ?? 0) > 0"
               variant="outline"
               size="sm"
-              class="text-teal-600 border-teal-200 hover:bg-teal-50 hover:border-teal-300"
+              class="w-full whitespace-nowrap sm:w-auto text-teal-600 border-teal-200 hover:bg-teal-50 hover:border-teal-300"
               @click="openSeenDialog(task)"
             >
               <svg class="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -191,7 +191,7 @@
               size="sm"
               :loading="isRestarting(task.id)"
               :disabled="isRestarting(task.id)"
-              class="text-blue-600 border-blue-200 hover:bg-blue-50 hover:border-blue-300"
+              class="flex-1 whitespace-nowrap sm:flex-none text-blue-600 border-blue-200 hover:bg-blue-50 hover:border-blue-300"
               @click="handleRestart(task)"
             >
               <svg v-if="!isRestarting(task.id)" class="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -204,7 +204,7 @@
               size="sm"
               :loading="isDeleting(task.id)"
               :disabled="isDeleting(task.id)"
-              class="text-red-600 border-red-200 hover:bg-red-50 hover:border-red-300"
+              class="flex-1 whitespace-nowrap sm:flex-none text-red-600 border-red-200 hover:bg-red-50 hover:border-red-300"
               @click="handleDelete(task)"
             >
               <svg v-if="!isDeleting(task.id)" class="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
