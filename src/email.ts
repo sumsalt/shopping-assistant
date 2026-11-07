@@ -378,6 +378,10 @@ interface TabMailProduct {
   price: number;
   productUrl: string;
   productImage: string;
+  /** 店铺名称（一手 brand_name） */
+  brandName?: string;
+  /** 市场名称 */
+  marketName?: string;
 }
 
 /** 累计模式的提醒内容：只关心新商品 */
@@ -440,6 +444,11 @@ function createTabAccumulateTemplate(
           </table>
           <div style="font-weight: bold; color: #333; margin-bottom: 5px; text-align: center;">${product.productName}</div>
           <div style="color: #e53935; font-weight: bold; text-align: center;">¥${product.price.toFixed(2)}</div>
+          ${
+            product.brandName
+              ? `<div style="color: #888; font-size: 12px; text-align: center; margin-top: 4px;">${product.brandName}${product.marketName ? ` · ${product.marketName}` : ''}</div>`
+              : ''
+          }
         </div>
       `
     )

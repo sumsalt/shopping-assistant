@@ -41,6 +41,8 @@ export interface TabSeenProductItem {
   productUrl?: string
   /** 供应商标识（用于店铺黑名单） */
   supplyId?: string
+  /** 店铺名称 */
+  shopName?: string
   /** 市场名称（辅助识别店铺） */
   marketName?: string
   /** 首次发现时间（ISO 字符串） */

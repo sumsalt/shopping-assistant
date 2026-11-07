@@ -29,8 +29,8 @@
 
     <!-- 说明 -->
     <div class="mb-5 rounded-lg border border-amber-100 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-700">
-      黑名单按「供应商标识」过滤：一手商品列表只返回 supply_id，没有店铺名。
-      在 Tab 监控的「累计商品」里点「拉黑店铺」会自动带上供应商标识，无需手填。
+      黑名单按「供应商标识」过滤，店铺名只用于自己辨认。
+      在 Tab 监控的「累计商品」里点「拉黑」会自动带上供应商标识和店铺名，无需手填。
     </div>
 
     <!-- 搜索 -->

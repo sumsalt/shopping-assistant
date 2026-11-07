@@ -48,12 +48,27 @@ export default defineEventHandler(async (event) => {
           firstSeenAt: new Date(task!.createdAt).toISOString(),
         }))
 
+    // 老记录没有店铺名：用同一供应商较新记录里的店铺名补齐，避免历史商品显示成「供应商 xxxx」
+    const shopNameBySupply = new Map<string, string>()
+    for (const item of products) {
+      if (item.supplyId && item.shopName && !shopNameBySupply.has(item.supplyId)) {
+        shopNameBySupply.set(item.supplyId, item.shopName)
+      }
+    }
+    const filledProducts = products.map(item => {
+      if (item.shopName || !item.supplyId) {
+        return item
+      }
+      const shopName = shopNameBySupply.get(item.supplyId)
+      return shopName ? { ...item, shopName } : item
+    })
+
     // 店铺黑名单：已经记录过的商品也要隐藏（取消黑名单后会自动恢复显示）
     const blacklisted = new Set(listBlacklistedSupplyIds(currentUser.username))
     const visibleProducts =
       blacklisted.size > 0
-        ? products.filter(item => !item.supplyId || !blacklisted.has(item.supplyId))
-        : products
+        ? filledProducts.filter(item => !item.supplyId || !blacklisted.has(item.supplyId))
+        : filledProducts
 
     // 按首次发现时间倒序（同一轮发现的保持原有顺序）
     const sorted = [...visibleProducts].sort(

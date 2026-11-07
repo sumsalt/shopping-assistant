@@ -517,6 +517,29 @@ describe('monitorTabList 累计模式全量初始化', () => {
 
     controller.abort()
   })
+
+  it('累计记录带上店铺名与市场，供页面展示', async () => {
+    mocks.getTabGoodsList.mockResolvedValueOnce({
+      inStockItems: [
+        { ...item('1'), brandName: '阿刁的店', marketName: '广州沙河' } as CollectionStockResult,
+      ],
+      outOfStockItems: [],
+    })
+
+    const progresses: TabMonitorProgress[] = []
+    const { controller } = createCancellableTabMonitor(
+      { recipient: 'dev@example.com', tabName: '测试 Tab' },
+      { tabId: '146453', interval: 60, pageCount: 1 },
+      progress => progresses.push(progress)
+    )
+
+    await vi.advanceTimersByTimeAsync(0)
+    const seen = progresses.at(-1)?.newlySeenProducts?.[0]
+    expect(seen?.shopName).toBe('阿刁的店')
+    expect(seen?.marketName).toBe('广州沙河')
+
+    controller.abort()
+  })
 })
 
 describe('monitorTabList 店铺黑名单', () => {

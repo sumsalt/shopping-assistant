@@ -104,6 +104,8 @@ export interface TabSeenProduct {
   productUrl?: string;
   /** 供应商标识（用于店铺黑名单） */
   supplyId?: string;
+  /** 店铺名称（一手接口的 brand_name，多数情况下就是档口/店铺名） */
+  shopName?: string;
   /** 市场名称（辅助识别店铺） */
   marketName?: string;
   /** 首次发现时间（ISO 字符串，落盘后仍可读） */
@@ -473,6 +475,7 @@ export const createCancellableTabMonitor = (
           ...(item.productImage ? { productImage: item.productImage } : {}),
           ...(item.productUrl ? { productUrl: item.productUrl } : {}),
           ...(item.supplyId ? { supplyId: item.supplyId } : {}),
+          ...(item.brandName ? { shopName: item.brandName } : {}),
           ...(item.marketName ? { marketName: item.marketName } : {}),
           firstSeenAt: now,
         };

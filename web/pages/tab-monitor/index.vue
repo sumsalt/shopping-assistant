@@ -528,52 +528,45 @@
         <div
           v-else
           ref="seenListRef"
-          class="max-h-[65vh] overflow-y-auto divide-y divide-gray-100"
+          class="max-h-[65vh] overflow-y-auto"
           @scroll.passive="handleSeenScroll"
         >
-          <div
-            v-for="item in seenItems"
-            :key="item.productId"
-            class="flex items-start gap-3 py-3"
-          >
-            <a
-              v-if="item.productImage"
-              :href="item.productUrl || undefined"
-              :target="item.productUrl ? '_blank' : undefined"
-              rel="noopener noreferrer"
-              class="shrink-0"
+          <div class="grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-3">
+            <div
+              v-for="item in seenItems"
+              :key="item.productId"
+              class="overflow-hidden rounded-xl bg-gray-50 ring-1 ring-gray-100"
             >
-              <img
-                :src="item.productImage"
-                :alt="item.productName"
-                class="w-24 h-24 rounded-lg object-cover bg-gray-100"
-                loading="lazy"
-              />
-            </a>
-            <div v-else class="w-24 h-24 rounded-lg bg-gray-100 shrink-0"></div>
-
-            <div class="min-w-0 flex-1">
               <a
-                v-if="item.productUrl"
-                :href="item.productUrl"
-                target="_blank"
+                :href="item.productUrl || undefined"
+                :target="item.productUrl ? '_blank' : undefined"
                 rel="noopener noreferrer"
-                class="block text-xs leading-5 text-gray-700 hover:text-blue-600 line-clamp-2"
+                class="relative block aspect-[3/4] bg-gray-100"
+                :title="formatSeenTitle(item)"
               >
-                {{ item.productName || `商品 ${item.productId}` }}
-              </a>
-              <span v-else class="block text-xs leading-5 text-gray-700 line-clamp-2">
-                {{ item.productName || `商品 ${item.productId}` }}
-              </span>
-
-              <div class="mt-1 flex items-center gap-2 text-xs">
-                <span class="text-red-600 font-medium">¥{{ formatSeenPrice(item.price) }}</span>
-                <span class="text-gray-400">{{ formatSeenTime(item.firstSeenAt) }}</span>
-              </div>
-
-              <div class="mt-1.5 flex items-center justify-between gap-2">
+                <img
+                  v-if="item.productImage"
+                  :src="item.productImage"
+                  :alt="item.productName"
+                  class="h-full w-full object-cover"
+                  loading="lazy"
+                />
                 <span
-                  class="min-w-0 truncate text-[11px] text-gray-400"
+                  v-else
+                  class="flex h-full items-center justify-center text-xs text-gray-400"
+                >
+                  无图
+                </span>
+                <span
+                  class="absolute bottom-1.5 left-1.5 rounded bg-black/55 px-1.5 py-0.5 text-[11px] font-medium text-white"
+                >
+                  ¥{{ formatSeenPrice(item.price) }}
+                </span>
+              </a>
+
+              <div class="flex items-center gap-1 px-2 py-1.5">
+                <span
+                  class="min-w-0 flex-1 truncate text-[11px] text-gray-600"
                   :title="formatSeenShopFull(item)"
                 >
                   {{ formatSeenShop(item) }}
@@ -581,7 +574,7 @@
                 <button
                   v-if="item.supplyId"
                   type="button"
-                  class="shrink-0 rounded px-1.5 py-0.5 text-[11px] text-gray-500 hover:bg-red-50 hover:text-red-600 cursor-pointer"
+                  class="shrink-0 rounded px-1 py-0.5 text-[11px] text-gray-400 hover:bg-red-50 hover:text-red-600 cursor-pointer"
                   :disabled="blacklistingSupplyId === item.supplyId"
                   @click="blacklistSeenItem(item)"
                 >
@@ -725,15 +718,23 @@ const fillSeenList = async (depth = 0): Promise<void> => {
   }
 }
 
-// 店铺展示文案：一手列表接口只有供应商标识，没有店铺名称
-const formatSeenShop = (item: TabSeenProductItem): string =>
-  item.supplyId ? `供应商 ${item.supplyId}` : '店铺未知'
+// 店铺展示文案：优先用接口返回的店铺名，老记录没有则退回供应商标识
+const formatSeenShop = (item: TabSeenProductItem): string => {
+  if (item.shopName) {
+    return item.shopName
+  }
+  return item.supplyId ? `供应商 ${item.supplyId}` : '店铺未知'
+}
 
 // 完整文案（带市场名）：拉黑确认时用，便于确认是哪家
-const formatSeenShopFull = (item: TabSeenProductItem): string =>
-  item.supplyId
-    ? [item.marketName, `供应商 ${item.supplyId}`].filter(Boolean).join(' · ')
-    : '店铺未知'
+const formatSeenShopFull = (item: TabSeenProductItem): string => {
+  const name = formatSeenShop(item)
+  return item.marketName ? `${name} · ${item.marketName}` : name
+}
+
+// 图片悬浮提示：商品名 + 首次发现时间
+const formatSeenTitle = (item: TabSeenProductItem): string =>
+  `${item.productName || `商品 ${item.productId}`} · 首次发现 ${formatSeenTime(item.firstSeenAt)}`
 
 // 把商品所属店铺加入黑名单：加入后该店铺商品不再被抓取，也不再出现在累计记录里
 const blacklistSeenItem = async (item: TabSeenProductItem) => {
@@ -759,7 +760,11 @@ const blacklistSeenItem = async (item: TabSeenProductItem) => {
       error?: { message?: string }
     }>('/api/shops/blacklist/create', {
       method: 'POST',
-      body: { supplyId, marketName: item.marketName },
+      body: {
+        supplyId,
+        ...(item.shopName ? { name: item.shopName } : {}),
+        ...(item.marketName ? { marketName: item.marketName } : {}),
+      },
     })
 
     if (!response.success) {
