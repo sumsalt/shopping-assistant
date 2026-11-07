@@ -206,6 +206,18 @@ const restoreTabTasks = (): number => {
         continue
       }
 
+      // 老任务只存了商品 ID，补上详情与首次发现时间，保证「查看累计商品」有内容
+      if (!task.seenProducts?.length && task.seenProductIds?.length) {
+        const firstSeenAt = new Date(task.createdAt).toISOString()
+        task.seenProducts = task.seenProductIds.map(productId => ({
+          productId,
+          productName: '',
+          price: 0,
+          firstSeenAt,
+        }))
+        persistTask('tab', task)
+      }
+
       task.status = 'running'
       task.controller = undefined
 
@@ -222,9 +234,12 @@ const restoreTabTasks = (): number => {
         {
           ...task.config,
           taskId: task.id,
+          // 续跑不做全量翻页，否则每次重启都要重新翻一遍
+          fullInitialScan: false,
           initialCheckCount: task.checkCount ?? 0,
           initialDetectedCount: task.detectedCount ?? 0,
           // 续跑时继续沿用已见商品集合：重启前见过的商品不会再被当成新商品
+          initialSeenProducts: task.seenProducts ?? [],
           initialSeenProductIds: task.seenProductIds ?? [],
           duration: remaining === Number.POSITIVE_INFINITY ? undefined : Math.floor(remaining),
         },

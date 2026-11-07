@@ -152,7 +152,7 @@
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
               </svg>
               <span class="text-purple-700 font-medium">{{ task.currentTotal }}</span>
-              <span class="text-purple-600">当前商品数</span>
+              <span class="text-purple-600">本轮抓取</span>
             </div>
             <div
               v-if="task.mode !== 'diff'"
@@ -174,6 +174,18 @@
 
           <!-- 操作按钮行 -->
           <div class="flex items-center gap-2 pt-3 border-t border-gray-100">
+            <UiButton
+              v-if="task.mode !== 'diff' && (task.seenCount ?? 0) > 0"
+              variant="outline"
+              size="sm"
+              class="text-teal-600 border-teal-200 hover:bg-teal-50 hover:border-teal-300"
+              @click="openSeenDialog(task)"
+            >
+              <svg class="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+              </svg>
+              累计商品 ({{ task.seenCount }})
+            </UiButton>
             <UiButton
               variant="outline"
               size="sm"
@@ -493,10 +505,80 @@
         </div>
       </template>
     </UiDialog>
+
+    <!-- 累计商品对话框 -->
+    <UiDialog
+      :open="seenDialogOpen"
+      title="累计商品"
+      size="lg"
+      @update:open="seenDialogOpen = $event"
+    >
+      <div class="space-y-3">
+        <div class="flex items-center justify-between text-sm text-gray-500">
+          <span class="truncate">{{ seenTaskName }} · 按首次发现时间倒序</span>
+          <span class="shrink-0 ml-3">共 {{ seenTotal }} 个</span>
+        </div>
+
+        <div v-if="seenLoading" class="py-12 text-center text-sm text-gray-500">
+          加载中...
+        </div>
+        <div v-else-if="seenItems.length === 0" class="py-12 text-center text-sm text-gray-500">
+          暂无记录，任务发现新商品后会出现在这里
+        </div>
+        <div v-else class="max-h-[60vh] overflow-y-auto divide-y divide-gray-100">
+          <div
+            v-for="item in seenItems"
+            :key="item.productId"
+            class="flex items-center gap-3 py-3"
+          >
+            <img
+              v-if="item.productImage"
+              :src="item.productImage"
+              :alt="item.productName"
+              class="w-12 h-12 rounded object-cover bg-gray-100 shrink-0"
+              loading="lazy"
+            />
+            <div v-else class="w-12 h-12 rounded bg-gray-100 shrink-0"></div>
+            <div class="min-w-0 flex-1">
+              <a
+                v-if="item.productUrl"
+                :href="item.productUrl"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="block text-sm text-gray-900 hover:text-blue-600 break-words"
+              >
+                {{ item.productName || `商品 ${item.productId}` }}
+              </a>
+              <span v-else class="block text-sm text-gray-900 break-words">
+                {{ item.productName || `商品 ${item.productId}` }}
+              </span>
+              <div class="mt-1 flex items-center gap-3 text-xs text-gray-500">
+                <span class="text-red-600 font-medium">¥{{ formatSeenPrice(item.price) }}</span>
+                <span>首次发现 {{ formatSeenTime(item.firstSeenAt) }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="seenHasMore" class="pt-1 text-center">
+          <UiButton
+            variant="outline"
+            size="sm"
+            :loading="seenLoadingMore"
+            :disabled="seenLoadingMore"
+            @click="loadMoreSeen"
+          >
+            加载更多
+          </UiButton>
+        </div>
+      </div>
+    </UiDialog>
   </div>
 </template>
 
 <script setup lang="ts">
+import type { TabSeenProductItem } from '@/composables/useTabMonitorTasks'
+
 // 页面元信息
 definePageMeta({
   title: 'Tab 监控任务',
@@ -510,12 +592,77 @@ const {
   fetchTasks,
   deleteTask,
   restartTask,
+  fetchSeenProducts,
   refresh,
   getStatusText,
   getStatusColor,
   formatTime,
   formatLastDetected,
 } = useTabMonitorTasks()
+
+// 累计商品弹窗
+const seenDialogOpen = ref(false)
+const seenTaskId = ref('')
+const seenTaskName = ref('')
+const seenItems = ref<TabSeenProductItem[]>([])
+const seenTotal = ref(0)
+const seenHasMore = ref(false)
+const seenLoading = ref(false)
+const seenLoadingMore = ref(false)
+
+const SEEN_PAGE_SIZE = 50
+
+// 打开累计商品：每次都从第一页重新拉，避免看到过期数据
+const openSeenDialog = async (task: { id: string; tabName: string }) => {
+  seenDialogOpen.value = true
+  seenTaskId.value = task.id
+  seenTaskName.value = task.tabName
+  seenItems.value = []
+  seenTotal.value = 0
+  seenHasMore.value = false
+  seenLoading.value = true
+
+  const data = await fetchSeenProducts(task.id, 0, SEEN_PAGE_SIZE)
+  if (data) {
+    seenItems.value = data.items
+    seenTotal.value = data.total
+    seenHasMore.value = data.hasMore
+  }
+  seenLoading.value = false
+}
+
+// 加载更多
+const loadMoreSeen = async () => {
+  if (seenLoadingMore.value || !seenHasMore.value) {
+    return
+  }
+
+  seenLoadingMore.value = true
+  try {
+    const data = await fetchSeenProducts(seenTaskId.value, seenItems.value.length, SEEN_PAGE_SIZE)
+    if (data) {
+      seenItems.value = [...seenItems.value, ...data.items]
+      seenTotal.value = data.total
+      seenHasMore.value = data.hasMore
+    }
+  } finally {
+    seenLoadingMore.value = false
+  }
+}
+
+const formatSeenPrice = (price: number): string => (price > 0 ? price.toFixed(2) : '-')
+
+const formatSeenTime = (iso: string): string => {
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) {
+    return '-'
+  }
+
+  const pad = (value: number) => String(value).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(
+    date.getHours()
+  )}:${pad(date.getMinutes())}`
+}
 
 // 使用 Tab 监控 composable
 const { createTabMonitorTask, isLoading: isCreating } = useTabMonitor()

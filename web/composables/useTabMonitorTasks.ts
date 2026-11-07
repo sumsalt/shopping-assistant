@@ -32,6 +32,28 @@ interface TabTaskListResponse {
   total: number
 }
 
+/** 任务累计记录的商品（用于「查看累计商品」） */
+export interface TabSeenProductItem {
+  productId: string
+  productName: string
+  price: number
+  productImage?: string
+  productUrl?: string
+  /** 首次发现时间（ISO 字符串） */
+  firstSeenAt: string
+}
+
+// 累计商品列表响应类型
+interface TabSeenListResponse {
+  taskId: string
+  tabName: string
+  total: number
+  offset: number
+  limit: number
+  hasMore: boolean
+  items: TabSeenProductItem[]
+}
+
 // API 响应类型
 interface ApiResponse<T> {
   success: boolean
@@ -115,6 +137,31 @@ export const useTabMonitorTasks = () => {
       return false
     } finally {
       isLoading.value = false
+    }
+  }
+
+  /**
+   * 查询任务累计记录的商品（按首次发现时间倒序）
+   */
+  const fetchSeenProducts = async (
+    taskId: string,
+    offset = 0,
+    limit = 50
+  ): Promise<TabSeenListResponse | null> => {
+    try {
+      const response = await $fetch<ApiResponse<TabSeenListResponse>>('/api/tab-monitor/seen', {
+        query: { taskId, offset, limit },
+      })
+
+      if (response.success && response.data) {
+        return response.data
+      }
+
+      toast.error(response.error?.message || '加载累计商品失败')
+      return null
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : '网络请求失败')
+      return null
     }
   }
 
@@ -239,6 +286,7 @@ export const useTabMonitorTasks = () => {
     fetchTasks,
     deleteTask,
     restartTask,
+    fetchSeenProducts,
     refresh,
     toggleExpand,
     isExpanded,

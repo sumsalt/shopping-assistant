@@ -69,6 +69,7 @@ export default defineEventHandler(async (event) => {
       detectedCount: 0,
       currentTotal: 0,
       seenProductIds: [],
+      seenProducts: [],
     }
 
     tabMonitorTasks.set(newTaskId, newTask)

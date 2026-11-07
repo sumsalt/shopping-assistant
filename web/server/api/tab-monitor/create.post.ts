@@ -7,8 +7,10 @@ import {
   createCancellableTabMonitor,
   normalizeActiveWindow,
   MAX_TAB_PAGE_COUNT,
+  MAX_TAB_SEEN_PRODUCTS,
   type TabMonitorTask,
   type TabMonitorConfig,
+  type TabSeenProduct,
 } from '@core'
 import { createSuccessResponse, createErrorResponse, ErrorCode } from '../../utils/response'
 import { getCurrentUser } from '../../utils/session'
@@ -24,6 +26,8 @@ export interface TabMonitorTaskRecord extends StoredTaskBase {
   currentTotal: number
   /** 任务内已见过的商品 ID（去重），重启后继续沿用，避免反复上下架重复提醒 */
   seenProductIds?: string[]
+  /** 任务内记录过的商品详情（含首次发现时间），用于「查看累计商品」 */
+  seenProducts?: TabSeenProduct[]
   lastDetectedAt?: Date
   controller?: AbortController
 }
@@ -71,12 +75,19 @@ export const startTabMonitorTask = (
         monitorTask.currentTotal = progress.currentTotal
 
         // 任务内「已见过商品」集合：只增不减，重启续跑时继续沿用
-        if (progress.newlySeenProductIds?.length) {
+        if (progress.newlySeenProducts?.length) {
           const seen = new Set(monitorTask.seenProductIds ?? [])
-          for (const productId of progress.newlySeenProductIds) {
-            seen.add(productId)
+          const products = monitorTask.seenProducts ?? []
+
+          for (const item of progress.newlySeenProducts) {
+            seen.add(item.productId)
+            if (products.length < MAX_TAB_SEEN_PRODUCTS) {
+              products.push(item)
+            }
           }
+
           monitorTask.seenProductIds = [...seen]
+          monitorTask.seenProducts = products
         }
 
         persistTaskSoon('tab', monitorTask)
@@ -190,6 +201,8 @@ export default defineEventHandler(async (event) => {
       maxPrice: body.config?.maxPrice || 0,
       minChangeCount: body.config?.minChangeCount || 10,
       adapterConfig: body.config?.adapterConfig || {},
+      // 累计模式首次创建时翻页抓全部商品，把已有商品全部记为已见
+      fullInitialScan: mode === 'accumulate',
       ...(activeWindow ? { activeWindow } : {}),
     }
 
@@ -210,6 +223,7 @@ export default defineEventHandler(async (event) => {
       detectedCount: 0,
       currentTotal: 0,
       seenProductIds: [],
+      seenProducts: [],
     }
 
     tabMonitorTasks.set(taskId, taskRecord)

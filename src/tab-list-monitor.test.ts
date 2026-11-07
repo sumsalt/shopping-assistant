@@ -35,7 +35,11 @@ vi.mock('./email', () => ({
   loadEmailConfigFromEnv: () => undefined,
 }))
 
-import { createCancellableTabMonitor } from './tab-list-monitor'
+import {
+  createCancellableTabMonitor,
+  MAX_TAB_INIT_PAGE_COUNT,
+} from './tab-list-monitor'
+import type { TabMonitorProgress } from './tab-list-monitor'
 import type { CollectionStockResult } from './types'
 
 /** 构造一个最小可用的商品条目 */
@@ -392,6 +396,112 @@ describe('monitorTabList 多页抓取', () => {
     await vi.advanceTimersByTimeAsync(0)
     expect(mocks.getTabGoodsList).toHaveBeenCalledTimes(1)
     expect(mocks.getTabGoodsList.mock.calls[0][1]).toBe(1)
+
+    controller.abort()
+  })
+})
+
+describe('monitorTabList 累计模式全量初始化', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(2026, 10, 7, 10, 0, 0))
+    mocks.getTabGoodsList.mockReset()
+    mocks.sendEmail.mockReset()
+    mocks.sendEmail.mockResolvedValue({ success: true })
+    mocks.templates.length = 0
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('首次创建时翻页抓全部商品作为基线，之后每轮只抓配置页数', async () => {
+    queueLists(
+      ['1', '2'],
+      ['3', '4'],
+      ['5'],
+      [], // 初始化翻到空页结束
+      ['1', '2'], // 第 1 轮只抓 1 页
+      ['1', '2', '6', '7'] // 第 2 轮出现新商品
+    )
+
+    const progresses: TabMonitorProgress[] = []
+    const { controller } = createCancellableTabMonitor(
+      { recipient: 'dev@example.com', tabName: '测试 Tab' },
+      { tabId: '146453', interval: 60, pageCount: 1, minChangeCount: 2, fullInitialScan: true },
+      progress => progresses.push(progress)
+    )
+
+    // 初始化：连续翻 4 页（第 4 页为空），全部记为已见
+    await vi.advanceTimersByTimeAsync(0)
+    expect(mocks.getTabGoodsList).toHaveBeenCalledTimes(4)
+    expect(mocks.getTabGoodsList.mock.calls.map(call => call[1])).toEqual([1, 2, 3, 4])
+    expect(progresses.at(-1)?.seenTotal).toBe(5)
+    expect(progresses.at(-1)?.newlySeenProducts?.map(item => item.productId)).toEqual([
+      '1',
+      '2',
+      '3',
+      '4',
+      '5',
+    ])
+    expect(progresses.at(-1)?.newlySeenProducts?.[0].firstSeenAt).toBeTruthy()
+    expect(mocks.sendEmail).toHaveBeenCalledTimes(0)
+
+    // 之后每轮只抓 pageCount 页
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(mocks.getTabGoodsList).toHaveBeenCalledTimes(5)
+    expect(mocks.getTabGoodsList.mock.calls.at(-1)?.[1]).toBe(1)
+    expect(mocks.sendEmail).toHaveBeenCalledTimes(0)
+
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(mocks.sendEmail).toHaveBeenCalledTimes(1)
+    expect(mocks.templates.at(-1)!.newProducts.map(item => item.productId)).toEqual(['6', '7'])
+
+    controller.abort()
+  })
+
+  it('全量初始化最多翻 MAX_TAB_INIT_PAGE_COUNT 页', async () => {
+    let lastPage = 0
+    mocks.getTabGoodsList.mockImplementation(async (_tabId: string, currentPage: number) => {
+      lastPage = currentPage
+      return listResult([`p${currentPage}`])
+    })
+
+    const { controller } = createCancellableTabMonitor(
+      { recipient: 'dev@example.com', tabName: '测试 Tab' },
+      { tabId: '146453', interval: 60, pageCount: 1, fullInitialScan: true }
+    )
+
+    await vi.advanceTimersByTimeAsync(0)
+    expect(mocks.getTabGoodsList).toHaveBeenCalledTimes(MAX_TAB_INIT_PAGE_COUNT)
+    expect(lastPage).toBe(MAX_TAB_INIT_PAGE_COUNT)
+
+    controller.abort()
+  })
+
+  it('续跑时沿用已记录的商品详情，不重复计入新商品', async () => {
+    queueLists(['1', '2', '3'])
+
+    const progresses: TabMonitorProgress[] = []
+    const { controller } = createCancellableTabMonitor(
+      { recipient: 'dev@example.com', tabName: '测试 Tab' },
+      {
+        tabId: '146453',
+        interval: 60,
+        pageCount: 1,
+        minChangeCount: 1,
+        initialSeenProducts: [
+          { productId: '1', productName: '商品1', price: 100, firstSeenAt: '2026-11-01T00:00:00.000Z' },
+          { productId: '2', productName: '商品2', price: 200, firstSeenAt: '2026-11-02T00:00:00.000Z' },
+        ],
+      },
+      progress => progresses.push(progress)
+    )
+
+    await vi.advanceTimersByTimeAsync(0)
+    expect(progresses.at(-1)?.seenTotal).toBe(3)
+    expect(progresses.at(-1)?.newlySeenProducts?.map(item => item.productId)).toEqual(['3'])
+    expect(mocks.sendEmail).toHaveBeenCalledTimes(0)
 
     controller.abort()
   })
