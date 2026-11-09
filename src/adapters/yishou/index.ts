@@ -299,6 +299,9 @@ export const mapTabItemToResult = (data: YishouTabGoodsData): CollectionStockRes
     marketName: data.one_market_name,
     ...(data.supply_id ? { supplyId: String(data.supply_id) } : {}),
     salesOf7: data.sales_of_7 || 0,
+    ...(data.first_sale_period ? { firstSalePeriod: String(data.first_sale_period) } : {}),
+    ...(data.format_first_sale_time ? { firstSaleText: data.format_first_sale_time } : {}),
+    isNew: data.is_new === '1',
     message: getCollectionItemMessage(data, inStock),
     collectId: '0', // Tab 商品无收藏ID，设为默认值
   };

@@ -434,6 +434,8 @@ export const createCancellableTabMonitor = (
 
     // 初始化状态
     let previousList: CollectionStockResult[] = [];
+    // 上一轮首页（第一页）的商品顺序，用于观测 Tab 默认排序和新品插入位置
+    let previousFirstPageIds: string[] = [];
     let checkCount = initialCheckCount;
     let detectedCount = initialDetectedCount;
     let errorCount = 0;
@@ -668,6 +670,103 @@ export const createCancellableTabMonitor = (
       return { list, newlySeen: records, pagesFetched };
     };
 
+    /**
+     * 观测首页顺序变化（用于分析 Tab 接口的默认排序规则）
+     *
+     * 接口返回的是不透明的「推荐排序」，这里把每轮首页的商品顺序记下来，
+     * 只在顺序变化时打印，便于事后回答：
+     * - 新商品插到第几位、插进来时带什么特征（7 日销量 / 上新时间 / 价格）
+     * - 老商品被挤到第几位，或者掉出首页
+     * - 排序是否稳定（同一商品位置是否来回跳）
+     *
+     * 完整首页顺序每轮打一行，20 个 id 约 200 字符；顺序没变则完全不打印。
+     *
+     * @param list 本轮首页商品（保持接口返回顺序）
+     * @param round 当前轮次
+     * @param silent 初始化 / 重建基线时只记录基准，不打印
+     */
+    const observeFirstPageOrder = (
+      list: CollectionStockResult[],
+      round: number,
+      silent = false
+    ): void => {
+      const ids = list.map(entry => entry.productId);
+      if (ids.length === 0) {
+        return;
+      }
+
+      const unchanged =
+        ids.length === previousFirstPageIds.length &&
+        ids.every((id, index) => id === previousFirstPageIds[index]);
+
+      if (unchanged) {
+        return;
+      }
+
+      if (!silent) {
+        const previousPositions = new Map(
+          previousFirstPageIds.map((id, index) => [id, index + 1])
+        );
+        const currentIds = new Set(ids);
+
+        const entered = list
+          .map((entry, index) => ({ entry, position: index + 1 }))
+          .filter(({ entry }) => !previousPositions.has(entry.productId))
+          .map(({ entry, position }) => {
+            const meta = [
+              `7日销=${entry.salesOf7 ?? 0}`,
+              entry.firstSaleText ? `上新=${entry.firstSaleText}` : '',
+              entry.firstSalePeriod ? `期号=${entry.firstSalePeriod}` : '',
+              `¥${entry.price}`,
+              entry.supplyId ? `店铺=${entry.supplyId}` : '',
+              entry.inStock ? '有货' : '无货',
+            ]
+              .filter(Boolean)
+              .join(' ');
+
+            return `${entry.productId}@${position}[${meta}]`;
+          });
+
+        const left = previousFirstPageIds
+          .map((id, index) => ({ id, position: index + 1 }))
+          .filter(({ id }) => !currentIds.has(id))
+          .map(({ id, position }) => `${id}@${position}`);
+
+        // 同时在两轮首页里的商品，列出位移最大的几个（只关注 2 位以上）
+        const moved = list
+          .map((entry, index) => ({
+            id: entry.productId,
+            position: index + 1,
+            previous: previousPositions.get(entry.productId),
+          }))
+          .filter(
+            (item): item is { id: string; position: number; previous: number } =>
+              item.previous !== undefined &&
+              Math.abs(item.previous - item.position) >= 2
+          )
+          .sort(
+            (a, b) =>
+              Math.abs(b.previous - b.position) - Math.abs(a.previous - a.position)
+          )
+          .slice(0, 3)
+          .map(item => `${item.id} ${item.previous}→${item.position}`);
+
+        console.log(
+          `[Tab监控][排序] 第 ${round} 轮 首页顺序变化，Tab ID: ${tabId}，当前: ${ids.join(',')}`
+        );
+
+        if (previousFirstPageIds.length > 0) {
+          console.log(
+            `[Tab监控][排序] 新进首页: ${entered.join(' | ') || '无'}` +
+              `${left.length ? `；掉出首页: ${left.join(', ')}` : ''}` +
+              `${moved.length ? `；大幅位移: ${moved.join(', ')}` : ''}`
+          );
+        }
+      }
+
+      previousFirstPageIds = ids;
+    };
+
     // 首次获取商品列表（只记录基线，不发送通知）
     // 启动时若正好在生效时段外，就先不建基线：休眠到下一个时段入口再建，
     // 否则会把「上次运行结束到本次启动」之间的商品都算成新商品
@@ -692,6 +791,9 @@ export const createCancellableTabMonitor = (
         const { list, newlySeen, pagesFetched } = await fetchAndMarkSeen(initPages);
         previousList = list;
         checkCount++;
+
+        // 初始化只记录首页基准，不打印（避免一上来刷 20 个 id）
+        observeFirstPageOrder(list.slice(0, pageSize), checkCount, true);
 
         console.log(
           `[Tab监控] 初始化完成，Tab ID: ${tabId}, 翻页 ${pagesFetched} 页, 本次抓取商品数: ${previousList.length}, 累计已记录: ${seenProducts.length}`
@@ -757,6 +859,9 @@ export const createCancellableTabMonitor = (
           previousList = list;
           checkCount++;
           needBaselineRefresh = false;
+
+          // 重建基线时同步刷新首页顺序基准
+          observeFirstPageOrder(list.slice(0, pageSize), checkCount, true);
 
           console.log(
             `[Tab监控] 已进入生效时段，重建基线，Tab ID: ${tabId}, 翻页 ${pagesFetched} 页, 当前商品数: ${previousList.length}`
@@ -824,6 +929,9 @@ export const createCancellableTabMonitor = (
         }
 
         checkCount++;
+
+        // 观测首页排序：新商品插到第几位、老商品怎么被挤走
+        observeFirstPageOrder(firstPage.list, checkCount);
 
         if (mode === 'diff') {
           if (!didFullScan) {
@@ -897,6 +1005,19 @@ export const createCancellableTabMonitor = (
 
             console.log(
               `[Tab监控] 本轮发现 ${newlySeen.length} 个新商品，累计待提醒 ${pendingNewProducts.length}/${minChangeCount}，Tab ID: ${tabId}`
+            );
+
+            // 新商品在本轮列表中的位置：首页无新商品时不会翻页，只有 20 个；
+            // 出现 >20 的位置，说明是首页有新商品触发全量后、在靠后页码里发现的
+            const newPositions = newlySeen.map(entry => {
+              const index = currentList.findIndex(
+                item => item.productId === entry.productId
+              );
+              return `${entry.productId}@${index >= 0 ? index + 1 : '?'}`;
+            });
+
+            console.log(
+              `[Tab监控][排序] 本轮新商品位置（共抓 ${currentList.length} 个）: ${newPositions.join(', ')}，Tab ID: ${tabId}`
             );
           }
 

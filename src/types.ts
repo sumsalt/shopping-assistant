@@ -314,6 +314,12 @@ export interface CollectionStockResult {
   supplyId?: string;
   /** 7日销量 */
   salesOf7: number;
+  /** 一手：首次销售期号（接口 first_sale_period），用于分析列表排序 */
+  firstSalePeriod?: string;
+  /** 一手：上新时间文案，如「7天前上新」 */
+  firstSaleText?: string;
+  /** 一手：是否新品标记 */
+  isNew?: boolean;
   /** 状态描述信息 */
   message: string;
   /** 收藏ID */
