@@ -67,7 +67,7 @@
       >
         <div class="p-6">
           <!-- 任务信息行 -->
-          <div class="flex items-center justify-between gap-3">
+          <div class="flex items-start justify-between gap-3">
             <!-- 左侧：状态、Tab 名称和时间 -->
             <div class="flex flex-wrap items-center gap-3 min-w-0">
               <UiBadge :variant="getStatusColor(task.status) as 'default' | 'success' | 'warning' | 'danger' | 'info' | 'stock-available' | 'stock-unavailable'" size="md">
@@ -94,7 +94,7 @@
             <!-- 右侧：运行详情折叠开关 -->
             <button
               type="button"
-              class="-mr-1 flex flex-shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-800"
+              class="-mr-1 mt-0.5 flex flex-shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-800"
               :aria-expanded="isDetailExpanded(task.id)"
               @click="toggleDetail(task.id)"
             >
