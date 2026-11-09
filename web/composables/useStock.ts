@@ -202,6 +202,15 @@ export const useStock = () => {
       return null
     }
 
+    // add_cart_goods_info 必须带登录态，缺 uid/token 时一手直接返回「请登录」，
+    // 这里提前拦下来给出可操作的提示，不用等接口失败
+    if (!config.uid || !config.token) {
+      const message = '查看 SKU 详情需要登录态，请先在系统配置中填写 uid 和 token'
+      skuError.value = message
+      toast.warning(message)
+      return null
+    }
+
     isLoadingSkus.value = true
     skuError.value = null
     skuResult.value = null
@@ -228,13 +237,20 @@ export const useStock = () => {
         skuResult.value = response.data
         return response.data
       } else {
-        const errorMsg = response.error?.message || '查询失败'
+        const rawError = response.error?.message || '查询失败'
+        // 登录态失效时一手只回「请登录」，补一句下一步该怎么办
+        const errorMsg = rawError.includes('登录')
+          ? `${rawError}（一手登录态缺失或已失效，请到系统配置更新 uid 和 token）`
+          : rawError
         skuError.value = errorMsg
         toast.error(errorMsg)
         return null
       }
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : '网络请求失败'
+      const rawError = error instanceof Error ? error.message : '网络请求失败'
+      const errorMsg = rawError.includes('登录')
+        ? `${rawError}（一手登录态缺失或已失效，请到系统配置更新 uid 和 token）`
+        : rawError
       skuError.value = errorMsg
       toast.error(errorMsg)
       return null

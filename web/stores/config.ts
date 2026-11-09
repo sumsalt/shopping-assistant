@@ -109,6 +109,12 @@ export const useConfigStore = defineStore('config', () => {
    * 获取配置（用于 API 调用）
    */
   const getConfigForApi = (): UserConfig | null => {
+    // 兜底：首次加载时 store 可能还没从 localStorage 读过配置（例如直接打开详情页），
+    // 这里同步补读一次，避免带着空的 uid/token 去请求一手接口
+    if (import.meta.client && !isInitialized.value) {
+      loadConfig()
+    }
+
     if (!isConfigured.value) {
       return null
     }
@@ -127,12 +133,12 @@ export const useConfigStore = defineStore('config', () => {
     return `${visible}${masked}`
   }
 
-  onMounted(() => {
-    loadConfig()
-  })
+  // 配置存在 localStorage，必须在任何页面发请求前就读到。
+  // 之前放在 onMounted 里，但 layout（父组件）的 mounted 晚于子页面，
+  // 直接打开 /stock/xxx 这类页面时首个请求会拿到空 uid/token，一手接口返回「请登录」。
+  // 这里改为 store 创建时同步加载；loadConfig 内部自带 import.meta.client 判断，SSR 下为空操作
+  loadConfig()
 
-  // 使用 Pinia 的 $onAction 确保在 store 完全初始化后再加载配置
-  // 移除初始化时的直接调用，避免响应式引用问题
   return {
     config,
     isInitialized,
