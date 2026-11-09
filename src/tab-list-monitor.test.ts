@@ -668,3 +668,117 @@ describe('monitorTabList 店铺黑名单', () => {
     controller.abort()
   })
 })
+
+describe('monitorTabList 每日重建基线', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    // 从 23:00 起跑，跨过零点进入次日，用来覆盖「任务跨天」的场景
+    vi.setSystemTime(new Date(2026, 10, 9, 23, 0, 0))
+    mocks.getTabGoodsList.mockReset()
+    mocks.sendEmail.mockReset()
+    mocks.sendEmail.mockResolvedValue({ success: true })
+    mocks.templates.length = 0
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+  })
+
+  it('到 04:00 清空已见记录并全量重建，当天只触发一次', async () => {
+    queuePageRounds(
+      [['1', '2']], // 初始化：续跑任务只抓首页
+      [['1', '2']], // 23:01 正常检测，无新商品
+      [['1', '2', '3', '4']], // 次日 04:01 每日重建：全量抓到 3、4
+      [['1', '2']] // 04:02 正常检测
+    )
+
+    const progresses: TabMonitorProgress[] = []
+    const logs: string[] = []
+    vi.spyOn(console, 'log').mockImplementation((...args: unknown[]) => {
+      logs.push(args.map(String).join(' '))
+    })
+
+    const { controller } = createCancellableTabMonitor(
+      { recipient: 'dev@example.com', tabName: '测试 Tab' },
+      { tabId: '146453', interval: 60, minChangeCount: 10 },
+      progress => progresses.push(progress)
+    )
+
+    await vi.advanceTimersByTimeAsync(0) // 初始化
+    await vi.advanceTimersByTimeAsync(60_000) // 23:01 一轮
+    expect(mocks.sendEmail).toHaveBeenCalledTimes(0)
+
+    // 直接跳到次日 04:00 之后，下一轮应当触发重建
+    vi.setSystemTime(new Date(2026, 10, 10, 4, 0, 30))
+    await vi.advanceTimersByTimeAsync(60_000)
+
+    const resetIndex = progresses.findIndex(item => item.resetSeen)
+    expect(resetIndex).toBeGreaterThan(-1)
+    // 重建后已见集合就是当天全量，3、4 不会被当成新商品推送
+    expect(progresses[resetIndex].seenTotal).toBe(4)
+    expect(mocks.sendEmail).toHaveBeenCalledTimes(0)
+    expect(logs.some(line => line.includes('每日 04:00 重建基线'))).toBe(true)
+
+    // 同一天再跑一轮，不应该重复重建
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(progresses.filter(item => item.resetSeen)).toHaveLength(1)
+
+    controller.abort()
+  })
+
+  it('重建时抓取失败则保留原已见记录，下一轮重试', async () => {
+    let pageCalls = 0
+    mocks.getTabGoodsList.mockImplementation(async (_tabId: string, currentPage: number) => {
+      if (currentPage === 1) {
+        pageCalls++
+      }
+      // 第 1 次初始化、第 2 次 23:01 检测；第 3 次重建时第 2 页报错
+      if (pageCalls === 3 && currentPage === 2) {
+        throw new Error('重建超时')
+      }
+      return currentPage === 1 ? listResult(['1', '2']) : listResult([])
+    })
+
+    const progresses: TabMonitorProgress[] = []
+    const { controller } = createCancellableTabMonitor(
+      { recipient: 'dev@example.com', tabName: '测试 Tab' },
+      { tabId: '146453', interval: 60, minChangeCount: 10 },
+      progress => progresses.push(progress)
+    )
+
+    await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(60_000)
+    const seenBefore = progresses.at(-1)?.seenTotal
+    expect(seenBefore).toBe(2)
+
+    vi.setSystemTime(new Date(2026, 10, 10, 4, 0, 30))
+    await vi.advanceTimersByTimeAsync(60_000) // 重建失败
+
+    // 失败不清空：已见记录仍是 2 条，也没有 resetSeen 上报
+    expect(progresses.some(item => item.resetSeen)).toBe(false)
+    expect(progresses.at(-1)?.seenTotal).toBe(2)
+
+    controller.abort()
+  })
+
+  it('dailyResetEnabled=false 时不会重建', async () => {
+    queueLists(['1', '2'], ['1', '2'], ['1', '2'])
+
+    const progresses: TabMonitorProgress[] = []
+    const { controller } = createCancellableTabMonitor(
+      { recipient: 'dev@example.com', tabName: '测试 Tab' },
+      { tabId: '146453', interval: 60, minChangeCount: 10, dailyResetEnabled: false },
+      progress => progresses.push(progress)
+    )
+
+    await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(60_000)
+    vi.setSystemTime(new Date(2026, 10, 10, 4, 0, 30))
+    await vi.advanceTimersByTimeAsync(60_000)
+
+    expect(progresses.some(item => item.resetSeen)).toBe(false)
+
+    controller.abort()
+  })
+})

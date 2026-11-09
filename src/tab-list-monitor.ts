@@ -67,6 +67,16 @@ export interface TabMonitorConfig {
   /** 每日生效时段（可选）：只在这个时间段内检测，时段外休眠且不计入监控时长 */
   activeWindow?: ActiveWindow;
   /**
+   * 每天重建基线的时刻（本地时间 0-23，默认 4 点）
+   *
+   * 任务跨天运行时，每天到这个点会清空已见记录并重新全量抓取，
+   * 以当下在售的商品作为新一天的起点：期间已下架的商品被移出记录，
+   * 之后重新上架会再次计入新商品。
+   */
+  dailyResetHour?: number;
+  /** 是否启用每日重建基线，默认开启 */
+  dailyResetEnabled?: boolean;
+  /**
    * 首次启动时是否翻页抓取全部商品来建立完整基线（仅累计模式使用）
    *
    * 打开后初始化会一直翻页到空页为止（最多 MAX_TAB_FULL_SCAN_PAGE_COUNT 页），
@@ -222,6 +232,13 @@ export interface TabMonitorProgress {
   seenTotal: number;
   /** 本轮首次出现的商品（用于落盘到任务的已见集合，含首次发现时间） */
   newlySeenProducts?: TabSeenProduct[];
+  /**
+   * 是否以本轮结果整体替换已见集合（每日重建基线时为 true）
+   *
+   * 持久化层收到 true 要先清空旧的 seenProductIds / seenProducts，
+   * 否则「清空重新开始」只是内存里的假象，重启后旧记录又会被读回来。
+   */
+  resetSeen?: boolean;
 }
 
 /**
@@ -410,6 +427,8 @@ export const createCancellableTabMonitor = (
       minChangeCount = 10,
       initialCheckCount = 0,
       initialDetectedCount = 0,
+      dailyResetHour = 4,
+      dailyResetEnabled = true,
     } = config;
 
     // 校验参数
@@ -431,6 +450,9 @@ export const createCancellableTabMonitor = (
 
     // 监控模式：老任务没有该字段，按累计模式处理（与线上已有行为一致）
     const mode: TabMonitorMode = config.mode === 'diff' ? 'diff' : 'accumulate';
+
+    // 每日重建时刻，兜底到 0-23 的整数
+    const resetHour = Math.min(23, Math.max(0, Math.floor(dailyResetHour)));
 
     // 初始化状态
     let previousList: CollectionStockResult[] = [];
@@ -511,6 +533,24 @@ export const createCancellableTabMonitor = (
     // 醒来后直接把休眠期间上架的商品当成「刚发现的新商品」推送，会打扰用户
     let needBaselineRefresh = false;
 
+    /**
+     * 最近一个「每日重建时刻」的时间戳
+     *
+     * 只要上次重建早于该时刻，就说明今天这个点还没重建过。
+     * 例：04:00 重建后，当天 05:00 / 23:00 的边界仍是当天 04:00，不会重复触发。
+     */
+    const lastDailyResetBoundary = (now: Date): number => {
+      const boundary = new Date(now);
+      boundary.setHours(resetHour, 0, 0, 0);
+      if (boundary.getTime() > now.getTime()) {
+        boundary.setDate(boundary.getDate() - 1);
+      }
+      return boundary.getTime();
+    };
+
+    /** 上次重建基线的时间：初始化 / 时段重建 / 每日重建都会刷新 */
+    let lastBaselineResetAt = startTime;
+
     /** 已运行时长（秒）：配置了生效时段时只累计时段内的时间，休眠不消耗时长 */
     const getElapsedSeconds = (): number =>
       activeWindow
@@ -518,7 +558,10 @@ export const createCancellableTabMonitor = (
         : Math.floor((Date.now() - startTime) / 1000);
 
     /** 上报进度（newlySeenProducts 用于把本轮新记住的商品落盘到任务上） */
-    const reportProgress = (newlySeenProducts?: TabSeenProduct[]): void => {
+    const reportProgress = (
+      newlySeenProducts?: TabSeenProduct[],
+      resetSeen = false
+    ): void => {
       if (!progressCallback) {
         return;
       }
@@ -533,6 +576,7 @@ export const createCancellableTabMonitor = (
         currentTotal: previousList.length,
         seenTotal: mode === 'accumulate' ? seenProductIds.size : 0,
         ...(newlySeenProducts && newlySeenProducts.length > 0 ? { newlySeenProducts } : {}),
+        ...(resetSeen ? { resetSeen } : {}),
       });
     };
 
@@ -813,6 +857,7 @@ export const createCancellableTabMonitor = (
         }
 
         // 初次建基线同样只记录不推送（重启续跑时 initialSeenProducts 已包含历史商品）
+        lastBaselineResetAt = Date.now();
         reportProgress(newlySeen);
       } catch (error) {
         console.error('[Tab监控] 初始化失败:', error);
@@ -866,6 +911,7 @@ export const createCancellableTabMonitor = (
           previousList = list;
           checkCount++;
           needBaselineRefresh = false;
+          lastBaselineResetAt = Date.now();
 
           // 重建基线时同步刷新首页顺序基准
           observeFirstPageOrder(list.slice(0, pageSize), checkCount, true);
@@ -898,6 +944,41 @@ export const createCancellableTabMonitor = (
           await sleepInterruptible(interval * 1000, signal);
           continue;
         }
+      }
+
+      // 每日定时重建：任务跨天运行时，每天到点清空已见记录，以当下在售商品为起点重新开始
+      // 放在生效时段检查之后、正常检测之前：时段外不发请求，醒来后先建基线再判断是否到点
+      if (dailyResetEnabled && lastBaselineResetAt < lastDailyResetBoundary(new Date())) {
+        try {
+          // 先抓取成功再清空：抓取失败时保留旧基线，下一轮继续重试
+          const { list, pagesFetched } = await fetchPages(MAX_TAB_FULL_SCAN_PAGE_COUNT);
+          const clearedCount = seenProductIds.size;
+
+          seenProductIds.clear();
+          seenProducts.length = 0;
+          pendingNewProducts.length = 0;
+          previousFirstPageIds = [];
+
+          const { records } = markSeen(list);
+          previousList = list;
+          lastBaselineResetAt = Date.now();
+
+          // 重建后静默刷新首页基准，避免把「清空」误报成一片新进商品
+          observeFirstPageOrder(list.slice(0, pageSize), checkCount, true);
+
+          console.log(
+            `[Tab监控] 每日 ${String(resetHour).padStart(2, '0')}:00 重建基线：清空已见 ${clearedCount} 个，重新抓取 ${list.length} 个商品（${pagesFetched} 页），Tab ID: ${tabId}`
+          );
+
+          reportProgress(records, true);
+        } catch (error) {
+          errorCount++;
+          console.error('[Tab监控] 每日重建基线失败，保留原基线，下轮重试:', error);
+        }
+
+        // 本轮只做重建，不做检测
+        await sleepInterruptible(interval * 1000, signal);
+        continue;
       }
 
       let currentList: CollectionStockResult[] = [];

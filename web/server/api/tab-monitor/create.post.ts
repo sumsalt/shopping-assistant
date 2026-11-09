@@ -74,12 +74,15 @@ export const startTabMonitorTask = (
         monitorTask.detectedCount = progress.detectedCount
         monitorTask.currentTotal = progress.currentTotal
 
-        // 任务内「已见过商品」集合：只增不减，重启续跑时继续沿用
-        if (progress.newlySeenProducts?.length) {
-          const seen = new Set(monitorTask.seenProductIds ?? [])
-          const products = monitorTask.seenProducts ?? []
+        // 任务内「已见过商品」集合：平时只增不减，重启续跑时继续沿用；
+        // 每日重建基线时 resetSeen=true，用本轮结果整体替换（否则清空只是内存里的假象）
+        if (progress.resetSeen || progress.newlySeenProducts?.length) {
+          const seen = progress.resetSeen
+            ? new Set<string>()
+            : new Set(monitorTask.seenProductIds ?? [])
+          const products = progress.resetSeen ? [] : (monitorTask.seenProducts ?? [])
 
-          for (const item of progress.newlySeenProducts) {
+          for (const item of progress.newlySeenProducts ?? []) {
             seen.add(item.productId)
             if (products.length < MAX_TAB_SEEN_PRODUCTS) {
               products.push(item)
@@ -189,6 +192,11 @@ export default defineEventHandler(async (event) => {
       adapterConfig: body.config?.adapterConfig || {},
       // 新建任务先翻页抓全部商品记为已见，避免把已有商品当成新上架
       fullInitialScan: true,
+      // 每日重建基线：默认开启，凌晨 04:00 清空已见记录重新开始
+      dailyResetEnabled: body.config?.dailyResetEnabled !== false,
+      ...(typeof body.config?.dailyResetHour === 'number'
+        ? { dailyResetHour: body.config.dailyResetHour }
+        : {}),
       ...(activeWindow ? { activeWindow } : {}),
       // 每轮实时读取店铺黑名单，运行中拉黑也能立刻生效
       getBlacklistedSuppliers: () => listBlacklistedSupplyIds(currentUser.username),
