@@ -42,6 +42,8 @@ export interface TabSeenProductItem {
   displayName?: string
   /** 不带店铺名的商品名称（新记录） */
   shortName?: string
+  /** 商品货号（用于跳转系统内 SKU 详情页） */
+  productNo?: string
   price: number
   productImage?: string
   productUrl?: string

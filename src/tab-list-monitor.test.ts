@@ -527,6 +527,7 @@ describe('monitorTabList 累计模式全量初始化', () => {
           marketName: '广州沙河',
           productName: '【阿刁的店】复古针织马甲',
           productNameWithoutBrand: '复古针织马甲',
+          productNo: 'G9620',
         } as CollectionStockResult,
       ],
       outOfStockItems: [],
@@ -544,6 +545,7 @@ describe('monitorTabList 累计模式全量初始化', () => {
     expect(seen?.shopName).toBe('阿刁的店')
     expect(seen?.marketName).toBe('广州沙河')
     expect(seen?.shortName).toBe('复古针织马甲')
+    expect(seen?.productNo).toBe('G9620')
     expect(seen?.productName).toBe('【阿刁的店】复古针织马甲')
 
     controller.abort()

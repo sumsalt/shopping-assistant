@@ -574,11 +574,11 @@
               class="overflow-hidden rounded-xl bg-gray-50 ring-1 ring-gray-100"
             >
               <a
-                :href="item.productUrl || undefined"
-                :target="item.productUrl ? '_blank' : undefined"
-                rel="noopener noreferrer"
+                :href="seenDetailPath(item) || undefined"
                 class="relative block aspect-[3/4] bg-gray-100"
+                :class="seenDetailPath(item) ? 'cursor-pointer' : 'cursor-default'"
                 :title="formatSeenTitle(item)"
+                @click="handleSeenClick($event, item)"
               >
                 <img
                   v-if="item.productImage"
@@ -783,8 +783,30 @@ const formatSeenShopFull = (item: TabSeenProductItem): string => {
 }
 
 // 图片悬浮提示：完整商品名 + 首次发现时间
-const formatSeenTitle = (item: TabSeenProductItem): string =>
-  `${item.productName || formatSeenName(item)} · 首次发现 ${formatSeenTime(item.firstSeenAt)}`
+const formatSeenTitle = (item: TabSeenProductItem): string => {
+  const base = `${item.productName || formatSeenName(item)} · 首次发现 ${formatSeenTime(item.firstSeenAt)}`
+  return seenDetailPath(item) ? `${base}（点击查看库存详情）` : base
+}
+
+// 系统内 SKU 详情页地址：一手外链已不可用，统一跳到本站详情页
+// 老记录没有货号（productNo）时无法查询 SKU，不做跳转
+const seenDetailPath = (item: TabSeenProductItem): string =>
+  item.productNo ? `/stock/${encodeURIComponent(item.productNo)}` : ''
+
+const handleSeenClick = (event: MouseEvent, item: TabSeenProductItem) => {
+  const path = seenDetailPath(item)
+  if (!path) {
+    return
+  }
+
+  // 支持 Ctrl/⌘/中键新窗口打开；普通点击走站内路由，避免整页刷新
+  if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) {
+    return
+  }
+
+  event.preventDefault()
+  void navigateTo(path)
+}
 
 // 卡片名称：优先用接口算好的「不带店铺名」短名，老数据兜底去掉【店铺名】前缀
 const formatSeenName = (item: TabSeenProductItem): string =>

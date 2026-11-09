@@ -104,6 +104,8 @@ export interface TabSeenProduct {
   productId: string;
   /** 商品名称 */
   productName: string;
+  /** 商品货号（一手接口的 goods_no，用于跳转系统内 SKU 详情页） */
+  productNo?: string;
   /** 不带店铺名的商品名称（接口 goods_name_without_brand_name，用于卡片展示） */
   shortName?: string;
   /** 价格 */
@@ -488,6 +490,7 @@ export const createCancellableTabMonitor = (
         const record: TabSeenProduct = {
           productId: item.productId,
           productName: item.productName,
+          ...(item.productNo ? { productNo: item.productNo } : {}),
           ...(item.productNameWithoutBrand ? { shortName: item.productNameWithoutBrand } : {}),
           price: item.price,
           ...(item.productImage ? { productImage: item.productImage } : {}),
