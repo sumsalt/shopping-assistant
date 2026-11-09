@@ -4,6 +4,8 @@
  * 全站共用一个数据库文件（默认 data/tasks.db），进程内单例连接：
  * - tasks 表：监控任务（到货 / 价格 / Tab）
  * - shops 表：店铺评分记录
+ * - shop_blacklist 表：店铺黑名单
+ * - sessions 表：登录会话（落盘，重启不掉线）
  *
  * 运行要求：Node.js >= 22.5（node:sqlite）
  */
@@ -96,6 +98,19 @@ const createTables = (instance: SqliteDatabase): void => {
   instance.exec(
     'CREATE INDEX IF NOT EXISTS idx_shop_blacklist_user ON shop_blacklist (user_id, created_at DESC)'
   )
+
+  // 登录会话：落盘保存，进程重启 / 部署后不会把所有人踢下线
+  // id 存的是 sessionId 的 SHA-256，数据库泄露也无法直接拿来冒充登录
+  instance.exec(`
+    CREATE TABLE IF NOT EXISTS sessions (
+      id TEXT PRIMARY KEY,
+      username TEXT NOT NULL,
+      email TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL
+    )
+  `)
+  instance.exec('CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions (expires_at)')
 }
 
 /**
