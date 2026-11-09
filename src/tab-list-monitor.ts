@@ -700,6 +700,13 @@ export const createCancellableTabMonitor = (
         ids.every((id, index) => id === previousFirstPageIds[index]);
 
       if (unchanged) {
+        // 顺序没变时不逐轮打印，但每 30 轮留一条心跳，
+        // 便于确认监控确实在跑、以及排序长时间保持稳定
+        if (!silent && round % 30 === 0) {
+          console.log(
+            `[Tab监控][排序] 第 ${round} 轮 首页顺序与上轮一致，Tab ID: ${tabId}，首位: ${ids.slice(0, 5).join(',')}`
+          );
+        }
         return;
       }
 
