@@ -64,7 +64,7 @@
                   v-if="sku.colorImage"
                   :src="sku.colorImage"
                   :alt="sku.color"
-                  class="w-8 h-8 rounded object-cover mr-2"
+                  class="w-14 h-14 rounded-md object-cover mr-3 flex-shrink-0"
                 />
                 <span class="text-sm text-gray-900">{{ sku.color }}</span>
               </div>
