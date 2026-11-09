@@ -27,12 +27,16 @@ vi.mock('./adapters', () => ({
 
 vi.mock('./email', () => ({
   sendEmail: mocks.sendEmail,
+  // Tab 监控走专用发件服务，测试里与默认服务共用同一个 mock 便于断言
+  sendTabEmail: mocks.sendEmail,
   createTabChangeTemplate: (_tabName: string, info: TemplateInfo) => {
     mocks.templates.push(info)
     return '<html></html>'
   },
   configureEmailService: () => {},
+  configureTabEmailService: () => {},
   loadEmailConfigFromEnv: () => undefined,
+  loadTabEmailConfigFromEnv: () => undefined,
 }))
 
 import {

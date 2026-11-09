@@ -26,9 +26,12 @@ export type { CheckStockOptions, CollectionStockRequest, ProductSkuRequest } fro
 export {
   EmailService,
   configureEmailService,
+  configureTabEmailService,
   loadEmailConfigFromEnv,
+  loadTabEmailConfigFromEnv,
   getEmailService,
   sendEmail,
+  sendTabEmail,
   verifyEmailConfig,
   createBackInStockTemplate,
   createStockReportTemplate,

@@ -6,10 +6,12 @@ import { YishouAdapter } from './adapters';
 import type { AdapterConfig } from './adapters/types';
 import type { CollectionStockCheckResult, CollectionStockResult } from './types';
 import {
-  sendEmail,
+  sendTabEmail,
   createTabChangeTemplate,
   configureEmailService,
+  configureTabEmailService,
   loadEmailConfigFromEnv,
+  loadTabEmailConfigFromEnv,
 } from './email';
 import { runWithGateContext } from './utils/request-gate';
 import {
@@ -24,6 +26,12 @@ import {
 const emailConfig = loadEmailConfigFromEnv();
 if (emailConfig) {
   configureEmailService(emailConfig);
+}
+
+// Tab 提醒可以用独立发件账号（TAB_SMTP_USER，例如 foxmail 别名），未配置则沿用默认账号
+const tabEmailConfig = loadTabEmailConfigFromEnv();
+if (tabEmailConfig) {
+  configureTabEmailService(tabEmailConfig);
 }
 
 /**
@@ -842,7 +850,7 @@ export const createCancellableTabMonitor = (
               `[Tab监控] 本轮变化 ${changeCount} 个（新增 ${comparison.newProducts.length} / 下架 ${comparison.removedProducts.length}），达到阈值 ${minChangeCount}，Tab ID: ${tabId}`
             );
 
-            const emailResult = await sendEmail({
+            const emailResult = await sendTabEmail({
               to: task.recipient,
               subject:
                 task.subject ||
@@ -908,7 +916,7 @@ export const createCancellableTabMonitor = (
               `[Tab监控] 累计新商品达到阈值，发送提醒 ${batch.length} 个，Tab ID: ${tabId}`
             );
 
-            const emailResult = await sendEmail({
+            const emailResult = await sendTabEmail({
               to: task.recipient,
               subject:
                 task.subject ||

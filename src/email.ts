@@ -221,11 +221,66 @@ export function loadEmailConfigFromEnv(): EmailConfig | null {
 let defaultEmailService: EmailService | null = null;
 
 /**
+ * Tab 监控专用邮件服务实例
+ *
+ * Tab 提醒可以用独立发件账号（例如 QQ 邮箱的 Foxmail 别名），
+ * 未配置时 sendTabEmail 会回退到默认服务，行为与以前一致。
+ */
+let tabEmailService: EmailService | null = null;
+
+/**
+ * 读取 Tab 监控专用 SMTP 配置
+ *
+ * 支持用 TAB_SMTP_* 覆盖发件账号，未设置的项回退到全局 SMTP_*：
+ * - TAB_SMTP_USER：发件账号，不设置时视为不区分发件人，返回 null
+ * - TAB_SMTP_PASS：授权码，未设置时复用 SMTP_PASS
+ * - TAB_SMTP_HOST / TAB_SMTP_PORT / TAB_SMTP_SECURE / TAB_SMTP_FROM_NAME：可选
+ *
+ * @returns Tab 专用配置；未配置专用账号或缺少授权码时返回 null（回退默认服务）
+ */
+export function loadTabEmailConfigFromEnv(): EmailConfig | null {
+  const user = process.env.TAB_SMTP_USER?.trim();
+
+  // 没单独指定发件账号，就走默认服务
+  if (!user) {
+    return null;
+  }
+
+  const pass = process.env.TAB_SMTP_PASS?.trim() || process.env.SMTP_PASS?.trim();
+  if (!pass) {
+    console.warn(
+      '[Email] 已配置 TAB_SMTP_USER 但缺少 TAB_SMTP_PASS / SMTP_PASS，Tab 邮件继续使用默认账号'
+    );
+    return null;
+  }
+
+  const rawPort = Number(process.env.TAB_SMTP_PORT ?? process.env.SMTP_PORT ?? 465);
+  const port = Number.isFinite(rawPort) && rawPort > 0 ? rawPort : 465;
+
+  return {
+    host: process.env.TAB_SMTP_HOST || process.env.SMTP_HOST || 'smtp.qq.com',
+    port,
+    secure: (process.env.TAB_SMTP_SECURE ?? process.env.SMTP_SECURE ?? 'true') !== 'false',
+    user,
+    pass,
+    fromName: process.env.TAB_SMTP_FROM_NAME || process.env.SMTP_FROM_NAME || '购物助手',
+  };
+}
+
+/**
  * 配置默认邮件服务
  * @param config 邮件配置
  */
 export function configureEmailService(config: EmailConfig): void {
   defaultEmailService = new EmailService(config);
+}
+
+/**
+ * 配置 Tab 监控专用邮件服务
+ * @param config 邮件配置
+ */
+export function configureTabEmailService(config: EmailConfig): void {
+  tabEmailService = new EmailService(config);
 }
 
 /**
@@ -247,6 +302,19 @@ export function getEmailService(): EmailService {
  */
 export async function sendEmail(content: EmailContent): Promise<EmailResult> {
   const service = getEmailService();
+  return service.sendEmail(content);
+}
+
+/**
+ * 发送 Tab 监控邮件
+ *
+ * 优先使用 Tab 专用发件服务（TAB_SMTP_USER），未配置时回退默认服务。
+ *
+ * @param content 邮件内容
+ * @returns Promise<EmailResult> 发送结果
+ */
+export async function sendTabEmail(content: EmailContent): Promise<EmailResult> {
+  const service = tabEmailService ?? getEmailService();
   return service.sendEmail(content);
 }
 
