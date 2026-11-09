@@ -6,7 +6,6 @@
 import {
   createCancellableTabMonitor,
   normalizeActiveWindow,
-  MAX_TAB_PAGE_COUNT,
   MAX_TAB_SEEN_PRODUCTS,
   type TabMonitorTask,
   type TabMonitorConfig,
@@ -175,37 +174,6 @@ export default defineEventHandler(async (event) => {
     // 监控模式：accumulate 累计新商品（默认）/ diff 逐轮对比
     const mode = body.config?.mode === 'diff' ? 'diff' : 'accumulate'
 
-    // 每轮抓取页数：默认 1 页
-    const rawPageCount = body.config?.pageCount
-    const pageCount =
-      rawPageCount === undefined || rawPageCount === null || rawPageCount === ''
-        ? 1
-        : Number(rawPageCount)
-    if (!Number.isInteger(pageCount) || pageCount < 1 || pageCount > MAX_TAB_PAGE_COUNT) {
-      return createErrorResponse(
-        ErrorCode.INVALID_PARAMS,
-        `抓取页数需为 1-${MAX_TAB_PAGE_COUNT} 的整数`
-      )
-    }
-
-    // 定时全量抓取间隔（秒）：0 关闭，累计模式才生效
-    const rawFullScanInterval = body.config?.fullScanInterval
-    const fullScanInterval =
-      rawFullScanInterval === undefined || rawFullScanInterval === null || rawFullScanInterval === ''
-        ? 0
-        : Number(rawFullScanInterval)
-    if (
-      !Number.isInteger(fullScanInterval) ||
-      fullScanInterval < 0 ||
-      (fullScanInterval > 0 && fullScanInterval < 60) ||
-      fullScanInterval > 7 * 24 * 3600
-    ) {
-      return createErrorResponse(
-        ErrorCode.INVALID_PARAMS,
-        '全量抓取间隔需为 0（关闭）或 60-604800 秒的整数'
-      )
-    }
-
     // 构建监控配置
     const config: TabMonitorConfig = {
       tabId: body.tabId,
@@ -214,16 +182,13 @@ export default defineEventHandler(async (event) => {
       duration: body.config?.duration || 2 * 60 * 60,
       page: body.config?.page || 1,
       pageSize: body.config?.pageSize || 20,
-      pageCount,
-      // 逐轮对比模式列表规模会随全量轮剧烈波动，不支持定时全量
-      fullScanInterval: mode === 'accumulate' ? fullScanInterval : 0,
       sort: body.config?.sort || 1,
       minPrice: body.config?.minPrice || 0,
       maxPrice: body.config?.maxPrice || 0,
       minChangeCount: body.config?.minChangeCount || 10,
       adapterConfig: body.config?.adapterConfig || {},
-      // 累计模式首次创建时翻页抓全部商品，把已有商品全部记为已见
-      fullInitialScan: mode === 'accumulate',
+      // 新建任务先翻页抓全部商品记为已见，避免把已有商品当成新上架
+      fullInitialScan: true,
       ...(activeWindow ? { activeWindow } : {}),
       // 每轮实时读取店铺黑名单，运行中拉黑也能立刻生效
       getBlacklistedSuppliers: () => listBlacklistedSupplyIds(currentUser.username),

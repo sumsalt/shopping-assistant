@@ -47,13 +47,16 @@ export default defineEventHandler(async (event) => {
       tabName: originalTask.tabName,
     }
 
-    // 使用原任务的配置（深度复制所有参数）
+    // 使用原任务的配置（去掉已废弃的页数/定时全量字段），重新发起视为新任务，先全量建立基线
     const config: TabMonitorConfig = {
       ...originalTask.config,
       adapterConfig: {
         ...originalTask.config.adapterConfig,
       },
+      fullInitialScan: true,
     }
+    delete (config as unknown as Record<string, unknown>).pageCount
+    delete (config as unknown as Record<string, unknown>).fullScanInterval
 
     // 创建新任务
     const newTask: TabMonitorTaskRecord = {

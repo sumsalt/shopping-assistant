@@ -12,10 +12,6 @@ interface TabMonitorTaskItem {
   mode?: 'accumulate' | 'diff'
   interval: number
   duration: number
-  /** 每轮抓取页数（默认 1） */
-  pageCount?: number
-  /** 定时全量抓取间隔（秒），0 关闭 */
-  fullScanInterval?: number
   createdAt: Date
   checkCount: number
   detectedCount: number

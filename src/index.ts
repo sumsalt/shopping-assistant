@@ -61,8 +61,7 @@ export type {
 export {
   monitorTabList,
   createCancellableTabMonitor,
-  MAX_TAB_PAGE_COUNT,
-  MAX_TAB_INIT_PAGE_COUNT,
+  MAX_TAB_FULL_SCAN_PAGE_COUNT,
   MAX_TAB_SEEN_PRODUCTS,
 } from './tab-list-monitor';
 export type {
