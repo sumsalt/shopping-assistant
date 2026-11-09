@@ -286,6 +286,24 @@ export const useTabMonitorTasks = () => {
     return d.toLocaleString('zh-CN')
   }
 
+  /**
+   * 秒数格式化为可读时长：自动选秒 / 分钟 / 小时 / 天
+   * 例如 600 -> 10 分钟，7200 -> 2 小时，604800 -> 7 天，90000 -> 1 天 1 小时
+   */
+  const formatDuration = (seconds?: number): string => {
+    if (!seconds || seconds <= 0) return '不限时'
+    if (seconds < 60) return `${Math.round(seconds)} 秒`
+    if (seconds < 3600) return `${Math.round(seconds / 60)} 分钟`
+    if (seconds < 86400) {
+      const hours = seconds / 3600
+      return `${Number.isInteger(hours) ? hours : hours.toFixed(1)} 小时`
+    }
+
+    const days = Math.floor(seconds / 86400)
+    const restHours = Math.round((seconds - days * 86400) / 3600)
+    return restHours > 0 ? `${days} 天 ${restHours} 小时` : `${days} 天`
+  }
+
   return {
     // 状态
     tasks,
@@ -303,6 +321,7 @@ export const useTabMonitorTasks = () => {
     getStatusText,
     getStatusColor,
     formatTime,
+    formatDuration,
     formatLastDetected,
   }
 }

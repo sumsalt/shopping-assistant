@@ -125,7 +125,7 @@
                 <svg class="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                <span class="text-gray-600">最多 {{ task.duration }} 秒</span>
+                <span class="text-gray-600">最多 {{ formatDuration(task.duration) }}</span>
               </div>
               <div
                 v-if="task.activeWindow"
@@ -344,7 +344,10 @@
                 placeholder="默认 86400 秒（24 小时）"
                 class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
               />
-              <p class="mt-1 text-xs text-gray-500">设置为 0 表示无限监控</p>
+              <p class="mt-1 text-xs text-gray-500">
+                设置为 0 表示无限监控
+                <span v-if="formData.duration > 0" class="text-gray-400">· 约 {{ formatDuration(formData.duration) }}</span>
+              </p>
             </div>
           </div>
 
@@ -640,6 +643,7 @@ const {
   getStatusText,
   getStatusColor,
   formatTime,
+  formatDuration,
   formatLastDetected,
 } = useTabMonitorTasks()
 
