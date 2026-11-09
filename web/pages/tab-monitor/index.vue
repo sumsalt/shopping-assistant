@@ -67,9 +67,9 @@
       >
         <div class="p-6">
           <!-- 任务信息行 -->
-          <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-4">
+          <div class="flex items-start justify-between gap-3">
             <!-- 左侧：状态、Tab 名称和时间 -->
-            <div class="flex flex-wrap items-center gap-3">
+            <div class="flex flex-wrap items-center gap-3 min-w-0">
               <UiBadge :variant="getStatusColor(task.status) as 'default' | 'success' | 'warning' | 'danger' | 'info' | 'stock-available' | 'stock-unavailable'" size="md">
                 {{ getStatusText(task.status) }}
               </UiBadge>
@@ -91,8 +91,30 @@
               </span>
             </div>
 
-            <!-- 右侧：配置信息 -->
-            <div class="flex flex-wrap items-center gap-4 text-sm">
+            <!-- 右侧：运行详情折叠开关 -->
+            <button
+              type="button"
+              class="-mr-1 -mt-1 flex flex-shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-800"
+              :aria-expanded="isDetailExpanded(task.id)"
+              @click="toggleDetail(task.id)"
+            >
+              <span>{{ isDetailExpanded(task.id) ? '收起详情' : '运行详情' }}</span>
+              <svg
+                class="h-3.5 w-3.5 transition-transform duration-200"
+                :class="isDetailExpanded(task.id) ? 'rotate-180' : ''"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+          </div>
+
+          <!-- 运行详情（默认折叠）：配置 + 统计 -->
+          <div v-if="isDetailExpanded(task.id)" class="mt-3 space-y-2">
+            <!-- 配置信息 -->
+            <div class="flex flex-wrap items-center gap-2 text-sm">
               <div class="flex items-center gap-1.5 px-3 py-1.5 bg-gray-50 rounded-lg border border-gray-100">
                 <svg class="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -120,51 +142,51 @@
                 </span>
               </div>
             </div>
-          </div>
 
-          <!-- 统计信息 -->
-          <div class="flex flex-wrap items-center gap-4 mb-4 text-sm">
-            <div class="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 rounded-lg border border-blue-100">
-              <svg class="w-4 h-4 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-              </svg>
-              <span class="text-blue-700 font-medium">{{ task.checkCount }}</span>
-              <span class="text-blue-600">次检测</span>
-            </div>
-            <div class="flex items-center gap-1.5 px-3 py-1.5 bg-green-50 rounded-lg border border-green-100">
-              <svg class="w-4 h-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-              </svg>
-              <span class="text-green-700 font-medium">{{ task.detectedCount }}</span>
-              <span class="text-green-600">次提醒</span>
-            </div>
-            <div class="flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 rounded-lg border border-purple-100">
-              <svg class="w-4 h-4 text-purple-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-              </svg>
-              <span class="text-purple-700 font-medium">{{ task.currentTotal }}</span>
-              <span class="text-purple-600">本轮抓取</span>
-            </div>
-            <div
-              v-if="task.mode !== 'diff'"
-              class="flex items-center gap-1.5 px-3 py-1.5 bg-teal-50 rounded-lg border border-teal-100"
-            >
-              <svg class="w-4 h-4 text-teal-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-              </svg>
-              <span class="text-teal-700 font-medium">{{ task.seenCount ?? 0 }}</span>
-              <span class="text-teal-600">已记录商品</span>
-            </div>
-            <div v-if="task.lastDetectedAt" class="flex items-center gap-1.5 px-3 py-1.5 bg-orange-50 rounded-lg border border-orange-100">
-              <svg class="w-4 h-4 text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <span class="text-orange-600">最后检测: {{ formatLastDetected(task.lastDetectedAt) }}</span>
+            <!-- 统计信息 -->
+            <div class="flex flex-wrap items-center gap-2 text-sm">
+              <div class="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 rounded-lg border border-blue-100">
+                <svg class="w-4 h-4 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                </svg>
+                <span class="text-blue-700 font-medium">{{ task.checkCount }}</span>
+                <span class="text-blue-600">次检测</span>
+              </div>
+              <div class="flex items-center gap-1.5 px-3 py-1.5 bg-green-50 rounded-lg border border-green-100">
+                <svg class="w-4 h-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                </svg>
+                <span class="text-green-700 font-medium">{{ task.detectedCount }}</span>
+                <span class="text-green-600">次提醒</span>
+              </div>
+              <div class="flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 rounded-lg border border-purple-100">
+                <svg class="w-4 h-4 text-purple-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                </svg>
+                <span class="text-purple-700 font-medium">{{ task.currentTotal }}</span>
+                <span class="text-purple-600">本轮抓取</span>
+              </div>
+              <div
+                v-if="task.mode !== 'diff'"
+                class="flex items-center gap-1.5 px-3 py-1.5 bg-teal-50 rounded-lg border border-teal-100"
+              >
+                <svg class="w-4 h-4 text-teal-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                </svg>
+                <span class="text-teal-700 font-medium">{{ task.seenCount ?? 0 }}</span>
+                <span class="text-teal-600">已记录商品</span>
+              </div>
+              <div v-if="task.lastDetectedAt" class="flex items-center gap-1.5 px-3 py-1.5 bg-orange-50 rounded-lg border border-orange-100">
+                <svg class="w-4 h-4 text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span class="text-orange-600">最后检测: {{ formatLastDetected(task.lastDetectedAt) }}</span>
+              </div>
             </div>
           </div>
 
           <!-- 操作按钮行 -->
-          <div class="flex flex-wrap items-center gap-2 pt-3 border-t border-gray-100">
+          <div class="mt-4 flex flex-wrap items-center gap-2 pt-3 border-t border-gray-100">
             <UiButton
               v-if="task.mode !== 'diff' && (task.seenCount ?? 0) > 0"
               variant="outline"
@@ -620,6 +642,21 @@ const {
   formatTime,
   formatLastDetected,
 } = useTabMonitorTasks()
+
+// 运行详情（配置 + 统计）默认折叠，逐个任务单独展开
+const expandedDetailIds = ref<Set<string>>(new Set())
+
+const isDetailExpanded = (taskId: string) => expandedDetailIds.value.has(taskId)
+
+const toggleDetail = (taskId: string) => {
+  const next = new Set(expandedDetailIds.value)
+  if (next.has(taskId)) {
+    next.delete(taskId)
+  } else {
+    next.add(taskId)
+  }
+  expandedDetailIds.value = next
+}
 
 // 累计商品弹窗
 const seenDialogOpen = ref(false)
