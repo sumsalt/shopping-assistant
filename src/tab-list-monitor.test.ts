@@ -322,7 +322,7 @@ describe('monitorTabList 生效时段', () => {
   })
 })
 
-describe('monitorTabList 多页抓取', () => {
+describe('monitorTabList 首页触发全量抓取', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date(2026, 10, 3, 10, 0, 0))
