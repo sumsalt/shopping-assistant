@@ -4,7 +4,7 @@
  */
 
 import { monitorTasks, startMonitorTask, type MonitorTaskRecord } from './create.post'
-import { createSuccessResponse, createErrorResponse } from '../../utils/response'
+import { createSuccessResponse, createErrorResponse, ErrorCode } from '../../utils/response'
 import { getCurrentUser } from '../../utils/session'
 import { getTask, persistTask } from '../../utils/taskStore'
 import type { MonitorTask, StockMonitorConfig } from '@core'
@@ -37,6 +37,14 @@ export default defineEventHandler(async (event) => {
       return createErrorResponse('FORBIDDEN', '无权操作此任务')
     }
 
+    // 已下单成功的任务不能再发一次，否则会重复建单
+    if (originalTask.result?.orderSn) {
+      return createErrorResponse(
+        ErrorCode.INVALID_PARAMS,
+        '该任务已自动下单成功，不能重复发起'
+      )
+    }
+
     // 生成新任务 ID
     const newTaskId = `task_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`
 
@@ -52,13 +60,14 @@ export default defineEventHandler(async (event) => {
       productImage: product.productImage,
     }
 
-    // 使用原任务的配置
+    // 使用原任务的配置（自动下单配置一并继承）
     const config: StockMonitorConfig = {
       interval: originalTask.config.interval,
       duration: originalTask.config.duration,
       adapterConfig: {
         ...originalTask.config.adapterConfig,
       },
+      ...(originalTask.config.autoOrder ? { autoOrder: originalTask.config.autoOrder } : {}),
     }
 
     // 创建新任务

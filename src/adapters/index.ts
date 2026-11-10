@@ -6,6 +6,7 @@ import { StockCheckError, StockCheckErrorType } from '../types';
 import type { Platform } from '../types';
 import type { PlatformAdapter, AdapterConfig } from './types';
 import { YishouAdapter } from './yishou';
+import type { AutoOrderAdapter } from '../auto-order';
 
 // 适配器注册表
 const adapterRegistry = new Map<Platform, new (config: AdapterConfig) => PlatformAdapter>();
@@ -18,6 +19,29 @@ export const registerAdapter = (
   AdapterClass: new (config: AdapterConfig) => PlatformAdapter
 ): void => {
   adapterRegistry.set(platform, AdapterClass);
+};
+
+/**
+ * 获取支持自动下单的适配器
+ *
+ * 下单能力不是所有平台都有，这里做一次运行时能力检查，
+ * 不支持时返回 null，由调用方降级为普通到货提醒。
+ */
+export const getOrderAdapter = (
+  platform: Platform,
+  config: AdapterConfig = {}
+): AutoOrderAdapter | null => {
+  const adapter = getAdapter(platform, config) as unknown as AutoOrderAdapter;
+
+  const capable =
+    typeof adapter.getAddresses === 'function' &&
+    typeof adapter.getProductSkus === 'function' &&
+    typeof adapter.addToCart === 'function' &&
+    typeof adapter.confirmOrder === 'function' &&
+    typeof adapter.createOrder === 'function' &&
+    typeof adapter.deleteCart === 'function';
+
+  return capable ? adapter : null;
 };
 
 /**

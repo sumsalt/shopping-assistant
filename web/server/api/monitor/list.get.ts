@@ -33,6 +33,7 @@ export default defineEventHandler(async (event) => {
         status: task.status,
         interval: task.config.interval,
         duration: task.config.duration,
+        autoOrder: task.config.autoOrder ?? null,
         createdAt: task.createdAt,
         result: task.result,
       }))

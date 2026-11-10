@@ -20,6 +20,13 @@ export interface HttpRequestOptions {
   timeout?: number;
   /** 代理 URL（可选） */
   proxyUrl?: string;
+  /**
+   * 跳过全局请求闸门
+   *
+   * 下单链路（加购 / 结算 / 建单）是「抢库存」操作，排队 15 秒即失去意义，
+   * 因此这些请求显式跳过限流；它们只在检测到有货时触发，不会持续空转。
+   */
+  skipGate?: boolean;
 }
 
 /**
@@ -54,6 +61,7 @@ export const httpRequest = async <T>(
     body,
     timeout = 10000,
     proxyUrl,
+    skipGate = false,
   } = options;
 
   const axiosConfig: AxiosRequestConfig = {
@@ -80,7 +88,7 @@ export const httpRequest = async <T>(
   // 全局请求闸门：只有带任务上下文的请求才排队限流；
   // 用户手动触发的请求（无上下文）直接放行，不受任何限制。
   const gateContext = getGateContext();
-  if (gateContext) {
+  if (gateContext && !skipGate) {
     try {
       await acquireRequestSlot(gateContext);
     } catch (error) {

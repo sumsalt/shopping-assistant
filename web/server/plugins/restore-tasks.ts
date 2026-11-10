@@ -67,6 +67,13 @@ const restoreStockTasks = (): number => {
 
   for (const task of tasks) {
     try {
+      // 已经下过单 / 下单结果未知的任务不能续跑：重启后重新跑一遍会再下一单
+      if (task.result?.orderSn || task.result?.orderUncertain) {
+        task.status = 'completed'
+        persistTask('stock', task)
+        continue
+      }
+
       const remaining = getRemainingSeconds(task)
 
       if (remaining !== Number.POSITIVE_INFINITY && remaining <= 0) {

@@ -8,11 +8,14 @@ export * from './types';
 // 导出适配器相关
 export { 
   getAdapter, 
+  getOrderAdapter,
   getSupportedPlatforms, 
   registerAdapter,
   BaseAdapter,
   YishouAdapter,
 } from './adapters';
+export { placeAutoOrder, precheckAutoOrder, DEFAULT_AUTO_ORDER_PAY_TOOL, MAX_AUTO_ORDER_NUM } from './auto-order';
+export type { AutoOrderAdapter, PlaceOrderParams, PrecheckOrderResult } from './auto-order';
 export type { PlatformAdapter, AdapterConfig } from './adapters';
 
 // 导出工具函数
@@ -36,6 +39,8 @@ export {
   createBackInStockTemplate,
   createStockReportTemplate,
   createPriceChangeTemplate,
+  createAutoOrderTemplate,
+  createAutoOrderFailedTemplate,
 } from './email';
 export type {
   EmailConfig,

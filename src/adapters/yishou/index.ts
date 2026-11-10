@@ -3,7 +3,7 @@
  */
 
 import { StockCheckError, StockCheckErrorType } from '../../types';
-import type { Platform, StockCheckResult, YishouGoodsData, YishouGoodsResponse, YishouCollectionGoodsData, YishouCollectionResponse, CollectionStockResult, CollectionStockCheckResult, YishouCartDetailResponse, YishouCartDetailData, ProductSkuResult, SkuInfo, YishouTabGoodsData, PriceSnapshot } from '../../types';
+import type { Platform, StockCheckResult, YishouGoodsData, YishouGoodsResponse, YishouCollectionGoodsData, YishouCollectionResponse, CollectionStockResult, CollectionStockCheckResult, YishouCartDetailResponse, YishouCartDetailData, ProductSkuResult, SkuInfo, YishouTabGoodsData, PriceSnapshot, YishouAddress, YishouCartAddResult, YishouConfirmOrderData, YishouConfirmStockItem, YishouCreateOrderData } from '../../types';
 import { BaseAdapter } from '../base-adapter';
 import type { AdapterConfig } from '../types';
 import { httpPost } from '../../utils/http';
@@ -20,6 +20,24 @@ const YISHOU_CART_DETAIL_API_URL = 'https://api.yishouapp.com/wechat/add_cart_go
 
 /** 一手 H5 Tab 商品列表 API 地址 */
 const YISHOU_TAB_LIST_API_URL = 'https://api.yishouapp.com/template/getNewTemplateH5Tab';
+
+/** 一手收货地址 API 地址 */
+const YISHOU_ADDRESS_API_URL = 'https://api.yishouapp.com/userAddress/get_user_address';
+
+/** 一手加入购物车 API 地址 */
+const YISHOU_ADD_CART_API_URL = 'https://api.yishouapp.com/cart/add_goods_to_cart';
+
+/** 一手删除购物车商品 API 地址 */
+const YISHOU_DEL_CART_API_URL = 'https://api.yishouapp.com/cart/del_cart';
+
+/** 一手结算确认 API 地址（只算钱，不生成订单，可反复调用） */
+const YISHOU_CONFIRM_ORDER_API_URL = 'https://api.yishouapp.com/order/confirm_order_v4';
+
+/** 一创建订单 API 地址（失败会锁单，调用前必须确认参数） */
+const YISHOU_CREATE_ORDER_API_URL = 'https://api.yishouapp.com/order/create_order_v4';
+
+/** 一手订单详情 API 地址 */
+const YISHOU_ORDER_DETAIL_API_URL = 'https://api.yishouapp.com/order/get_order_detail_v2';
 
 /** 一手商品链接前缀 */
 const YISHOU_GOODS_URL_PREFIX = 'https://www.yishouapp.com/goods/';
@@ -105,6 +123,51 @@ const toOptionalNumber = (value?: string): number | undefined => {
 
   const parsed = Number.parseFloat(value);
   return Number.isFinite(parsed) ? parsed : undefined;
+};
+
+/** 一手地址原始字段（snake_case） */
+interface YishouAddressRaw {
+  address_id?: string | number;
+  consignee?: string;
+  province?: string | number;
+  city?: string | number;
+  district?: string | number;
+  address?: string;
+  mobile?: string;
+  area?: string;
+}
+
+/**
+ * 把一手地址（snake_case）转成内部结构
+ */
+export const mapYishouAddress = (raw: YishouAddressRaw): YishouAddress => ({
+  addressId: String(raw.address_id ?? ''),
+  consignee: raw.consignee ?? '',
+  province: String(raw.province ?? ''),
+  city: String(raw.city ?? ''),
+  district: String(raw.district ?? ''),
+  address: raw.address ?? '',
+  mobile: raw.mobile ?? '',
+  area: raw.area ?? '',
+});
+
+/**
+ * 下单时回传的 stock 项：只保留标量字段，丢弃 tag_list / 图片 等嵌套结构
+ *
+ * 一手要求把 confirm_order_v4 返回的 stock 原样传回，只传 sku + num 会 500 并触发锁单
+ */
+const pickScalarFields = (item: YishouConfirmStockItem): Record<string, unknown> => {
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(item)) {
+    if (value === null || value === undefined) {
+      continue;
+    }
+    if (typeof value === 'object') {
+      continue;
+    }
+    result[key] = value;
+  }
+  return result;
 };
 
 /**
@@ -760,5 +823,213 @@ export class YishouAdapter extends BaseAdapter {
         error
       );
     }
+  }
+
+  // ==================== 下单链路 ====================
+
+  /**
+   * 下单链路的公共请求
+   *
+   * - 必须带登录态（uid + token）
+   * - 跳过全局请求闸门：下单是抢库存操作，排队 15 秒就没有意义了
+   */
+  private async postOrderApi<T>(
+    url: string,
+    extra: Record<string, string> = {}
+  ): Promise<T> {
+    if (!this.config.uid || !this.config.token) {
+      throw new StockCheckError(
+        StockCheckErrorType.AUTH_REQUIRED,
+        '自动下单需要登录态，请先在系统配置中填写 uid 和 token'
+      );
+    }
+
+    const { sign, t_t } = this.generateSignature();
+    const requestBody: Record<string, string> = {
+      ...this.buildBaseRequestBody(t_t),
+      ...extra,
+    };
+
+    const response = await httpPost<{ code: string; msg: string; data: T }>(
+      url,
+      requestBody,
+      this.buildHeaders(sign),
+      { ...this.getProxyConfig(), skipGate: true, timeout: 20000 }
+    );
+
+    if (response.code !== '200') {
+      throw new StockCheckError(
+        response.msg?.includes('登录')
+          ? StockCheckErrorType.AUTH_REQUIRED
+          : StockCheckErrorType.API_ERROR,
+        response.msg || `一手平台返回异常（code=${response.code}）`
+      );
+    }
+
+    return response.data;
+  }
+
+  /**
+   * 获取收货地址列表
+   */
+  async getAddresses(): Promise<YishouAddress[]> {
+    const data = await this.postOrderApi<YishouAddressRaw[] | { list?: YishouAddressRaw[] }>(
+      YISHOU_ADDRESS_API_URL
+    );
+
+    const list = Array.isArray(data) ? data : data?.list || [];
+    return list.map(mapYishouAddress).filter(item => item.addressId);
+  }
+
+  /**
+   * 加入购物车
+   *
+   * @param goodsId 商品 ID
+   * @param sku SKU ID
+   * @param num 数量
+   * @returns 购物车商品级 ID（rec_id，等于 goods_no）
+   */
+  async addToCart(goodsId: string, sku: string, num: number): Promise<YishouCartAddResult> {
+    // num 必须是字符串、JSON 用紧凑格式，否则部分场景会被服务端忽略
+    const selected = JSON.stringify([{ sku, num: String(num) }]);
+
+    const data = await this.postOrderApi<{
+      rec_id?: string | number;
+      goods_no?: string;
+      shop_price?: string;
+    }>(YISHOU_ADD_CART_API_URL, {
+      goods_id: goodsId,
+      selected,
+      is_select_refund_insurance: '0',
+      is_select_super_refund_insurance: '0',
+    });
+
+    const recId = String(data?.rec_id ?? '');
+    if (!recId) {
+      throw new StockCheckError(
+        StockCheckErrorType.API_ERROR,
+        '加入购物车失败：未返回 rec_id（商品可能已下架或该规格无货）'
+      );
+    }
+
+    return {
+      recId,
+      goodsNo: data?.goods_no || '',
+      shopPrice: Number.parseFloat(data?.shop_price || '0') || 0,
+    };
+  }
+
+  /**
+   * 结算确认（只算钱，不生成订单，可反复调用）
+   */
+  async confirmOrder(
+    recIds: string,
+    selected: string,
+    addressId: string
+  ): Promise<YishouConfirmOrderData> {
+    const data = await this.postOrderApi<Record<string, unknown>>(YISHOU_CONFIRM_ORDER_API_URL, {
+      rec_ids: recIds,
+      selected,
+      address_id: addressId,
+      is_df: '0',
+    });
+
+    const stock = Array.isArray(data?.stock) ? (data.stock as YishouConfirmStockItem[]) : [];
+    const outStock = Array.isArray(data?.out_stock)
+      ? (data.out_stock as YishouConfirmStockItem[])
+      : [];
+    const payTools = Array.isArray(data?.pay_tool)
+      ? (data.pay_tool as Array<{ pay_tool?: string | number }>).map(item => String(item.pay_tool ?? ''))
+      : [];
+
+    return {
+      stock,
+      outStock,
+      defaultAddress: data?.default_address
+        ? mapYishouAddress(data.default_address as YishouAddressRaw)
+        : undefined,
+      goodsAmount: toOptionalNumber(
+        (data?.price_tolal ?? data?.goods_amount_total) as string | undefined
+      ),
+      shippingFee: toOptionalNumber(
+        (data?.shipping_fee ?? data?.shipping_fee_total) as string | undefined
+      ),
+      numTotal: Number(data?.num_total) || 0,
+      payTools,
+    };
+  }
+
+  /**
+   * 创建订单
+   *
+   * 注意：任何一次失败都会在服务端留下「订单支付中」临时锁，几分钟内无法再下单，
+   * 因此调用前必须先用 confirmOrder 校验参数。
+   */
+  async createOrder(params: {
+    recIds: string;
+    stock: YishouConfirmStockItem[];
+    address: YishouAddress;
+    payTool: string;
+  }): Promise<YishouCreateOrderData> {
+    const selected = JSON.stringify(params.stock.map(pickScalarFields));
+    const { address } = params;
+
+    const data = await this.postOrderApi<{
+      order_sn?: string;
+      pay_status?: string;
+      order_amount?: string;
+      pay_tool?: string;
+      pay_params?: Record<string, unknown>;
+    }>(YISHOU_CREATE_ORDER_API_URL, {
+      rec_ids: params.recIds,
+      selected,
+      consignee: address.consignee,
+      province: address.province,
+      city: address.city,
+      district: address.district,
+      address: address.address,
+      mobile: address.mobile,
+      custom_note: '',
+      is_other: '0',
+      is_send_logistics: '0',
+      is_merge_order: '0',
+      is_no_invoice: '0',
+      is_balance_pay: '0',
+      pay_tool: params.payTool,
+      is_df: '0',
+    });
+
+    const orderSn = String(data?.order_sn ?? '');
+    if (!orderSn) {
+      throw new StockCheckError(StockCheckErrorType.API_ERROR, '下单失败：未返回订单号');
+    }
+
+    return {
+      orderSn,
+      payStatus: data?.pay_status || 'wait_pay',
+      orderAmount: toOptionalNumber(data?.order_amount),
+      payTool: data?.pay_tool,
+      payParams: data?.pay_params,
+    };
+  }
+
+  /**
+   * 删除购物车商品（下单失败时清理残留）
+   */
+  async deleteCart(recIds: string): Promise<void> {
+    await this.postOrderApi<unknown>(YISHOU_DEL_CART_API_URL, { rec_ids: recIds });
+  }
+
+  /**
+   * 查询订单支付截止时间（下单成功后用于邮件提示，失败不影响下单结果）
+   */
+  async getOrderExpireAt(orderSn: string): Promise<number | undefined> {
+    const data = await this.postOrderApi<{ cancel_expire?: string | number }>(
+      YISHOU_ORDER_DETAIL_API_URL,
+      { order_sn: orderSn }
+    );
+
+    const seconds = Number(data?.cancel_expire);
+    return Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : undefined;
   }
 }

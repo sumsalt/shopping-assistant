@@ -566,6 +566,138 @@ export enum StockCheckErrorType {
   UNKNOWN_ERROR = 'UNKNOWN_ERROR',
 }
 
+// ==================== 下单相关类型 ====================
+
+/**
+ * 一手收货地址
+ */
+export interface YishouAddress {
+  /** 地址 ID（下单必须原样回传） */
+  addressId: string;
+  /** 收件人 */
+  consignee: string;
+  /** 省 ID（数字，不是名称） */
+  province: string;
+  /** 市 ID */
+  city: string;
+  /** 区 ID */
+  district: string;
+  /** 详细地址 */
+  address: string;
+  /** 手机号 */
+  mobile: string;
+  /** 地区文案：浙江省 金华市 东阳市 */
+  area: string;
+}
+
+/**
+ * 加购结果
+ */
+export interface YishouCartAddResult {
+  /** 购物车商品级 ID（等于 goods_no），后续 confirm / 下单都传它 */
+  recId: string;
+  /** 商品货号 */
+  goodsNo: string;
+  /** 单价 */
+  shopPrice: number;
+}
+
+/**
+ * 结算确认返回的 stock 单条（下单时需去掉嵌套字段后原样回传）
+ */
+export interface YishouConfirmStockItem {
+  [key: string]: unknown;
+}
+
+/**
+ * 结算确认返回
+ */
+export interface YishouConfirmOrderData {
+  /** 下单时必须原样回传的库存明细 */
+  stock: YishouConfirmStockItem[];
+  /** 失效商品 */
+  outStock: YishouConfirmStockItem[];
+  /** 默认地址 */
+  defaultAddress?: YishouAddress;
+  /** 商品金额（注意接口拼写是 price_tolal） */
+  goodsAmount?: number;
+  /** 运费 */
+  shippingFee?: number;
+  /** 总件数 */
+  numTotal?: number;
+  /** 可用支付方式 */
+  payTools: string[];
+}
+
+/**
+ * 创建订单返回
+ */
+export interface YishouCreateOrderData {
+  /** 订单号 */
+  orderSn: string;
+  /** 支付状态：wait_pay / already */
+  payStatus: string;
+  /** 订单金额 */
+  orderAmount?: number;
+  /** 支付方式 */
+  payTool?: string;
+  /** 支付参数（微信小程序支付需要 userName + path） */
+  payParams?: Record<string, unknown>;
+}
+
+/**
+ * 自动下单配置
+ */
+export interface AutoOrderConfig {
+  /** 是否启用自动下单 */
+  enabled: boolean;
+  /** 购买件数，默认 1 */
+  num?: number;
+  /** 收货地址 ID，不传则使用账号默认地址 */
+  addressId?: string;
+  /** 支付方式：1 支付宝 / 4 微信（只影响返回的支付参数，支付仍需人工完成） */
+  payTool?: '1' | '4';
+  /** 指定 SKU，不传则自动挑第一个有货规格 */
+  sku?: string;
+}
+
+/**
+ * 自动下单阶段
+ */
+export type AutoOrderStage = 'address' | 'sku' | 'cart' | 'confirm' | 'create' | 'done';
+
+/**
+ * 自动下单结果
+ */
+export interface AutoOrderResult {
+  /** 是否下单成功 */
+  success: boolean;
+  /** 失败（或成功）所处阶段 */
+  stage: AutoOrderStage;
+  /** 可重试：无货、被抢完等，下一轮继续监控 */
+  retryable?: boolean;
+  /** 结果未知：请求中断，订单可能已生成，必须人工核对，不能自动重试 */
+  uncertain?: boolean;
+  /** 说明信息 / 错误原因 */
+  message?: string;
+  /** 订单号 */
+  orderSn?: string;
+  /** 订单金额 */
+  orderAmount?: number;
+  /** 支付方式 */
+  payTool?: string;
+  /** 实际下单的 SKU */
+  sku?: string;
+  /** SKU 文案：蓝色 / M */
+  skuLabel?: string;
+  /** 购买件数 */
+  num?: number;
+  /** 购物车 rec_id */
+  recId?: string;
+  /** 支付截止时间（毫秒时间戳） */
+  expireAt?: number;
+}
+
 /**
  * 库存查询错误
  */

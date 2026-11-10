@@ -65,6 +65,12 @@
               <span class="text-sm text-gray-600 font-medium">
                 {{ task.product.productName }}
               </span>
+              <span
+                v-if="task.autoOrder?.enabled"
+                class="text-xs px-2 py-0.5 rounded border bg-orange-50 text-orange-600 border-orange-100"
+              >
+                自动下单 × {{ task.autoOrder.num || 1 }}
+              </span>
             </div>
 
             <!-- 右侧：配置信息 -->
@@ -132,8 +138,40 @@
             </UiButton>
           </div>
 
-          <!-- 监控结果（已到货） -->
-          <div v-if="task.result?.detected" class="mt-4">
+          <!-- 监控结果（已自动下单） -->
+          <div v-if="task.result?.orderSn" class="mt-4">
+            <div class="bg-green-50 rounded-lg p-3 border border-green-100">
+              <p class="text-sm font-medium text-green-800">
+                ✓ 已自动下单
+                <span v-if="task.result.emailSent" class="text-xs text-green-600">（已发送邮件）</span>
+              </p>
+              <div class="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-green-800">
+                <span>订单号：<strong class="tabular-nums">{{ task.result.orderSn }}</strong></span>
+                <span>金额：{{ formatAmount(task.result.orderAmount) }}</span>
+                <span v-if="task.result.orderSkuLabel">规格：{{ task.result.orderSkuLabel }}</span>
+                <span v-if="task.result.orderExpireAt">
+                  付款截止：{{ formatExpire(task.result.orderExpireAt) }}
+                </span>
+              </div>
+              <p class="mt-2 text-xs text-green-700">
+                订单已锁库存但尚未付款，请到一手 App「我的 → 待付款」完成支付，超时会自动关闭。
+              </p>
+            </div>
+          </div>
+
+          <!-- 自动下单失败 -->
+          <div v-else-if="task.result?.orderError" class="mt-4">
+            <div class="bg-amber-50 rounded-lg p-3 border border-amber-100">
+              <p class="text-sm font-medium text-amber-800">自动下单未成功</p>
+              <p class="mt-1 text-xs text-amber-700 break-all">{{ task.result.orderError }}</p>
+              <p v-if="task.result.orderUncertain" class="mt-1 text-xs font-medium text-red-600">
+                订单可能已经生成，请先到一手 App 核对，避免重复下单。
+              </p>
+            </div>
+          </div>
+
+          <!-- 监控结果（已到货，未开启自动下单） -->
+          <div v-else-if="task.result?.detected" class="mt-4">
             <div class="bg-green-50 rounded-lg p-3 border border-green-100">
               <p class="text-sm font-medium text-green-800">
                 ✓ 已检测到商品到货
@@ -217,6 +255,8 @@ const {
   getStatusText,
   getStatusColor,
   formatTime,
+  formatAmount,
+  formatExpire,
   getTotalRequestCount,
   getFailedRequestCount,
 } = useMonitorTasks()

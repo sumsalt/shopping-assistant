@@ -1160,3 +1160,179 @@ export function createStockReportTemplate(
     </html>
   `;
 }
+
+/** 自动下单成功通知的参数 */
+export interface AutoOrderTemplateParams {
+  /** 商品名称 */
+  productName: string;
+  /** 商品主图 */
+  productImage?: string;
+  /** 订单号 */
+  orderSn?: string;
+  /** 订单金额 */
+  orderAmount?: number;
+  /** 规格文案：蓝色 / M */
+  skuLabel?: string;
+  /** 件数 */
+  num?: number;
+  /** 支付方式（1 支付宝 / 4 微信） */
+  payTool?: string;
+  /** 支付截止时间（毫秒时间戳） */
+  expireAt?: number;
+}
+
+/** 把支付截止时间格式化成「今天 12:34」这种可读文案 */
+const formatExpireText = (expireAt?: number): string => {
+  if (!expireAt) {
+    return '';
+  }
+  const date = new Date(expireAt);
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+};
+
+/**
+ * 自动下单成功通知
+ *
+ * 服务端只能把订单建出来（锁住库存），支付必须人工完成，
+ * 所以这封邮件的重点是「订单号 + 还剩多久 + 去哪付」。
+ */
+export function createAutoOrderTemplate(params: AutoOrderTemplateParams): string {
+  const {
+    productName,
+    productImage,
+    orderSn = '-',
+    orderAmount,
+    skuLabel,
+    num = 1,
+    payTool,
+    expireAt,
+  } = params;
+
+  const amountText = orderAmount !== undefined ? `¥${orderAmount.toFixed(2)}` : '以 App 内为准';
+  const payText = payTool === '1' ? '支付宝' : payTool === '4' ? '微信' : '默认支付方式';
+  const expireText = formatExpireText(expireAt);
+
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <style>
+        body {
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+          line-height: 1.6;
+          color: #333;
+          max-width: 600px;
+          margin: 0 auto;
+          padding: 20px;
+        }
+        .container { background: #f9f9f9; border-radius: 8px; padding: 30px; }
+        .header { text-align: center; margin-bottom: 24px; border-bottom: 2px solid #e0e0e0; padding-bottom: 18px; }
+        .header h1 { color: #2e7d32; margin: 0; font-size: 22px; }
+        .content { background: white; padding: 24px; border-radius: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.08); }
+        .product-name { font-size: 17px; font-weight: bold; margin: 12px 0; }
+        .image-container { text-align: center; margin: 14px 0; }
+        .product-image { max-width: 240px; width: 100%; border-radius: 8px; }
+        .amount { font-size: 24px; color: #e53935; font-weight: bold; margin: 12px 0; }
+        table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px; }
+        td { padding: 8px 0; border-bottom: 1px solid #f0f0f0; }
+        td.label { color: #888; width: 96px; }
+        .warn {
+          background: #fff8e1; border-left: 4px solid #ffb300;
+          padding: 12px 14px; border-radius: 4px; font-size: 14px; color: #795548; margin-top: 16px;
+        }
+        .steps { font-size: 14px; color: #444; margin-top: 16px; }
+        .footer { text-align: center; margin-top: 26px; color: #999; font-size: 12px; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>✅ 已自动下单，请尽快付款</h1>
+        </div>
+        <div class="content">
+          <p>你好！你监控的商品刚补货，系统已经自动建好订单并锁住库存。</p>
+          <div class="product-name">${productName}</div>
+          ${productImage ? `<div class="image-container"><img class="product-image" src="${productImage}" alt="${productName}" /></div>` : ''}
+          <div class="amount">${amountText}</div>
+          <table>
+            <tr><td class="label">订单号</td><td><strong>${orderSn}</strong></td></tr>
+            <tr><td class="label">规格</td><td>${skuLabel || '-'} × ${num}</td></tr>
+            <tr><td class="label">支付方式</td><td>${payText}</td></tr>
+            ${expireText ? `<tr><td class="label">付款截止</td><td>${expireText}</td></tr>` : ''}
+          </table>
+          <div class="warn">
+            订单已生成但<strong>尚未付款</strong>。超时未付会自动关闭并释放库存，届时需要重新抢。
+          </div>
+          <div class="steps">
+            付款方式：打开一手 App → 我的 → 待付款 → 找到订单 <strong>${orderSn}</strong> → 立即支付。
+          </div>
+        </div>
+        <div class="footer">
+          本邮件由购物助手自动发送，请勿直接回复。
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+}
+
+/**
+ * 自动下单失败告警
+ *
+ * 只有「继续重试没有意义」的失败才会发这封邮件（登录态失效、建单结果未知等）。
+ */
+export function createAutoOrderFailedTemplate(params: {
+  productName: string;
+  message: string;
+  stage?: string;
+  uncertain?: boolean;
+}): string {
+  const { productName, message, stage, uncertain } = params;
+
+  const stageText: Record<string, string> = {
+    address: '获取收货地址',
+    sku: '查询规格库存',
+    cart: '加入购物车',
+    confirm: '结算确认',
+    create: '创建订单',
+  };
+
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <style>
+        body {
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+          line-height: 1.6;
+          color: #333; max-width: 600px; margin: 0 auto; padding: 20px;
+        }
+        .container { background: #fdf3f3; border-radius: 8px; padding: 28px; }
+        .header { text-align: center; margin-bottom: 22px; }
+        .header h1 { color: #c62828; margin: 0; font-size: 20px; }
+        .content { background: white; padding: 22px; border-radius: 6px; }
+        .msg { background: #fafafa; border-left: 4px solid #c62828; padding: 12px 14px; border-radius: 4px; font-size: 14px; }
+        .footer { text-align: center; margin-top: 22px; color: #999; font-size: 12px; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>⚠️ 自动下单失败</h1>
+        </div>
+        <div class="content">
+          <p>商品：<strong>${productName}</strong></p>
+          ${stage ? `<p>失败环节：${stageText[stage] || stage}</p>` : ''}
+          <div class="msg">${message}</div>
+          ${uncertain ? '<p style="color:#c62828;font-size:14px;margin-top:14px;">建单请求中断，订单<strong>可能已经生成</strong>，请先到 App「我的订单」核对，避免重复下单或漏付款。</p>' : ''}
+          <p style="font-size:14px;color:#666;margin-top:14px;">任务已停止。排除问题后可重新发起监控。</p>
+        </div>
+        <div class="footer">本邮件由购物助手自动发送，请勿直接回复。</div>
+      </div>
+    </body>
+    </html>
+  `;
+}

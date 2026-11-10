@@ -7,7 +7,9 @@
 
 import {
   createCancellableMonitor,
+  MAX_AUTO_ORDER_NUM,
   MIN_STOCK_MONITOR_INTERVAL,
+  type AutoOrderConfig,
   type MonitorResult,
   type MonitorTask,
   type StockMonitorConfig,
@@ -151,11 +153,58 @@ export default defineEventHandler(async (event) => {
       )
     }
 
+    const adapterConfig = body.config?.adapterConfig || {}
+
+    // 自动下单配置校验：需要登录态、件数合法；没有凭证时直接拒绝，避免任务启动后才失败
+    let autoOrder: AutoOrderConfig | undefined
+    const rawAutoOrder = body.config?.autoOrder
+
+    if (rawAutoOrder?.enabled) {
+      if (!adapterConfig.uid || !adapterConfig.token) {
+        return createErrorResponse(
+          ErrorCode.AUTH_REQUIRED,
+          '自动下单需要一手登录态，请先在系统配置中填写 uid 和 token'
+        )
+      }
+
+      const num = Number(rawAutoOrder.num ?? 1)
+      if (!Number.isFinite(num) || num < 1 || num > MAX_AUTO_ORDER_NUM) {
+        return createErrorResponse(
+          ErrorCode.INVALID_PARAMS,
+          `购买件数需在 1~${MAX_AUTO_ORDER_NUM} 之间`
+        )
+      }
+
+      autoOrder = {
+        enabled: true,
+        num: Math.floor(num),
+        payTool: rawAutoOrder.payTool === '1' ? '1' : '4',
+        ...(rawAutoOrder.addressId ? { addressId: String(rawAutoOrder.addressId) } : {}),
+      }
+
+      // 同一商品只允许存在一个运行中的自动下单任务，防止重复建单
+      const duplicate = Array.from(monitorTasks.values()).find(
+        task =>
+          task.userId === currentUser.username &&
+          task.status === 'running' &&
+          task.config.autoOrder?.enabled &&
+          String(task.product.productId) === String(product.productId)
+      )
+
+      if (duplicate) {
+        return createErrorResponse(
+          ErrorCode.INVALID_PARAMS,
+          '该商品已有自动下单任务在运行，请先在任务列表里删除'
+        )
+      }
+    }
+
     // 构建监控配置
     const config: StockMonitorConfig = {
       interval,
       duration: body.config?.duration || 3 * 60 * 60,
-      adapterConfig: body.config?.adapterConfig || {},
+      adapterConfig,
+      ...(autoOrder ? { autoOrder } : {}),
     }
 
     // 生成任务 ID

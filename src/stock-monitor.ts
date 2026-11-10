@@ -3,11 +3,15 @@
  */
 
 import { checkStock } from './stock-check';
-import type { StockCheckRequest, StockCheckResult } from './types';
+import { getOrderAdapter } from './adapters';
+import { placeAutoOrder } from './auto-order';
+import type { AutoOrderConfig, AutoOrderStage, StockCheckRequest, StockCheckResult } from './types';
 import type { CheckStockOptions } from './stock-check';
 import {
   sendEmail,
   createBackInStockTemplate,
+  createAutoOrderTemplate,
+  createAutoOrderFailedTemplate,
   configureEmailService,
   loadEmailConfigFromEnv,
 } from './email';
@@ -59,6 +63,13 @@ export interface StockMonitorConfig {
   initialErrorCount?: number;
   /** 任务 ID（用于全局请求闸门的公平调度） */
   taskId?: string;
+  /**
+   * 有货自动下单配置
+   *
+   * 启用后，检测到有货时不再只发邮件，而是直接加购 + 结算 + 建单（锁住库存），
+   * 再把订单号发出来由人工完成支付。
+   */
+  autoOrder?: AutoOrderConfig;
 }
 
 /**
@@ -93,6 +104,22 @@ export interface MonitorResult {
   checkCount: number;
   /** 错误次数 */
   errorCount?: number;
+  /** 自动下单成功的订单号 */
+  orderSn?: string;
+  /** 订单金额 */
+  orderAmount?: number;
+  /** 支付截止时间（毫秒时间戳） */
+  orderExpireAt?: number;
+  /** 实际下单的规格 */
+  orderSkuLabel?: string;
+  /** 自动下单失败原因 */
+  orderError?: string;
+  /** 自动下单失败所处阶段 */
+  orderStage?: AutoOrderStage;
+  /** 下单结果未知（请求中断），需要人工核对 */
+  orderUncertain?: boolean;
+  /** 自动下单尝试次数 */
+  orderAttempts?: number;
 }
 
 /**
@@ -206,6 +233,7 @@ export const createCancellableMonitor = (
         adapterConfig = {},
         initialCheckCount = 0,
         initialErrorCount = 0,
+        autoOrder,
       } = config;
 
       // 校验参数
@@ -231,6 +259,11 @@ export const createCancellableMonitor = (
         checkCount: initialCheckCount,
         errorCount: initialErrorCount,
       };
+
+      // 自动下单要落到具体商品上，货号缺失时无法查 SKU，提前降级为普通到货提醒
+      // 没有登录态时不可能下单，直接降级为普通到货提醒（避免任务一启动就失败退出）
+      const autoOrderEnabled = Boolean(autoOrder?.enabled && adapterConfig.uid && adapterConfig.token);
+      const orderAdapter = autoOrderEnabled ? getOrderAdapter('yishou', adapterConfig) : null;
 
       const startTime = Date.now();
 
@@ -259,17 +292,86 @@ export const createCancellableMonitor = (
           result.checkCount++;
 
           if (checkResult.inStock) {
-            result.detected = true;
+            if (autoOrderEnabled && orderAdapter) {
+              // 自动下单：成功才算「检测到」，失败但可重试时继续盯下一轮
+              const orderResult = await placeAutoOrder(orderAdapter, {
+                goodsId: checkResult.productId,
+                goodsNo: checkResult.productNo,
+                config: autoOrder || { enabled: true },
+              });
 
-            const emailResult = await sendEmail({
-              to: task.recipient,
-              subject: task.subject || `🎉 ${checkResult.productName} 已到货`,
-              html: createBackInStockTemplate(checkResult.productName, checkResult.price, task.productImage),
-            });
+              result.orderAttempts = (result.orderAttempts || 0) + 1;
+              result.orderStage = orderResult.stage;
 
-            result.emailSent = emailResult.success;
-            if (!emailResult.success) {
-              result.error = emailResult.error;
+              if (orderResult.success) {
+                result.detected = true;
+                result.orderSn = orderResult.orderSn;
+                result.orderAmount = orderResult.orderAmount;
+                result.orderExpireAt = orderResult.expireAt;
+                result.orderSkuLabel = orderResult.skuLabel;
+                result.orderError = undefined;
+
+                const emailResult = await sendEmail({
+                  to: task.recipient,
+                  subject: `✅ 已自动下单：${checkResult.productName}（订单 ${orderResult.orderSn}）`,
+                  html: createAutoOrderTemplate({
+                    productName: checkResult.productName,
+                    productImage: task.productImage || checkResult.productImage,
+                    orderSn: orderResult.orderSn,
+                    orderAmount: orderResult.orderAmount,
+                    skuLabel: orderResult.skuLabel,
+                    num: orderResult.num,
+                    payTool: orderResult.payTool,
+                    expireAt: orderResult.expireAt,
+                  }),
+                });
+
+                result.emailSent = emailResult.success;
+                if (!emailResult.success) {
+                  result.error = emailResult.error;
+                }
+              } else if (orderResult.retryable) {
+                // 没货 / 被抢完：不结束任务，下一轮继续
+                result.orderError = orderResult.message;
+              } else {
+                // 登录态失效、配置错误、建单结果未知：继续重试没有意义，停下并告警
+                result.orderError = orderResult.message;
+                result.orderUncertain = orderResult.uncertain;
+
+                const emailResult = await sendEmail({
+                  to: task.recipient,
+                  subject: `⚠️ 自动下单失败：${checkResult.productName}`,
+                  html: createAutoOrderFailedTemplate({
+                    productName: checkResult.productName,
+                    message: orderResult.message || '未知原因',
+                    stage: orderResult.stage,
+                    uncertain: orderResult.uncertain,
+                  }),
+                });
+
+                result.emailSent = emailResult.success;
+                if (!emailResult.success) {
+                  result.error = emailResult.error;
+                }
+
+                if (resultCallback) {
+                  resultCallback(result);
+                }
+                break;
+              }
+            } else {
+              result.detected = true;
+
+              const emailResult = await sendEmail({
+                to: task.recipient,
+                subject: task.subject || `🎉 ${checkResult.productName} 已到货`,
+                html: createBackInStockTemplate(checkResult.productName, checkResult.price, task.productImage),
+              });
+
+              result.emailSent = emailResult.success;
+              if (!emailResult.success) {
+                result.error = emailResult.error;
+              }
             }
           }
 

@@ -129,6 +129,18 @@
               <UiButton
                 variant="outline"
                 size="sm"
+                class="text-orange-600 border-orange-200 hover:bg-orange-50 hover:border-orange-300"
+                @click="openAutoOrder"
+              >
+                <svg class="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+                </svg>
+                有货自动下单
+              </UiButton>
+
+              <UiButton
+                variant="outline"
+                size="sm"
                 class="text-emerald-600 border-emerald-200 hover:bg-emerald-50 hover:border-emerald-300"
                 @click="openPriceMonitor"
               >
@@ -156,6 +168,12 @@
     <PriceMonitorDialog
       v-model:open="showPriceDialog"
       :product="priceMonitorProduct"
+    />
+
+    <!-- 有货自动下单弹窗 -->
+    <StockAutoOrderDialog
+      v-model:open="showAutoOrderDialog"
+      :product="autoOrderProduct"
     />
   </div>
 </template>
@@ -188,6 +206,9 @@ const toast = useToast()
 // 正在监控的商品 ID
 const monitoringProductId = ref<string | null>(null)
 
+// 有货自动下单弹窗
+const showAutoOrderDialog = ref(false)
+
 // 价格监控弹窗
 const showPriceDialog = ref(false)
 const priceMonitorProduct = ref<{
@@ -195,6 +216,34 @@ const priceMonitorProduct = ref<{
   productName?: string
   productImage?: string
 } | null>(null)
+
+// 打开自动下单弹窗
+const openAutoOrder = () => {
+  if (!skuResult.value) {
+    return
+  }
+
+  if (!skuResult.value.productNo) {
+    toast.warning('缺少商品货号，无法自动下单')
+    return
+  }
+
+  showAutoOrderDialog.value = true
+}
+
+// 自动下单弹窗要的商品信息
+const autoOrderProduct = computed(() => {
+  if (!skuResult.value) {
+    return null
+  }
+
+  return {
+    productId: skuResult.value.productId,
+    productName: skuResult.value.productName,
+    productImage: skuResult.value.productImage,
+    productNo: skuResult.value.productNo,
+  }
+})
 
 // 打开价格监控弹窗
 const openPriceMonitor = () => {

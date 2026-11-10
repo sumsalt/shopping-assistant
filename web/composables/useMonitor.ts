@@ -13,11 +13,24 @@ interface MonitorTask {
   subject?: string
 }
 
+// 自动下单配置
+export interface AutoOrderSettings {
+  enabled: boolean
+  /** 购买件数 */
+  num?: number
+  /** 收货地址 ID，不传则用账号默认地址 */
+  addressId?: string
+  /** 支付方式：1 支付宝 / 4 微信 */
+  payTool?: '1' | '4'
+}
+
 // 监控配置类型
 interface MonitorConfig {
   interval?: number
   duration?: number
   adapterConfig?: Record<string, any>
+  /** 有货自动下单（需要登录态） */
+  autoOrder?: AutoOrderSettings
 }
 
 // 创建任务响应类型
@@ -109,14 +122,17 @@ export const useMonitor = () => {
     error.value = null
 
     try {
+      // 自动下单必须带登录态，普通到货监控保持匿名（限流更宽）
+      const needAuth = Boolean(config?.autoOrder?.enabled)
+
       // 构建监控配置
       const monitorConfig: MonitorConfig = {
         interval: config?.interval || MIN_STOCK_MONITOR_INTERVAL,
         duration: config?.duration || 3 * 60 * 60,
         adapterConfig: {
-          // 暂时不使用登录态
-          // uid: userConfig.uid || '',
-          // token: userConfig.token || '',
+          ...(needAuth
+            ? { uid: userConfig.uid || '', token: userConfig.token || '' }
+            : {}),
           openid: userConfig.openid || '',
           model: userConfig.model || '',
           version: userConfig.version || '',
@@ -125,6 +141,7 @@ export const useMonitor = () => {
           proxyUrl: userConfig.proxyUrl,
           proxyEnabled: userConfig.proxyEnabled || '0',
         },
+        ...(config?.autoOrder ? { autoOrder: config.autoOrder } : {}),
       }
 
       // 调用 API 创建任务
@@ -138,7 +155,7 @@ export const useMonitor = () => {
 
       if (response.success && response.data) {
         if (!options.silent) {
-          toast.success('已创建到货监控任务')
+          toast.success(config?.autoOrder?.enabled ? '已创建自动下单任务' : '已创建到货监控任务')
         }
         return response.data.taskId
       } else {

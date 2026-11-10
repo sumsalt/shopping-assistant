@@ -13,6 +13,13 @@ interface MonitorTaskItem {
   status: 'running' | 'stopped' | 'completed'
   interval: number
   duration: number
+  /** 自动下单配置：非空表示这是一条自动下单任务 */
+  autoOrder?: {
+    enabled: boolean
+    num?: number
+    payTool?: string
+    addressId?: string
+  } | null
   createdAt: Date
   result?: {
     productId: string
@@ -22,6 +29,22 @@ interface MonitorTaskItem {
     error?: string
     checkCount: number
     errorCount?: number
+    /** 自动下单成功的订单号 */
+    orderSn?: string
+    /** 订单金额 */
+    orderAmount?: number
+    /** 支付截止时间 */
+    orderExpireAt?: number
+    /** 下单规格 */
+    orderSkuLabel?: string
+    /** 下单失败原因 */
+    orderError?: string
+    /** 失败阶段 */
+    orderStage?: string
+    /** 下单结果未知 */
+    orderUncertain?: boolean
+    /** 下单尝试次数 */
+    orderAttempts?: number
   }
 }
 
@@ -200,6 +223,28 @@ export const useMonitorTasks = () => {
   }
 
   /**
+   * 格式化金额
+   */
+  const formatAmount = (amount?: number): string => {
+    if (amount === undefined || amount === null || Number.isNaN(amount)) {
+      return '-'
+    }
+    return `¥${amount.toFixed(2)}`
+  }
+
+  /**
+   * 格式化支付截止时间
+   */
+  const formatExpire = (expireAt?: number): string => {
+    if (!expireAt) {
+      return ''
+    }
+    const date = new Date(expireAt)
+    const pad = (value: number) => String(value).padStart(2, '0')
+    return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
+  }
+
+  /**
    * 计算请求总次数
    */
   const getTotalRequestCount = (task: MonitorTaskItem): number => {
@@ -227,6 +272,8 @@ export const useMonitorTasks = () => {
     getStatusText,
     getStatusColor,
     formatTime,
+    formatAmount,
+    formatExpire,
     getTotalRequestCount,
     getFailedRequestCount,
   }
