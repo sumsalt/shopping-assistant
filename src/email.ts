@@ -1263,7 +1263,7 @@ export function createAutoOrderTemplate(params: AutoOrderTemplateParams): string
             ${expireText ? `<tr><td class="label">付款截止</td><td>${expireText}</td></tr>` : ''}
           </table>
           <div class="warn">
-            订单已生成但<strong>尚未付款</strong>。超时未付会自动关闭并释放库存，届时需要重新抢。
+            订单已生成但<strong>尚未付款</strong>。一手待付款订单有效期约 <strong>20 分钟</strong>，超时未付会自动关闭并释放库存，届时需要重新抢。
           </div>
           <div class="steps">
             付款方式：打开一手 App → 我的 → 待付款 → 找到订单 <strong>${orderSn}</strong> → 立即支付。

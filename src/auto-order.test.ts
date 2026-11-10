@@ -87,7 +87,7 @@ const createAdapter = (overrides: Partial<AutoOrderAdapter> = {}): AutoOrderAdap
   confirmOrder: vi.fn().mockResolvedValue(confirmData()),
   createOrder: vi.fn().mockResolvedValue(createdOrder),
   deleteCart: vi.fn().mockResolvedValue(undefined),
-  getOrderExpireAt: vi.fn().mockResolvedValue(1794336279000),
+  getOrderDetail: vi.fn().mockResolvedValue({ expireAt: 1794336279000, orderAmount: 59.81 }),
   ...overrides,
 })
 
@@ -168,6 +168,73 @@ describe('placeAutoOrder', () => {
     expect(result.retryable).toBeFalsy()
     // 建单已发出，不能再去删购物车（订单可能已占掉）
     expect(adapter.deleteCart).not.toHaveBeenCalled()
+  })
+
+  it('建单返回 5xx：标记结果未知并清理购物车（一手会锁单）', async () => {
+    const adapter = createAdapter({
+      createOrder: vi
+        .fn()
+        .mockRejectedValue(
+          new StockCheckError(
+            StockCheckErrorType.API_ERROR,
+            'HTTP 请求失败: 500 Internal Server Error'
+          )
+        ),
+    })
+
+    const result = await placeAutoOrder(adapter, params)
+
+    expect(result.success).toBe(false)
+    expect(result.stage).toBe('create')
+    expect(result.uncertain).toBe(true)
+    expect(result.message).toContain('锁单')
+    expect(adapter.deleteCart).toHaveBeenCalledWith('1381301740')
+  })
+
+  it('建单参数错误：清掉购物车，避免下一轮加购累加数量', async () => {
+    const adapter = createAdapter({
+      createOrder: vi
+        .fn()
+        .mockRejectedValue(new StockCheckError(StockCheckErrorType.API_ERROR, '参数错误')),
+    })
+
+    const result = await placeAutoOrder(adapter, params)
+
+    expect(result.success).toBe(false)
+    expect(result.retryable).toBeFalsy()
+    expect(adapter.deleteCart).toHaveBeenCalledWith('1381301740')
+  })
+
+  it('配置的支付方式不可用时回落到 confirm 返回的可用方式', async () => {
+    const adapter = createAdapter({
+      confirmOrder: vi.fn().mockResolvedValue({ ...confirmData(), payTools: ['1'] }),
+    })
+
+    const result = await placeAutoOrder(adapter, {
+      ...params,
+      config: { enabled: true, num: 1, payTool: '4' },
+    })
+
+    expect(result.success).toBe(true)
+    const createArgs = (adapter.createOrder as ReturnType<typeof vi.fn>).mock.calls[0][0]
+    expect(createArgs.payTool).toBe('1')
+  })
+
+  it('建单不返回金额且详情查询失败时，用 confirm 金额估算', async () => {
+    const adapter = createAdapter({
+      createOrder: vi.fn().mockResolvedValue({
+        orderSn: '12641415441626',
+        payStatus: 'wait_pay',
+      }),
+      getOrderDetail: vi.fn().mockRejectedValue(new Error('boom')),
+    })
+
+    const result = await placeAutoOrder(adapter, params)
+
+    expect(result.success).toBe(true)
+    // confirm: 商品 53.81 + 运费 6.00
+    expect(result.orderAmount).toBe(59.81)
+    expect(result.expireAt).toBeUndefined()
   })
 
   it('登录态失效：不可重试', async () => {

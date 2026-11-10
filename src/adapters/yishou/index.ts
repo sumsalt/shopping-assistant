@@ -1021,15 +1021,24 @@ export class YishouAdapter extends BaseAdapter {
   }
 
   /**
-   * 查询订单支付截止时间（下单成功后用于邮件提示，失败不影响下单结果）
+   * 查询订单详情摘要（金额 + 支付截止时间）
+   *
+   * create_order_v4 的响应里没有 order_amount，金额只能回查订单详情；
+   * cancel_expire 是支付截止时间（实测 add_time + 20 分钟），下单成功后用于邮件提示。
+   * 失败不影响下单结果，调用方会 catch。
    */
-  async getOrderExpireAt(orderSn: string): Promise<number | undefined> {
-    const data = await this.postOrderApi<{ cancel_expire?: string | number }>(
-      YISHOU_ORDER_DETAIL_API_URL,
-      { order_sn: orderSn }
-    );
+  async getOrderDetail(orderSn: string): Promise<{ expireAt?: number; orderAmount?: number }> {
+    const data = await this.postOrderApi<{
+      cancel_expire?: string | number;
+      order_amount?: string | number;
+    }>(YISHOU_ORDER_DETAIL_API_URL, { order_sn: orderSn });
 
     const seconds = Number(data?.cancel_expire);
-    return Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : undefined;
+    const amount = Number(data?.order_amount);
+
+    return {
+      expireAt: Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : undefined,
+      orderAmount: Number.isFinite(amount) && amount > 0 ? amount : undefined,
+    };
   }
 }

@@ -276,6 +276,9 @@ export const createCancellableMonitor = (
 
       const startTime = Date.now();
 
+      // 建单失败后的冷却截止时间：一手会给「订单支付中」临时锁，冷却期内只检测不重复下单
+      let orderCooldownUntil = 0;
+
       // 主监控循环
       while (true) {
         // 检查是否被取消
@@ -301,7 +304,11 @@ export const createCancellableMonitor = (
           result.checkCount++;
 
           if (checkResult.inStock) {
-            if (autoOrderEnabled && orderAdapter) {
+            if (autoOrderEnabled && orderAdapter && Date.now() < orderCooldownUntil) {
+              // 上次建单失败触发了服务端锁单，冷却期内继续检测但不再建单，避免撞锁
+              const waitSeconds = Math.ceil((orderCooldownUntil - Date.now()) / 1000);
+              result.orderError = `上次建单失败，冷却中（约 ${waitSeconds} 秒后重试）`;
+            } else if (autoOrderEnabled && orderAdapter) {
               // 自动下单：成功才算「检测到」，失败但可重试时继续盯下一轮
               const orderResult = await placeAutoOrder(orderAdapter, {
                 goodsId: checkResult.productId,
@@ -311,6 +318,11 @@ export const createCancellableMonitor = (
 
               result.orderAttempts = (result.orderAttempts || 0) + 1;
               result.orderStage = orderResult.stage;
+
+              // 建单失败会触发一手「订单支付中」临时锁，记下冷却截止时间
+              if (!orderResult.success && orderResult.cooldownMs) {
+                orderCooldownUntil = Date.now() + orderResult.cooldownMs;
+              }
 
               if (orderResult.success) {
                 result.detected = true;

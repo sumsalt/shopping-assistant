@@ -211,6 +211,28 @@ describe('库存监控 × 自动下单', () => {
     expect(mocks.sendEmail.mock.calls[0][0].html).toBe('<back-in-stock />')
   })
 
+  it('建单失败后冷却期内只检测、不重复下单', async () => {
+    mocks.placeAutoOrder.mockResolvedValue({
+      success: false,
+      stage: 'create',
+      retryable: true,
+      cooldownMs: 180_000,
+      message: '库存不足',
+    })
+
+    const { controller, promise } = start()
+    await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(2_000)
+    await vi.advanceTimersByTimeAsync(2_000)
+    controller.abort()
+    const result = await promise
+
+    // 冷却 3 分钟内仍然继续检测，但只尝试建单一次
+    expect(mocks.checkStock.mock.calls.length).toBeGreaterThanOrEqual(3)
+    expect(mocks.placeAutoOrder).toHaveBeenCalledTimes(1)
+    expect(result.orderError).toContain('冷却中')
+  })
+
   it('检测阶段落在匿名桶，不占用账号配额', async () => {
     mocks.placeAutoOrder.mockResolvedValue({
       success: false,

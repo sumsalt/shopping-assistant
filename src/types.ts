@@ -696,6 +696,13 @@ export interface AutoOrderResult {
   recId?: string;
   /** 支付截止时间（毫秒时间戳） */
   expireAt?: number;
+  /**
+   * 建单失败后的冷却时长（毫秒）
+   *
+   * 一手对任何一次 create 失败都会写「订单支付中」临时锁，几分钟内同商品无法再下单，
+   * 这段冷却期内只检测、不重复建单，避免撞锁后被判成服务端错误。
+   */
+  cooldownMs?: number;
 }
 
 /**

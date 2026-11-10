@@ -31,6 +31,14 @@ import type {
   YishouCreateOrderData,
 } from './types';
 
+/** 订单详情里自动下单关心的字段（create 响应没有金额，必须回查） */
+export interface AutoOrderOrderBrief {
+  /** 支付截止时间（毫秒时间戳） */
+  expireAt?: number;
+  /** 订单实际应付金额 */
+  orderAmount?: number;
+}
+
 /** 自动下单所需的最小适配器能力 */
 export interface AutoOrderAdapter {
   /** 收货地址列表 */
@@ -50,8 +58,8 @@ export interface AutoOrderAdapter {
   }): Promise<YishouCreateOrderData>;
   /** 删除购物车商品 */
   deleteCart(recIds: string): Promise<void>;
-  /** 订单支付截止时间（毫秒时间戳），可选 */
-  getOrderExpireAt?(orderSn: string): Promise<number | undefined>;
+  /** 订单详情（回查金额与支付截止时间），可选 */
+  getOrderDetail?(orderSn: string): Promise<AutoOrderOrderBrief>;
 }
 
 /** 下单参数 */
@@ -93,6 +101,14 @@ export const DEFAULT_AUTO_ORDER_PAY_TOOL = '4';
 /** 单次最多购买件数（防止配置错误一下买一堆） */
 export const MAX_AUTO_ORDER_NUM = 99;
 
+/**
+ * 建单失败后的冷却时长
+ *
+ * 一手对任何一次 create_order_v4 失败（含 500）都会写「订单支付中」临时锁，
+ * 实测 3-5 分钟内同商品无法再下单。冷却期内继续检测、不重复建单。
+ */
+export const CREATE_LOCK_COOLDOWN_MS = 3 * 60_000;
+
 /** 判断错误是否属于「暂时没货，可以继续等」 */
 const isOutOfStockMessage = (message: string): boolean =>
   /库存不足|售罄|抢完|已售完|下架|补货|无货|已抢光|该规格/.test(message);
@@ -109,6 +125,36 @@ const isUncertainError = (error: unknown): boolean => {
     );
   }
   return error instanceof Error && /超时|timeout|ECONNRESET|socket hang up/i.test(error.message);
+};
+
+/** 判断是否是一手服务端 5xx（建单 5xx 会留下「订单支付中」锁，不能自动重试） */
+const isServerError = (error: unknown): boolean =>
+  error instanceof StockCheckError &&
+  error.type === StockCheckErrorType.API_ERROR &&
+  /HTTP 请求失败: 5\d\d|服务异常|系统繁忙/.test(error.message);
+
+/** 创建订单没有返回金额时，用 confirm 的商品金额 + 运费估算（不含券/活动抵扣） */
+const estimateAmount = (confirm: YishouConfirmOrderData): number | undefined => {
+  if (confirm.goodsAmount === undefined) {
+    return undefined;
+  }
+  return Math.round((confirm.goodsAmount + (confirm.shippingFee ?? 0)) * 100) / 100;
+};
+
+/**
+ * 选一个 confirm 认可的支付方式
+ *
+ * confirm 返回的 pay_tool[] 才是该账号当前可用的方式（实测只有 1 支付宝 / 4 微信），
+ * 配置里选的方式不可用时回落到微信，再不行用第一个，避免建单直接 400。
+ */
+const resolvePayTool = (configured: string, available: string[]): string => {
+  if (available.length === 0 || available.includes(configured)) {
+    return configured;
+  }
+  if (available.includes(DEFAULT_AUTO_ORDER_PAY_TOOL)) {
+    return DEFAULT_AUTO_ORDER_PAY_TOOL;
+  }
+  return available[0];
 };
 
 /** 规范化购买件数 */
@@ -254,7 +300,7 @@ export const placeAutoOrder = async (
   adapter: AutoOrderAdapter,
   params: PlaceOrderParams
 ): Promise<AutoOrderResult> => {
-  const payTool = params.config.payTool || DEFAULT_AUTO_ORDER_PAY_TOOL;
+  const configuredPayTool = params.config.payTool || DEFAULT_AUTO_ORDER_PAY_TOOL;
   const prepared = await prepareOrder(adapter, params);
 
   if (!prepared.ok) {
@@ -262,6 +308,7 @@ export const placeAutoOrder = async (
   }
 
   const { address, sku, skuLabel, num, recId, confirm } = prepared.prepared;
+  const payTool = resolvePayTool(configuredPayTool, confirm.payTools);
 
   try {
     const created = await adapter.createOrder({
@@ -271,17 +318,21 @@ export const placeAutoOrder = async (
       payTool,
     });
 
-    // 支付截止时间：拿不到不影响下单结果
+    // create_order_v4 不返回金额，金额和支付截止时间都要回查订单详情；查不到不影响下单结果
     let expireAt: number | undefined;
-    if (adapter.getOrderExpireAt) {
-      expireAt = await adapter.getOrderExpireAt(created.orderSn).catch(() => undefined);
+    let orderAmount = created.orderAmount ?? estimateAmount(confirm);
+
+    if (adapter.getOrderDetail) {
+      const detail = await adapter.getOrderDetail(created.orderSn).catch(() => undefined);
+      expireAt = detail?.expireAt;
+      orderAmount = detail?.orderAmount ?? orderAmount;
     }
 
     return {
       success: true,
       stage: 'done',
       orderSn: created.orderSn,
-      orderAmount: created.orderAmount,
+      orderAmount,
       payTool: created.payTool || payTool,
       sku: sku.skuId,
       skuLabel,
@@ -293,6 +344,12 @@ export const placeAutoOrder = async (
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
 
+    // 建单失败时购物车里还留着刚加的商品，不清理的话下一轮加购会累加数量，可能买多件。
+    // 结果未知（超时/中断）时先不动，避免干扰可能已经存在的订单。
+    if (!isUncertainError(error)) {
+      await adapter.deleteCart(recId).catch(() => undefined);
+    }
+
     if (isAuthMessage(message)) {
       return failure('create', `一手登录态失效：${message}`, { num });
     }
@@ -300,15 +357,29 @@ export const placeAutoOrder = async (
     if (isUncertainError(error)) {
       return failure('create', `建单请求中断，订单可能已生成，请到 App 核对：${message}`, {
         uncertain: true,
+        cooldownMs: CREATE_LOCK_COOLDOWN_MS,
         num,
       });
     }
 
-    if (isOutOfStockMessage(message)) {
-      return failure('create', message, { retryable: true, num });
+    // 建单 5xx：一手会在服务端写入「订单支付中」临时锁，几分钟内同商品无法再下单
+    if (isServerError(error)) {
+      return failure(
+        'create',
+        `建单返回服务端错误，订单未确认且可能已触发锁单（3-5 分钟内同商品无法再下单），请先到 App「我的订单」核对：${message}`,
+        { uncertain: true, cooldownMs: CREATE_LOCK_COOLDOWN_MS, num }
+      );
     }
 
-    return failure('create', message, { num });
+    if (isOutOfStockMessage(message)) {
+      return failure('create', message, {
+        retryable: true,
+        cooldownMs: CREATE_LOCK_COOLDOWN_MS,
+        num,
+      });
+    }
+
+    return failure('create', message, { cooldownMs: CREATE_LOCK_COOLDOWN_MS, num });
   }
 };
 
