@@ -526,6 +526,9 @@
           <span class="truncate">{{ seenTaskName }} · 按首次发现时间倒序</span>
           <span class="shrink-0 ml-3">共 {{ seenTotal }} 个</span>
         </div>
+        <p v-if="isMobileViewport" class="text-xs text-gray-400">
+          点击商品直接打开一手 App；想在本站查库存点图片右上角「网页」。
+        </p>
 
         <div v-if="seenLoading" class="py-12 text-center text-sm text-gray-500">
           加载中...
@@ -543,8 +546,17 @@
             <div
               v-for="item in seenItems"
               :key="item.productId"
-              class="overflow-hidden rounded-xl bg-gray-50 ring-1 ring-gray-100"
+              class="relative overflow-hidden rounded-xl bg-gray-50 ring-1 ring-gray-100"
             >
+              <button
+                v-if="isMobileViewport && seenDetailPath(item)"
+                type="button"
+                class="absolute right-1.5 top-1.5 z-10 rounded-md bg-black/55 px-1.5 py-0.5 text-[11px] font-medium text-white backdrop-blur-sm active:bg-black/70"
+                title="在网页中查看库存详情"
+                @click="openSeenWeb(item)"
+              >
+                网页
+              </button>
               <a
                 :href="seenDetailPath(item) || undefined"
                 :target="seenDetailPath(item) ? '_blank' : undefined"
@@ -552,6 +564,7 @@
                 class="relative block aspect-[3/4] bg-gray-100"
                 :class="seenDetailPath(item) ? 'cursor-pointer' : 'cursor-default'"
                 :title="formatSeenTitle(item)"
+                @click="openSeenProduct($event, item)"
               >
                 <img
                   v-if="item.productImage"
@@ -649,6 +662,12 @@ const {
 
 // 运行详情（配置 + 统计）默认折叠，逐个任务单独展开
 const expandedDetailIds = ref<Set<string>>(new Set())
+
+/** 手机端才可能唤起一手 App，桌面浏览器点了没有 App 可开 */
+const isMobileViewport = ref(false)
+onMounted(() => {
+  isMobileViewport.value = /Android|iPhone|iPad|iPod|HarmonyOS|Mobile/i.test(navigator.userAgent)
+})
 
 const isDetailExpanded = (taskId: string) => expandedDetailIds.value.has(taskId)
 
@@ -774,13 +793,67 @@ const formatSeenShopFull = (item: TabSeenProductItem): string => {
 // 图片悬浮提示：完整商品名 + 首次发现时间
 const formatSeenTitle = (item: TabSeenProductItem): string => {
   const base = `${item.productName || formatSeenName(item)} · 首次发现 ${formatSeenTime(item.firstSeenAt)}`
-  return seenDetailPath(item) ? `${base}（点击在新窗口查看库存详情）` : base
+  if (!seenDetailPath(item)) {
+    return base
+  }
+  return `${base}（${isMobileViewport.value ? '点击打开一手 App' : '点击在新窗口查看库存详情'}）`
 }
 
 // 系统内 SKU 详情页地址：一手外链已不可用，统一跳到本站详情页
 // 老记录没有货号（productNo）时无法查询 SKU，不做跳转
 const seenDetailPath = (item: TabSeenProductItem): string =>
   item.productNo ? `/stock/${encodeURIComponent(item.productNo)}` : ''
+
+/**
+ * 一手 App 深链：只有一个入口 yishou://fmkj/openyishou，
+ * 目标页面靠 extra 里的 android_class_name 分发。
+ * 商品详情只需要 goods_id（即本系统的 productId），有货号就一并带上。
+ */
+const buildSeenAppLink = (item: TabSeenProductItem): string => {
+  const extra: Record<string, string> = {
+    android_class_name: 'GoodsDetailActivity',
+    goods_id: item.productId,
+  }
+  if (item.productNo) {
+    extra.goods_no = item.productNo
+  }
+  return `yishou://fmkj/openyishou?extra=${encodeURIComponent(JSON.stringify(extra))}`
+}
+
+/** 站内库存详情页（新窗口） */
+const openSeenWeb = (item: TabSeenProductItem) => {
+  const path = seenDetailPath(item)
+  if (path) {
+    window.open(path, '_blank', 'noopener,noreferrer')
+  }
+}
+
+/**
+ * 点击商品：手机端优先唤起一手 App。
+ * 唤起成功时页面会转入后台，1.5 秒后仍是前台说明没装 App 或被系统拦截，退回站内库存详情。
+ * 桌面端不拦截，保持「新窗口打开站内详情」。
+ */
+const openSeenProduct = (event: MouseEvent, item: TabSeenProductItem) => {
+  if (!isMobileViewport.value || !item.productId) {
+    return
+  }
+
+  event.preventDefault()
+
+  const fallback = seenDetailPath(item)
+  const startedAt = Date.now()
+
+  window.location.href = buildSeenAppLink(item)
+
+  window.setTimeout(() => {
+    if (document.hidden || Date.now() - startedAt > 3000) {
+      return
+    }
+    if (fallback) {
+      window.location.href = fallback
+    }
+  }, 1500)
+}
 
 // 卡片名称：优先用接口算好的「不带店铺名」短名，老数据兜底去掉【店铺名】前缀
 const formatSeenName = (item: TabSeenProductItem): string =>
