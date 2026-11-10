@@ -637,6 +637,7 @@
 
 <script setup lang="ts">
 import type { TabSeenProductItem } from '@/composables/useTabMonitorTasks'
+import { buildYishouProductLink } from '~/utils/yishou-deeplink'
 
 // 页面元信息
 definePageMeta({
@@ -805,20 +806,12 @@ const seenDetailPath = (item: TabSeenProductItem): string =>
   item.productNo ? `/stock/${encodeURIComponent(item.productNo)}` : ''
 
 /**
- * 一手 App 深链：只有一个入口 yishou://fmkj/openyishou，
- * 目标页面靠 extra 里的 android_class_name 分发。
- * 商品详情只需要 goods_id（即本系统的 productId），有货号就一并带上。
+ * 一手 App 深链：入口固定 yishou://fmkj/openyishou，目标页面靠 extra 分发。
+ * iOS 认 ios_class_name（详情页 FMDetailViewController），Android 认 android_class_name，
+ * 两个都带上，同一条链接双端可用。goods_id 即本系统的 productId，有货号就一并带上。
  */
-const buildSeenAppLink = (item: TabSeenProductItem): string => {
-  const extra: Record<string, string> = {
-    android_class_name: 'GoodsDetailActivity',
-    goods_id: item.productId,
-  }
-  if (item.productNo) {
-    extra.goods_no = item.productNo
-  }
-  return `yishou://fmkj/openyishou?extra=${encodeURIComponent(JSON.stringify(extra))}`
-}
+const buildSeenAppLink = (item: TabSeenProductItem): string =>
+  buildYishouProductLink(item.productId, item.productNo)
 
 /** 站内库存详情页（新窗口） */
 const openSeenWeb = (item: TabSeenProductItem) => {
