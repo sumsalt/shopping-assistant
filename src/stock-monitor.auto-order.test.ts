@@ -36,6 +36,7 @@ vi.mock('./email', () => ({
 
 import { createCancellableMonitor } from './stock-monitor'
 import type { MonitorResult } from './stock-monitor'
+import { getGateContext } from './utils/request-gate'
 
 const task = {
   request: { platform: 'yishou' as const, productId: '338956151' },
@@ -208,5 +209,44 @@ describe('库存监控 × 自动下单', () => {
     expect(result.detected).toBe(true)
     expect(mocks.placeAutoOrder).not.toHaveBeenCalled()
     expect(mocks.sendEmail.mock.calls[0][0].html).toBe('<back-in-stock />')
+  })
+
+  it('检测阶段落在匿名桶，不占用账号配额', async () => {
+    mocks.placeAutoOrder.mockResolvedValue({
+      success: false,
+      stage: 'sku',
+      retryable: true,
+      message: '该商品当前没有可售规格',
+    })
+
+    const contexts: Array<{ taskId: string; accountKey?: string }> = []
+    mocks.checkStock.mockImplementation(async () => {
+      const context = getGateContext()
+      contexts.push({
+        taskId: context?.taskId ?? '',
+        accountKey: context?.accountKey,
+      })
+      return {
+        platform: 'yishou',
+        productId: '338956151',
+        productName: '测试商品',
+        productNo: '1381301740',
+        inStock: false,
+        price: 53.81,
+        productUrl: '',
+        productImage: '',
+        message: '无货',
+      }
+    })
+
+    // start() 的 adapterConfig 里有 uid，检测仍然不能带上它
+    const { controller, promise } = start()
+    await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(2_000)
+    controller.abort()
+    await promise
+
+    expect(contexts.length).toBeGreaterThan(0)
+    expect(contexts.every(ctx => ctx.accountKey === undefined)).toBe(true)
   })
 })

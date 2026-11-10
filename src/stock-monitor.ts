@@ -15,7 +15,7 @@ import {
   configureEmailService,
   loadEmailConfigFromEnv,
 } from './email';
-import { runWithGateContext } from './utils/request-gate';
+import { runWithGateContext, type GateContext } from './utils/request-gate';
 
 // SMTP 配置来自环境变量（SMTP_PASS 等），代码里不保存授权码
 const emailConfig = loadEmailConfigFromEnv();
@@ -202,6 +202,18 @@ export const monitorSingleStock = async (
 };
 
 /**
+ * 库存监控的闸门上下文
+ *
+ * 检测阶段固定走匿名桶：即使任务带了登录态（自动下单必须配 uid/token），
+ * 轮询本身也不占用账号配额，否则检测节奏会被压到 15 秒一次。
+ * 登录态只在真正下单时使用，那条链路 skipGate，不进闸门排队。
+ */
+export const createStockGateContext = (config: StockMonitorConfig): GateContext => ({
+  taskId: config.taskId || 'stock-monitor',
+  kind: 'stock',
+});
+
+/**
  * 创建可取消的库存监控
  *
  * @param task 监控任务（一个任务只包含一个商品）
@@ -220,12 +232,9 @@ export const createCancellableMonitor = (
   const { signal } = controller;
 
   // 打上任务上下文：循环内所有 HTTP 请求都会经过全局请求闸门（用户手动操作无上下文，不受限）
+  // 注意：这里刻意不传 accountKey，检测一律走匿名桶；下单请求自带 skipGate，不受此限制
   const promise = runWithGateContext(
-    {
-      taskId: config.taskId || 'stock-monitor',
-      kind: 'stock',
-      accountKey: config.adapterConfig?.uid,
-    },
+    createStockGateContext(config),
     async (): Promise<MonitorResult> => {
       const {
         interval = MIN_STOCK_MONITOR_INTERVAL,
