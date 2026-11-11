@@ -78,7 +78,8 @@ export const useTaskCollection = <T extends { id: string }>(
     taskId: string
   ): Promise<boolean> => {
     isLoading.value = true
-    error.value = null
+    // 注意：删除 / 重启失败只弹提示，不写 error —— 它驱动的是整页「加载失败」，
+    // 一次操作被拒不该把列表打成错误态
 
     try {
       const response = await $fetch<ApiResponse<{ taskId: string; message: string }>>(
@@ -91,7 +92,6 @@ export const useTaskCollection = <T extends { id: string }>(
       if (!response.success) {
         const message =
           response.error?.message || (action === 'delete' ? '删除失败' : '重新发起失败')
-        error.value = message
         toast.error(message)
         return false
       }
@@ -106,7 +106,8 @@ export const useTaskCollection = <T extends { id: string }>(
       toast.success(options.restartMessage ?? '监控任务已重新发起')
       return true
     } catch (err) {
-      return fail(err, '网络请求失败')
+      toast.error(err instanceof Error ? err.message : '网络请求失败')
+      return false
     } finally {
       isLoading.value = false
     }

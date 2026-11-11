@@ -24,6 +24,14 @@ export class TaskRegistry<R extends TaskRecord> {
   /** 运行时任务表（外部只读，不要在别处直接改写） */
   private readonly tasks = new Map<string, R>()
 
+  /**
+   * 已删除的任务 id
+   *
+   * 中止任务后 promise 收尾时还会落盘一次，如果不管就会把刚删掉的记录写回来
+   * （表现为「删除后列表里还剩一条已完成的同名任务」）。
+   */
+  private readonly removed = new Set<string>()
+
   constructor(private readonly kind: TaskKind) {}
 
   /** 内存优先，重启后从数据库补 */
@@ -38,12 +46,14 @@ export class TaskRegistry<R extends TaskRecord> {
 
   /** 新增并立即落盘 */
   add(record: R): void {
+    this.removed.delete(record.id)
     this.tasks.set(record.id, record)
     persistTask(this.kind, record)
   }
 
   /** 移除并删除落盘副本 */
   remove(taskId: string): void {
+    this.removed.add(taskId)
     this.tasks.delete(taskId)
     deleteTask(this.kind, taskId)
   }
@@ -79,6 +89,7 @@ export class TaskRegistry<R extends TaskRecord> {
 
   /** 进度节流落盘（一轮检测内高频调用） */
   touch(record: R): void {
+    if (this.removed.has(record.id)) return
     persistTaskSoon(this.kind, record)
   }
 
@@ -98,11 +109,14 @@ export class TaskRegistry<R extends TaskRecord> {
 
     promise
       .then(() => {
+        // 任务已被删除：不再写回，否则会把记录复活
+        if (this.removed.delete(record.id)) return
         record.status = 'completed'
         record.controller = undefined
         persistTask(this.kind, record)
       })
       .catch(error => {
+        if (this.removed.delete(record.id)) return
         console.error(`[${this.kind}] 任务 ${record.id} 失败:`, error)
         record.status = 'stopped'
         record.controller = undefined

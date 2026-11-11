@@ -17,7 +17,7 @@ import { ErrorCode } from '../utils/response'
 import type { StoredTaskBase } from '../utils/taskStore'
 import { persistTask } from '../utils/taskStore'
 import { TaskRegistry } from './registry'
-import { TaskApiError, type StartOverrides, type TaskDefinition, type TaskUser } from './types'
+import { TaskApiError, type StartOverrides, type TaskDefinition } from './types'
 
 export interface StockProductInfo {
   productId: string
@@ -37,12 +37,37 @@ export const stockTasks = new TaskRegistry<StockTaskRecord>('stock')
 /** 默认监控时长：24 小时（与前端选项一致） */
 const DEFAULT_DURATION = 24 * 60 * 60
 
+/** 同一用户下是否已有同商品的运行中任务（重启时排除自身） */
+const findRunningForProduct = (userId: string, productId: string, excludeId?: string) =>
+  stockTasks
+    .all()
+    .find(
+      task =>
+        task.userId === userId &&
+        task.status === 'running' &&
+        String(task.product.productId) === String(productId) &&
+        task.id !== excludeId
+    )
+
+/**
+ * 同一商品只允许一个运行中的任务
+ *
+ * 无论自动下单还是纯到货提醒，多开都会重复请求、重复发邮件；
+ * 自动下单还会重复建单，所以统一在这里拦。
+ */
+const assertNoRunningForProduct = (userId: string, productId: string, excludeId?: string) => {
+  if (findRunningForProduct(userId, productId, excludeId)) {
+    throw new TaskApiError(
+      ErrorCode.INVALID_PARAMS,
+      '该商品已有到货监控任务在运行，请先删除后再发起'
+    )
+  }
+}
+
 /** 校验并归一化自动下单配置 */
 const readAutoOrder = (
   raw: any,
-  adapterConfig: { uid?: string; token?: string },
-  user: TaskUser,
-  productId: string
+  adapterConfig: { uid?: string; token?: string }
 ): AutoOrderConfig | undefined => {
   if (!raw?.enabled) return undefined
 
@@ -58,24 +83,6 @@ const readAutoOrder = (
     throw new TaskApiError(
       ErrorCode.INVALID_PARAMS,
       `购买件数需在 1~${MAX_AUTO_ORDER_NUM} 之间`
-    )
-  }
-
-  // 同一商品只允许存在一个运行中的自动下单任务，防止重复建单
-  const duplicate = stockTasks
-    .all()
-    .find(
-      task =>
-        task.userId === user.username &&
-        task.status === 'running' &&
-        task.config.autoOrder?.enabled &&
-        String(task.product.productId) === String(productId)
-    )
-
-  if (duplicate) {
-    throw new TaskApiError(
-      ErrorCode.INVALID_PARAMS,
-      '该商品已有自动下单任务在运行，请先在任务列表里删除'
     )
   }
 
@@ -116,7 +123,8 @@ export const stockDefinition: TaskDefinition<StockTaskRecord> = {
     }
 
     const adapterConfig = body?.config?.adapterConfig || {}
-    const autoOrder = readAutoOrder(body?.config?.autoOrder, adapterConfig, user, product.productId)
+    assertNoRunningForProduct(user.username, product.productId)
+    const autoOrder = readAutoOrder(body?.config?.autoOrder, adapterConfig)
 
     const config: StockMonitorConfig = {
       interval,
@@ -173,11 +181,16 @@ export const stockDefinition: TaskDefinition<StockTaskRecord> = {
     )
   },
 
-  async restart(original) {
-    // 已经自动下单成功的任务不能再发一次，否则会重复建单
-    if (original.result?.orderSn) {
-      throw new TaskApiError(ErrorCode.INVALID_PARAMS, '该任务已自动下单成功，不能重复发起')
+  restart(original) {
+    // 已经下单成功的任务允许重新发起：会生成一条新任务重新盯货，原任务作为历史保留。
+    // 但同商品不能同时跑两个，否则重复建单 / 重复发邮件。
+    if (original.status === 'running') {
+      throw new TaskApiError(
+        ErrorCode.INVALID_PARAMS,
+        '该任务正在运行，请先删除后再重新发起'
+      )
     }
+    assertNoRunningForProduct(original.userId, original.product.productId, original.id)
 
     return {
       product: original.product,
