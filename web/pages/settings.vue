@@ -42,9 +42,12 @@
                   <span v-else-if="!activeAccount.hasCredential" class="text-amber-600">· 抓包缺少 uid/token，只能用于库存查询与 Tab 监控</span>
                 </p>
               </template>
-              <template v-else>
+              <template v-else-if="configStore.isInitialized">
                 <p class="text-sm text-gray-600">未选择账号（匿名模式）</p>
                 <p class="mt-1 text-xs text-gray-500">查询库存 / Tab 监控可用；价格监控、SKU 详情、收藏夹、自动下单需要选择带登录态的账号。</p>
+              </template>
+              <template v-else>
+                <p class="text-sm text-gray-500">读取当前账号…</p>
               </template>
             </div>
 
@@ -170,6 +173,9 @@ const {
   initFormData,
 } = useConfig()
 
+// 服务端状态是否已拉回：未完成前不下「没选账号」的结论，避免刷新时闪一下
+const configStore = useConfigStore()
+
 // 当前账号来自服务端，SSR 阶段尚未拉取；挂载后再展示，避免水合不一致
 const mounted = ref(false)
 onMounted(() => {
@@ -186,7 +192,9 @@ const EMPTY_ACTIVE_ACCOUNT = {
 }
 
 const activeAccount = computed(() =>
-  mounted.value && rawActiveAccount.value ? rawActiveAccount.value : EMPTY_ACTIVE_ACCOUNT
+  mounted.value && configStore.isInitialized && rawActiveAccount.value
+    ? rawActiveAccount.value
+    : EMPTY_ACTIVE_ACCOUNT
 )
 
 const router = useRouter()

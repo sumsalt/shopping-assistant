@@ -1,8 +1,8 @@
 <template>
   <div class="max-w-4xl mx-auto">
-    <!-- 配置缺失提醒 -->
+    <!-- 配置缺失提醒：等配置拉回来再判断，否则首屏会先闪一下 -->
     <div
-      v-if="!isConfigured"
+      v-if="showAccountWarning"
       class="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg"
     >
       <div class="flex items-start">
@@ -272,5 +272,11 @@ definePageMeta({
 const configStore = useConfigStore()
 
 // 配置状态
-const isConfigured = computed(() => configStore.isConfigured)
+//
+// 当前账号是服务端状态，启动后才拉回来。未初始化时 activeAccount 必为空，
+// 直接据此判断会先渲染「未选择当前账号」，等数据到达再消失——也就是刷新时那一下闪烁。
+// 所以初始化完成前不给结论。
+const showAccountWarning = computed(
+  () => configStore.isInitialized && !configStore.isConfigured
+)
 </script>

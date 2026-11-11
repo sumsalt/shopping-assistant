@@ -44,7 +44,10 @@ const configStore = useConfigStore()
 const isSidebarOpen = ref(false)
 
 // 配置状态
-const isConfigured = computed(() => configStore.isConfigured)
+//
+// 未初始化时 activeAccount 还是空，Header 会先闪一句「请先完成配置」，
+// 因此只在配置拉回来之后才交给它判断
+const isConfigured = computed(() => configStore.isInitialized && configStore.isConfigured)
 
 
 // 菜单切换处理
