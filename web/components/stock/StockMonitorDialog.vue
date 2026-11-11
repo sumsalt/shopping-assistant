@@ -559,6 +559,10 @@ watch(hasCredential, (value) => {
   }
   if (props.open) {
     loadSkus()
+    // 配置晚到时开关可能已经打开，补拉一次地址
+    if (autoOrderEnabled.value && addresses.value.length === 0) {
+      loadAddresses()
+    }
   }
 })
 

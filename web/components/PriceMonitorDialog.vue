@@ -834,4 +834,24 @@ watch(autoOrderEnabled, async (enabled) => {
     loadAddresses()
   }
 })
+
+// 直接刷新后立刻打开开关时，当前账号可能还在拉取中：
+// 配置到达后补加载一次，避免规格/地址一直是空的
+watch(hasCredential, async (value) => {
+  if (!value || !autoOrderEnabled.value) {
+    return
+  }
+
+  const no = await ensureProductNo()
+  if (!no) {
+    return
+  }
+
+  if (skus.value.length === 0) {
+    loadSkus(no)
+  }
+  if (addresses.value.length === 0) {
+    loadAddresses()
+  }
+})
 </script>

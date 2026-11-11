@@ -88,8 +88,14 @@ export const usePriceMonitor = () => {
 
   /**
    * 价格监控必须有登录态（服务端也会兜底）
+   *
+   * 直接刷新页面后立刻创建任务时，配置可能还在拉取中，
+   * 先等一次 load() 再判断，避免误报「没有登录态」。
    */
-  const checkConfig = (): boolean => {
+  const checkConfig = async (): Promise<boolean> => {
+    if (!configStore.isInitialized) {
+      await configStore.load()
+    }
     if (!configStore.activeAccount?.hasCredential) {
       toast.warning('价格监控需要登录态，请先在账号管理中选择带登录态的账号')
       return false
@@ -115,7 +121,7 @@ export const usePriceMonitor = () => {
       return null
     }
 
-    if (!checkConfig()) {
+    if (!(await checkConfig())) {
       return null
     }
 

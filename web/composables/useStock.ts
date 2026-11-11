@@ -174,20 +174,27 @@ export const useStock = () => {
    * 获取商品 SKU 列表（需要登录态）
    */
   const getProductSkus = async (productNo: string): Promise<ProductSkuResult | null> => {
-    // add_cart_goods_info 必须带登录态，缺凭证时一手直接返回「请登录」，
-    // 这里提前拦下来给出可操作的提示，不用等接口失败
-    if (!hasCredential.value) {
-      const message = '查看 SKU 详情需要登录态，请先在账号管理中选择带登录态的账号'
-      skuError.value = message
-      toast.warning(message)
-      return null
-    }
-
     isLoadingSkus.value = true
     skuError.value = null
     skuResult.value = null
 
     try {
+      // 直接刷新 /stock/xxx 时，页面的首个请求往往早于启动插件的配置拉取完成，
+      // 此时 activeAccount 还是空，会被误判成「没有登录态」。
+      // load() 是幂等的：已加载立即返回，加载中会等同一份结果。
+      if (!configStore.isInitialized) {
+        await configStore.load()
+      }
+
+      // add_cart_goods_info 必须带登录态，缺凭证时一手直接返回「请登录」，
+      // 这里提前拦下来给出可操作的提示，不用等接口失败
+      if (!hasCredential.value) {
+        const message = '查看 SKU 详情需要登录态，请先在账号管理中选择带登录态的账号'
+        skuError.value = message
+        toast.warning(message)
+        return null
+      }
+
       const response = await $fetch<ApiResponse<ProductSkuResult>>(
         `/api/stock/skus/${productNo}`
       )

@@ -143,25 +143,45 @@ export const useConfigStore = defineStore('config', () => {
     return jobs.length > 0
   }
 
-  /** 拉取服务端状态（幂等） */
+  /**
+   * 拉取服务端状态（幂等）
+   *
+   * 直接刷新 /stock/xxx 这类页时，页面的首个请求常常早于启动插件的拉取完成。
+   * 这里必须让并发调用「等同一份结果」，而不是直接返回：
+   * 否则读 activeAccount 的一方会拿到空值，误判成「没有登录态」。
+   */
+  let pendingLoad: Promise<void> | null = null
+
   const load = async (force = false): Promise<void> => {
     if (!import.meta.client) {
       return
     }
-    if (isLoading.value || (isInitialized.value && !force)) {
+    if (pendingLoad) {
+      await pendingLoad
+      return
+    }
+    if (isInitialized.value && !force) {
       return
     }
 
-    isLoading.value = true
-    try {
-      await Promise.all([fetchSettings(), fetchActiveAccount()])
-      const migrated = await migrateLegacy()
-      if (migrated) {
+    pendingLoad = (async () => {
+      isLoading.value = true
+      try {
         await Promise.all([fetchSettings(), fetchActiveAccount()])
+        const migrated = await migrateLegacy()
+        if (migrated) {
+          await Promise.all([fetchSettings(), fetchActiveAccount()])
+        }
+        isInitialized.value = true
+      } finally {
+        isLoading.value = false
       }
-      isInitialized.value = true
+    })()
+
+    try {
+      await pendingLoad
     } finally {
-      isLoading.value = false
+      pendingLoad = null
     }
   }
 
