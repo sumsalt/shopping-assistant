@@ -4,6 +4,7 @@
 
 import { createTransport } from 'nodemailer';
 import type { SentMessageInfo, Transporter } from 'nodemailer';
+import type { AutoOrderItem } from './types';
 
 /**
  * 邮件配置
@@ -1177,6 +1178,8 @@ export interface AutoOrderTemplateParams {
   orderAmount?: number;
   /** 规格文案：蓝色 / M */
   skuLabel?: string;
+  /** 下单明细：多规格合单时每个规格一行 */
+  items?: AutoOrderItem[];
   /** 件数 */
   num?: number;
   /** 用户配置的件数（库存不足时与 num 不同） */
@@ -1210,6 +1213,7 @@ export function createAutoOrderTemplate(params: AutoOrderTemplateParams): string
     orderSn = '-',
     orderAmount,
     skuLabel,
+    items,
     num = 1,
     requestedNum,
     payTool,
@@ -1217,6 +1221,13 @@ export function createAutoOrderTemplate(params: AutoOrderTemplateParams): string
   } = params;
 
   const numReduced = Boolean(requestedNum && requestedNum > num);
+
+  // 多规格合单：一个规格一行，并单独给出合计件数
+  const orderItems = items && items.length > 0 ? items : [{ skuLabel: skuLabel || '-', num }];
+  const skuCell = orderItems
+    .map(item => `${item.skuLabel || '-'} × ${item.num}`)
+    .join('<br>');
+  const multiSku = orderItems.length > 1;
 
   const amountText = orderAmount !== undefined ? `¥${orderAmount.toFixed(2)}` : '以 App 内为准';
   const payText = payTool === '1' ? '支付宝' : payTool === '4' ? '微信' : '默认支付方式';
@@ -1267,7 +1278,8 @@ export function createAutoOrderTemplate(params: AutoOrderTemplateParams): string
           <div class="amount">${amountText}</div>
           <table>
             <tr><td class="label">订单号</td><td><strong>${orderSn}</strong></td></tr>
-            <tr><td class="label">规格</td><td>${skuLabel || '-'} × ${num}</td></tr>
+            <tr><td class="label">规格</td><td>${skuCell}</td></tr>
+            ${multiSku ? `<tr><td class="label">合计</td><td>${orderItems.length} 个规格，共 ${num} 件</td></tr>` : ''}
             <tr><td class="label">支付方式</td><td>${payText}</td></tr>
             ${expireText ? `<tr><td class="label">付款截止</td><td>${expireText}</td></tr>` : ''}
           </table>

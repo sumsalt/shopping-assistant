@@ -177,8 +177,8 @@ export class YishouAdapter extends BaseAdapter {
     return this.order.getAddresses();
   }
 
-  addToCart(goodsId: string, sku: string, num: number) {
-    return this.order.addToCart(goodsId, sku, num);
+  addToCart(goodsId: string, items: Array<{ sku: string; num: number }>) {
+    return this.order.addToCart(goodsId, items);
   }
 
   confirmOrder(recIds: string, selected: string, addressId: string) {

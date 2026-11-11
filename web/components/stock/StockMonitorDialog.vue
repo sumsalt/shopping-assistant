@@ -101,7 +101,7 @@
         </div>
 
         <p v-if="selectedSkus.length > 0" class="mt-1 text-xs text-blue-600">
-          只在选中的 {{ selectedSkus.length }} 个规格有货时提醒 / 下单；选规格会使用登录态检测（15 秒一轮），比匿名检测慢
+          只在选中的 {{ selectedSkus.length }} 个规格有货时提醒 / 下单（多个规格有货会合并成一单）；选规格会使用登录态检测（15 秒一轮），比匿名检测慢
         </p>
       </div>
 
@@ -156,7 +156,7 @@
                 :disabled="isLoading"
                 class="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               >
-              <p class="mt-1 text-xs text-gray-500">库存不足时按实际可买数量下单</p>
+              <p class="mt-1 text-xs text-gray-500">库存不足时按实际可买数量下单；多个规格都有货时合并成一单</p>
             </div>
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">支付方式</label>
@@ -206,9 +206,14 @@
             :class="precheck.success ? 'bg-green-50 border border-green-200 text-green-800' : 'bg-red-50 border border-red-200 text-red-700'"
           >
             <template v-if="precheck.success">
-              <p class="font-medium">链路可用：{{ precheck.skuLabel }} × {{ precheck.num }}</p>
+              <p class="font-medium">
+                链路可用：<template v-if="precheck.items?.length">{{ precheck.items.map(item => `${item.skuLabel} × ${item.num}`).join('、') }}</template><template v-else>{{ precheck.skuLabel }} × {{ precheck.num }}</template>
+              </p>
               <p v-if="precheck.numReduced" class="mt-1 text-xs">
                 当前库存只有 {{ precheck.num }} 件，将按实际可买数量下单（你设置的是 {{ precheck.requestedNum }} 件）
+              </p>
+              <p v-else-if="(precheck.items?.length || 0) > 1" class="mt-1 text-xs">
+                {{ precheck.items?.length }} 个规格合并成一个订单，共 {{ precheck.num }} 件
               </p>
               <p class="mt-1">
                 商品 ¥{{ precheck.goodsAmount?.toFixed(2) ?? '-' }} + 运费 ¥{{ precheck.shippingFee?.toFixed(2) ?? '-' }}
@@ -295,6 +300,7 @@ interface PrecheckResult {
   success: boolean
   message?: string
   skuLabel?: string
+  items?: Array<{ sku: string; skuLabel: string; num: number }>
   num?: number
   requestedNum?: number
   numReduced?: boolean

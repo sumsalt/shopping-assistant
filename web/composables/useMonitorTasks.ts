@@ -47,8 +47,10 @@ export interface MonitorTaskItem {
     orderAmount?: number
     /** 支付截止时间 */
     orderExpireAt?: number
-    /** 下单规格 */
+    /** 下单规格（多规格合单时用「、」连接） */
     orderSkuLabel?: string
+    /** 下单明细：多规格合单时有多行 */
+    orderItems?: Array<{ sku: string; skuLabel: string; num: number }>
     /** 实际下单件数 */
     orderNum?: number
     /** 商品有货但所选规格没货 */
@@ -80,5 +82,8 @@ export const useMonitorTasks = () => {
     formatExpire,
     getTotalRequestCount: (task: MonitorTaskItem) => task.result?.checkCount || 0,
     getFailedRequestCount: (task: MonitorTaskItem) => task.result?.errorCount || 0,
+    /** 下单明细文案：蓝色 / M × 1、蓝色 / L × 1 */
+    formatOrderItems: (items?: Array<{ skuLabel: string; num: number }>) =>
+      (items || []).map(item => `${item.skuLabel} × ${item.num}`).join('、'),
   }
 }

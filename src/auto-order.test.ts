@@ -51,24 +51,24 @@ const skuResult = (saleStocks: number[]): ProductSkuResult => ({
   restrictionNumber: -1,
 })
 
-const confirmData = (outOfStock = false): YishouConfirmOrderData => ({
+const confirmData = (
+  outOfStock = false,
+  stock: Array<{ sku: string; num: string }> = [{ sku: '850001', num: '1' }]
+): YishouConfirmOrderData => ({
   stock: outOfStock
     ? []
-    : [
-        {
-          sku: '850000',
-          num: '1',
-          goods_no: '1381301740',
-          goods_id: '338956151',
-          buy_price: 53.81,
-          tag_list: [{ name: '现货' }],
-        },
-      ],
-  outStock: outOfStock ? [{ sku: '850000' }] : [],
+    : stock.map(item => ({
+        ...item,
+        goods_no: '1381301740',
+        goods_id: '338956151',
+        buy_price: 53.81,
+        tag_list: [{ name: '现货' }],
+      })),
+  outStock: outOfStock ? [{ sku: '850001' }] : [],
   defaultAddress: address,
   goodsAmount: 53.81,
   shippingFee: 6,
-  numTotal: 1,
+  numTotal: outOfStock ? 0 : stock.reduce((total, item) => total + Number(item.num), 0),
   payTools: ['1', '4'],
 })
 
@@ -110,7 +110,7 @@ describe('placeAutoOrder', () => {
     expect(result.expireAt).toBe(1794336279000)
 
     // 加购时 num 必须是字符串、JSON 紧凑
-    expect(adapter.addToCart).toHaveBeenCalledWith('338956151', '850001', 1)
+    expect(adapter.addToCart).toHaveBeenCalledWith('338956151', [{ sku: '850001', num: 1 }])
     expect(adapter.confirmOrder).toHaveBeenCalledWith(
       '1381301740',
       '[{"sku":"850001","num":"1"}]',
@@ -256,10 +256,10 @@ describe('placeAutoOrder', () => {
     const adapter = createAdapter()
     await placeAutoOrder(adapter, { ...params, config: { enabled: true, num: 9999 } })
     // 配置上限是 99，但当前只有 3 件可售 → 按库存把件数削到 3
-    expect(adapter.addToCart).toHaveBeenLastCalledWith('338956151', '850001', 3)
+    expect(adapter.addToCart).toHaveBeenLastCalledWith('338956151', [{ sku: '850001', num: 3 }])
 
     await placeAutoOrder(adapter, { ...params, config: { enabled: true, num: 0 } })
-    expect(adapter.addToCart).toHaveBeenLastCalledWith('338956151', '850001', 1)
+    expect(adapter.addToCart).toHaveBeenLastCalledWith('338956151', [{ sku: '850001', num: 1 }])
   })
 
   it('库存不够时按实际可买数量下单', async () => {
@@ -274,7 +274,7 @@ describe('placeAutoOrder', () => {
     })
 
     expect(result.success).toBe(true)
-    expect(adapter.addToCart).toHaveBeenCalledWith('338956151', '850001', 1)
+    expect(adapter.addToCart).toHaveBeenCalledWith('338956151', [{ sku: '850001', num: 1 }])
     expect(adapter.confirmOrder).toHaveBeenCalledWith(
       '1381301740',
       '[{"sku":"850001","num":"1"}]',
@@ -286,9 +286,15 @@ describe('placeAutoOrder', () => {
     expect(result.message).toContain('实际可买 1 件')
   })
 
-  it('多个规格各有 1 件时只买第一个规格，不跨规格凑数', async () => {
+  it('两个规格各 1 件、要 2 件时合并成一单', async () => {
     const adapter = createAdapter({
       getProductSkus: vi.fn().mockResolvedValue(skuResult([1, 1])),
+      confirmOrder: vi.fn().mockResolvedValue(
+        confirmData(false, [
+          { sku: '850000', num: '1' },
+          { sku: '850001', num: '1' },
+        ])
+      ),
     })
 
     const result = await placeAutoOrder(adapter, {
@@ -297,11 +303,89 @@ describe('placeAutoOrder', () => {
     })
 
     expect(result.success).toBe(true)
-    expect(result.sku).toBe('850000')
-    expect(result.num).toBe(1)
-    // 只加购一次，不会出现两个 sku 的第二轮加购
+    // 一次加购带上两个规格，只发一次请求
     expect(adapter.addToCart).toHaveBeenCalledTimes(1)
-    expect(adapter.addToCart).toHaveBeenCalledWith('338956151', '850000', 1)
+    expect(adapter.addToCart).toHaveBeenCalledWith('338956151', [
+      { sku: '850000', num: 1 },
+      { sku: '850001', num: 1 },
+    ])
+    expect(adapter.confirmOrder).toHaveBeenCalledWith(
+      '1381301740',
+      '[{"sku":"850000","num":"1"},{"sku":"850001","num":"1"}]',
+      '9706970'
+    )
+    expect(result.num).toBe(2)
+    expect(result.numReduced).toBe(false)
+    expect(result.items).toEqual([
+      { sku: '850000', skuLabel: '蓝色 / M', num: 1 },
+      { sku: '850001', skuLabel: '蓝色 / L', num: 1 },
+    ])
+    expect(result.skuLabel).toBe('蓝色 / M、蓝色 / L')
+  })
+
+  it('要 5 件时按规格顺序分配：3 + 2', async () => {
+    const adapter = createAdapter({
+      getProductSkus: vi.fn().mockResolvedValue(skuResult([3, 4])),
+      confirmOrder: vi.fn().mockResolvedValue(
+        confirmData(false, [
+          { sku: '850000', num: '3' },
+          { sku: '850001', num: '2' },
+        ])
+      ),
+    })
+
+    const result = await placeAutoOrder(adapter, {
+      ...params,
+      config: { enabled: true, num: 5 },
+    })
+
+    expect(result.success).toBe(true)
+    expect(adapter.addToCart).toHaveBeenCalledWith('338956151', [
+      { sku: '850000', num: 3 },
+      { sku: '850001', num: 2 },
+    ])
+    expect(result.num).toBe(5)
+  })
+
+  it('结算时某个规格卖完，只下剩下的规格', async () => {
+    const adapter = createAdapter({
+      getProductSkus: vi.fn().mockResolvedValue(skuResult([1, 1])),
+      confirmOrder: vi.fn().mockResolvedValue({
+        ...confirmData(false, [{ sku: '850001', num: '1' }]),
+        outStock: [{ sku: '850000' }],
+      }),
+    })
+
+    const result = await placeAutoOrder(adapter, {
+      ...params,
+      config: { enabled: true, num: 2 },
+    })
+
+    expect(result.success).toBe(true)
+    expect(result.num).toBe(1)
+    expect(result.numReduced).toBe(true)
+    expect(result.items).toEqual([{ sku: '850001', skuLabel: '蓝色 / L', num: 1 }])
+  })
+
+  it('结算出现本次没加购的规格时清空重试，避免买错规格', async () => {
+    const adapter = createAdapter({
+      getProductSkus: vi.fn().mockResolvedValue(skuResult([0, 1])),
+      // 只加购了 850001，结算却冒出 850002（购物车上一轮残留）
+      confirmOrder: vi.fn().mockResolvedValue({
+        ...confirmData(false, [{ sku: '850002', num: '1' }]),
+      }),
+    })
+
+    const result = await placeAutoOrder(adapter, {
+      ...params,
+      config: { enabled: true, num: 1 },
+    })
+
+    expect(result.success).toBe(false)
+    expect(result.retryable).toBe(true)
+    expect(result.message).toContain('残留')
+    expect(adapter.deleteCart).toHaveBeenCalledWith('1381301740')
+    expect(adapter.createOrder).not.toHaveBeenCalled()
   })
 
   it('结算把件数削小时按结算件数下单', async () => {
@@ -321,7 +405,7 @@ describe('placeAutoOrder', () => {
 
     expect(result.success).toBe(true)
     // 加购按库存 3 件，结算时一手只给 2 件
-    expect(adapter.addToCart).toHaveBeenCalledWith('338956151', '850001', 3)
+    expect(adapter.addToCart).toHaveBeenCalledWith('338956151', [{ sku: '850001', num: 3 }])
     expect(result.num).toBe(2)
     expect(result.numReduced).toBe(true)
   })
@@ -345,6 +429,9 @@ describe('placeAutoOrder', () => {
   it('指定多个规格时只在其中挑选有货的', async () => {
     const adapter = createAdapter({
       getProductSkus: vi.fn().mockResolvedValue(skuResult([0, 0, 2])),
+      confirmOrder: vi.fn().mockResolvedValue(
+        confirmData(false, [{ sku: '850002', num: '1' }])
+      ),
     })
 
     const result = await placeAutoOrder(adapter, {
@@ -354,7 +441,7 @@ describe('placeAutoOrder', () => {
 
     expect(result.success).toBe(true)
     expect(result.sku).toBe('850002')
-    expect(adapter.addToCart).toHaveBeenCalledWith('338956151', '850002', 1)
+    expect(adapter.addToCart).toHaveBeenCalledWith('338956151', [{ sku: '850002', num: 1 }])
   })
 
   it('指定规格都没货时不做回退，标记为可重试', async () => {
@@ -420,6 +507,29 @@ describe('precheckAutoOrder', () => {
     expect(result.skuLabel).toBe('蓝色 / L')
     expect(adapter.deleteCart).toHaveBeenCalledWith('1381301740')
     expect(adapter.createOrder).not.toHaveBeenCalled()
+  })
+
+  it('显示合并后的每个规格与件数', async () => {
+    const adapter = createAdapter({
+      getProductSkus: vi.fn().mockResolvedValue(skuResult([1, 1])),
+      confirmOrder: vi.fn().mockResolvedValue(
+        confirmData(false, [
+          { sku: '850000', num: '1' },
+          { sku: '850001', num: '1' },
+        ])
+      ),
+    })
+
+    const result = await precheckAutoOrder(adapter, {
+      ...params,
+      config: { enabled: true, num: 5 },
+    })
+
+    expect(result.success).toBe(true)
+    expect(result.num).toBe(2)
+    expect(result.items).toHaveLength(2)
+    expect(result.message).toContain('蓝色 / M × 1')
+    expect(result.message).toContain('蓝色 / L × 1')
   })
 
   it('无货时返回可重试原因', async () => {

@@ -52,12 +52,17 @@ export class YishouOrderApi {
   /**
    * 加入购物车
    *
-   * num 必须是字符串、JSON 用紧凑格式，否则部分场景会被服务端忽略。
+   * 支持一次加多个规格（同一商品不同颜色/尺码合并成一个购物车记录）：
+   * selected 是一手的原生结构，num 必须是字符串、JSON 用紧凑格式，
+   * 否则部分场景会被服务端忽略。
    */
-  async addToCart(goodsId: string, sku: string, num: number): Promise<YishouCartAddResult> {
+  async addToCart(
+    goodsId: string,
+    items: Array<{ sku: string; num: number }>
+  ): Promise<YishouCartAddResult> {
     this.client.requireAuth(AUTH_MESSAGE);
 
-    const selected = JSON.stringify([{ sku, num: String(num) }]);
+    const selected = JSON.stringify(items.map(item => ({ sku: item.sku, num: String(item.num) })));
     const data = await this.client.post<{
       rec_id?: string | number;
       goods_no?: string;

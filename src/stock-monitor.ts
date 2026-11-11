@@ -5,7 +5,13 @@
 import { checkStock, getProductSkus } from './stock-check';
 import { getOrderAdapter } from './adapters';
 import { placeAutoOrder } from './auto-order';
-import type { AutoOrderConfig, AutoOrderStage, StockCheckRequest, StockCheckResult } from './types';
+import type {
+  AutoOrderConfig,
+  AutoOrderItem,
+  AutoOrderStage,
+  StockCheckRequest,
+  StockCheckResult,
+} from './types';
 import type { CheckStockOptions } from './stock-check';
 import {
   sendEmail,
@@ -126,6 +132,8 @@ export interface MonitorResult {
   orderExpireAt?: number;
   /** 实际下单的规格 */
   orderSkuLabel?: string;
+  /** 下单明细：多规格合单时有多行 */
+  orderItems?: AutoOrderItem[];
   /** 实际下单件数（库存不足时小于配置件数） */
   orderNum?: number;
   /** 自动下单失败原因 */
@@ -392,6 +400,7 @@ export const createCancellableMonitor = (
                 result.orderAmount = orderResult.orderAmount;
                 result.orderExpireAt = orderResult.expireAt;
                 result.orderSkuLabel = orderResult.skuLabel;
+                result.orderItems = orderResult.items;
                 result.orderNum = orderResult.num;
                 result.orderError = undefined;
 
@@ -404,6 +413,7 @@ export const createCancellableMonitor = (
                     orderSn: orderResult.orderSn,
                     orderAmount: orderResult.orderAmount,
                     skuLabel: orderResult.skuLabel,
+                    items: orderResult.items,
                     num: orderResult.num,
                     requestedNum: orderResult.requestedNum,
                     payTool: orderResult.payTool,

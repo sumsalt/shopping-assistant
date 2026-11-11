@@ -154,7 +154,10 @@
               <div class="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-green-800">
                 <span>订单号：<strong class="tabular-nums">{{ task.result.orderSn }}</strong></span>
                 <span>金额：{{ formatAmount(task.result.orderAmount) }}</span>
-                <span v-if="task.result.orderSkuLabel">
+                <span v-if="task.result.orderItems?.length">
+                  规格：{{ formatOrderItems(task.result.orderItems) }}
+                </span>
+                <span v-else-if="task.result.orderSkuLabel">
                   规格：{{ task.result.orderSkuLabel }}<template v-if="task.result.orderNum"> × {{ task.result.orderNum }}</template>
                 </span>
                 <span v-if="task.result.orderExpireAt">
@@ -281,6 +284,7 @@ const {
   formatExpire,
   getTotalRequestCount,
   getFailedRequestCount,
+  formatOrderItems,
 } = useMonitorTasks()
 
 // 使用确认弹窗

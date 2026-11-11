@@ -664,6 +664,21 @@ export interface AutoOrderConfig {
 }
 
 /**
+ * 自动下单的一行明细
+ *
+ * 同一个商品可以跨规格合并成一单：用户设 5 件、两个规格各 1 件时，
+ * 这一单里会有两条明细，各买 1 件。
+ */
+export interface AutoOrderItem {
+  /** SKU ID */
+  sku: string;
+  /** 规格文案：蓝色 / L */
+  skuLabel: string;
+  /** 该规格的件数 */
+  num: number;
+}
+
+/**
  * 自动下单阶段
  */
 export type AutoOrderStage = 'address' | 'sku' | 'cart' | 'confirm' | 'create' | 'done';
@@ -688,10 +703,12 @@ export interface AutoOrderResult {
   orderAmount?: number;
   /** 支付方式 */
   payTool?: string;
-  /** 实际下单的 SKU */
+  /** 实际下单的 SKU（多规格合单时为第一行） */
   sku?: string;
-  /** SKU 文案：蓝色 / M */
+  /** SKU 文案：蓝色 / M（多规格时用「、」连接） */
   skuLabel?: string;
+  /** 下单明细（多规格合单时有多行，num 为各规格件数之和） */
+  items?: AutoOrderItem[];
   /** 购买件数（实际下单件数，库存不足时可能小于配置件数） */
   num?: number;
   /** 用户配置的购买件数 */

@@ -41,13 +41,29 @@ describe('YishouAdapter 下单链路', () => {
     })
 
     const adapter = new YishouAdapter(config)
-    const result = await adapter.addToCart('338956151', '85302700', 1)
+    const result = await adapter.addToCart('338956151', [{ sku: '85302700', num: 1 }])
 
     expect(result.recId).toBe('1381301740')
     expect(lastBody().selected).toBe('[{"sku":"85302700","num":"1"}]')
     expect(lastBody().goods_id).toBe('338956151')
     // 下单请求必须跳过请求闸门
     expect(lastOptions().skipGate).toBe(true)
+  })
+
+  it('一次加购多个规格时 selected 里是完整明细', async () => {
+    mocks.httpPost.mockResolvedValueOnce({
+      code: '200',
+      msg: 'success',
+      data: { rec_id: '1381301740', goods_no: '1381301740', shop_price: '53.81' },
+    })
+
+    const adapter = new YishouAdapter(config)
+    await adapter.addToCart('338956151', [
+      { sku: '85302700', num: 1 },
+      { sku: '85302701', num: 2 },
+    ])
+
+    expect(lastBody().selected).toBe('[{"sku":"85302700","num":"1"},{"sku":"85302701","num":"2"}]')
   })
 
   it('地址列表把 snake_case 转成内部结构', async () => {
