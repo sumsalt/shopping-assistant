@@ -1,6 +1,7 @@
 import type { UserConfig } from '@/types'
 import { DEFAULT_STOCK_MONITOR_DURATION } from '@/utils/stockMonitorConfig'
 import { buildAdapterConfig } from '@/utils/adapterConfig'
+import { useTaskSubmit } from './useTaskSubmit'
 
 /** 库存监控的最小检测间隔（秒），与后端 MIN_STOCK_MONITOR_INTERVAL 保持一致 */
 export const MIN_STOCK_MONITOR_INTERVAL = 2
@@ -83,9 +84,7 @@ export const useMonitor = () => {
   const configStore = useConfigStore()
   const { user, isLoggedIn, checkAuth } = useAuth()
   const toast = useToast()
-
-  const isLoading = ref(false)
-  const error = ref<string | null>(null)
+  const { isLoading, error, submit, fetchStatus } = useTaskSubmit()
 
   /**
    * 检查配置是否有效
@@ -120,59 +119,32 @@ export const useMonitor = () => {
       return null
     }
 
-    isLoading.value = true
-    error.value = null
+    // 自动下单必须带登录态，普通到货监控保持匿名（限流更宽）
+    const needAuth = Boolean(config?.autoOrder?.enabled)
 
-    try {
-      // 自动下单必须带登录态，普通到货监控保持匿名（限流更宽）
-      const needAuth = Boolean(config?.autoOrder?.enabled)
-
-      // 构建监控配置
-      const monitorConfig: MonitorConfig = {
-        interval: config?.interval || MIN_STOCK_MONITOR_INTERVAL,
-        duration: config?.duration || DEFAULT_STOCK_MONITOR_DURATION,
-        // 自动下单带登录态；普通到货监控剔除 uid/token 走匿名桶。
-        // 两者都以当前账号的完整抓包快照为基础发请求
-        adapterConfig: buildAdapterConfig(userConfig, needAuth),
-        ...(config?.autoOrder ? { autoOrder: config.autoOrder } : {}),
-      }
-
-      // 调用 API 创建任务
-      const response = await $fetch<ApiResponse<CreateTaskResponse>>('/api/monitor/create', {
-        method: 'POST',
-        body: {
-          product,
-          config: monitorConfig,
-        },
-      })
-
-      if (response.success && response.data) {
-        if (!options.silent) {
-          toast.success(
-            config?.autoOrder?.enabled
-              ? '已创建到货监控任务（有货自动下单）'
-              : '已创建到货监控任务（仅邮件提醒）'
-          )
-        }
-        return response.data.taskId
-      } else {
-        const errorMsg = response.error?.message || '创建任务失败'
-        error.value = errorMsg
-        if (!options.silent) {
-          toast.error(errorMsg)
-        }
-        return null
-      }
-    } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : '网络请求失败'
-      error.value = errorMsg
-      if (!options.silent) {
-        toast.error(errorMsg)
-      }
-      return null
-    } finally {
-      isLoading.value = false
+    // 构建监控配置
+    const monitorConfig: MonitorConfig = {
+      interval: config?.interval || MIN_STOCK_MONITOR_INTERVAL,
+      duration: config?.duration || DEFAULT_STOCK_MONITOR_DURATION,
+      // 自动下单带登录态；普通到货监控剔除 uid/token 走匿名桶。
+      // 两者都以当前账号的完整抓包快照为基础发请求
+      adapterConfig: buildAdapterConfig(userConfig, needAuth),
+      ...(config?.autoOrder ? { autoOrder: config.autoOrder } : {}),
     }
+
+    const data = await submit<CreateTaskResponse>(
+      '/api/monitor/create',
+      { product, config: monitorConfig },
+      {
+        successMessage: config?.autoOrder?.enabled
+          ? '已创建到货监控任务（有货自动下单）'
+          : '已创建到货监控任务（仅邮件提醒）',
+        failureMessage: '创建任务失败',
+        silent: options.silent,
+      }
+    )
+
+    return data?.taskId ?? null
   }
 
   /**
@@ -224,25 +196,8 @@ export const useMonitor = () => {
   /**
    * 查询任务状态
    */
-  const getTaskStatus = async (taskId: string): Promise<TaskStatusResponse | null> => {
-    try {
-      const response = await $fetch<ApiResponse<TaskStatusResponse>>(
-        `/api/monitor/status?taskId=${taskId}`
-      )
-
-      if (response.success && response.data) {
-        return response.data
-      } else {
-        const errorMsg = response.error?.message || '查询失败'
-        toast.error(errorMsg)
-        return null
-      }
-    } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : '网络请求失败'
-      toast.error(errorMsg)
-      return null
-    }
-  }
+  const getTaskStatus = (taskId: string): Promise<TaskStatusResponse | null> =>
+    fetchStatus<TaskStatusResponse>('/api/monitor/status', taskId)
 
   return {
     // 状态

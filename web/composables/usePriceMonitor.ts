@@ -6,6 +6,7 @@
 
 import type { UserConfig } from '@/types'
 import { buildAdapterConfig, hasLoginCredential } from '@/utils/adapterConfig'
+import { useTaskSubmit } from './useTaskSubmit'
 
 /** 检测间隔硬下限（秒） */
 export const MIN_PRICE_MONITOR_INTERVAL = 60
@@ -67,9 +68,7 @@ export const usePriceMonitor = () => {
   const configStore = useConfigStore()
   const { user, checkAuth } = useAuth()
   const toast = useToast()
-
-  const isLoading = ref(false)
-  const error = ref<string | null>(null)
+  const { isLoading, error, submit } = useTaskSubmit()
 
   /**
    * 检查配置是否有效（价格监控必须有登录态）
@@ -126,49 +125,27 @@ export const usePriceMonitor = () => {
       Number(options.interval) || DEFAULT_PRICE_MONITOR_INTERVAL
     )
 
-    isLoading.value = true
-    error.value = null
+    const data = await submit<CreatePriceTaskResponse>(
+      '/api/price-monitor/create',
+      {
+        product: {
+          productId: product.productId,
+          productName: product.productName,
+          productImage: product.productImage,
+        },
+        config: {
+          interval,
+          duration: options.duration || DEFAULT_PRICE_MONITOR_DURATION,
+          notifyOn: options.notifyOn || 'any',
+          minPriceDelta: options.minPriceDelta ?? 0.01,
+          // 价格监控必须登录态，完整回放当前账号的抓包快照
+          adapterConfig: buildAdapterConfig(userConfig, true),
+        },
+      },
+      { successMessage: '已创建价格监控任务', failureMessage: '创建价格监控失败' }
+    )
 
-    try {
-      const response = await $fetch<ApiResponse<CreatePriceTaskResponse>>(
-        '/api/price-monitor/create',
-        {
-          method: 'POST',
-          body: {
-            product: {
-              productId: product.productId,
-              productName: product.productName,
-              productImage: product.productImage,
-            },
-            config: {
-              interval,
-              duration: options.duration || DEFAULT_PRICE_MONITOR_DURATION,
-              notifyOn: options.notifyOn || 'any',
-              minPriceDelta: options.minPriceDelta ?? 0.01,
-              // 价格监控必须登录态，完整回放当前账号的抓包快照
-              adapterConfig: buildAdapterConfig(userConfig, true),
-            },
-          },
-        }
-      )
-
-      if (response.success && response.data) {
-        toast.success('已创建价格监控任务')
-        return response.data.taskId
-      }
-
-      const errorMsg = response.error?.message || '创建价格监控失败'
-      error.value = errorMsg
-      toast.error(errorMsg)
-      return null
-    } catch (err: any) {
-      const errorMsg = err?.data?.message || err?.message || '网络请求失败'
-      error.value = errorMsg
-      toast.error(errorMsg)
-      return null
-    } finally {
-      isLoading.value = false
-    }
+    return data?.taskId ?? null
   }
 
   return {

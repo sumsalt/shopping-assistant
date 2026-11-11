@@ -4,6 +4,7 @@
 
 import type { UserConfig } from '@/types'
 import { buildAdapterConfig } from '@/utils/adapterConfig'
+import { useTaskSubmit } from './useTaskSubmit'
 
 // Tab 监控配置类型
 interface TabMonitorConfig {
@@ -66,9 +67,7 @@ export const useTabMonitor = () => {
   const configStore = useConfigStore()
   const { user, isLoggedIn, checkAuth } = useAuth()
   const toast = useToast()
-
-  const isLoading = ref(false)
-  const error = ref<string | null>(null)
+  const { isLoading, error, submit, fetchStatus } = useTaskSubmit()
 
   /**
    * 检查配置是否有效
@@ -101,80 +100,43 @@ export const useTabMonitor = () => {
       return null
     }
 
-    isLoading.value = true
-    error.value = null
+    // 构建监控配置
+    const monitorConfig: TabMonitorConfig = {
+      tabId: config.tabId,
+      tabName: config.tabName,
+      interval: config.interval || 300, // 默认 5 分钟
+      duration: config.duration || 2 * 60 * 60, // 默认 2 小时
+      page: config.page || 1,
+      pageSize: config.pageSize || 20,
+      sort: config.sort || 1,
+      minPrice: config.minPrice || 0,
+      maxPrice: config.maxPrice || 0,
+      minChangeCount: config.minChangeCount || 10,
+      mode: config.mode ?? 'accumulate',
+      ...(config.activeWindow ? { activeWindow: config.activeWindow } : {}),
+      // Tab 列表检测始终保持匿名：剔除 uid/token，与改造前一致
+      adapterConfig: buildAdapterConfig(userConfig, false),
+    }
 
-    try {
-      // 构建监控配置
-      const monitorConfig: TabMonitorConfig = {
+    const data = await submit<CreateTabTaskResponse>(
+      '/api/tab-monitor/create',
+      {
         tabId: config.tabId,
         tabName: config.tabName,
-        interval: config.interval || 300, // 默认 5 分钟
-        duration: config.duration || 2 * 60 * 60, // 默认 2 小时
-        page: config.page || 1,
-        pageSize: config.pageSize || 20,
-        sort: config.sort || 1,
-        minPrice: config.minPrice || 0,
-        maxPrice: config.maxPrice || 0,
-        minChangeCount: config.minChangeCount || 10,
-        mode: config.mode ?? 'accumulate',
-        ...(config.activeWindow ? { activeWindow: config.activeWindow } : {}),
-        // Tab 列表检测始终保持匿名：剔除 uid/token，与改造前一致
-        adapterConfig: buildAdapterConfig(userConfig, false),
-      }
+        config: monitorConfig,
+        recipient: user.value.email,
+      },
+      { successMessage: `已创建 Tab 监控任务: ${config.tabName}`, failureMessage: '创建任务失败' }
+    )
 
-      // 调用 API 创建任务
-      const response = await $fetch<ApiResponse<CreateTabTaskResponse>>('/api/tab-monitor/create', {
-        method: 'POST',
-        body: {
-          tabId: config.tabId,
-          tabName: config.tabName,
-          config: monitorConfig,
-          recipient: user.value.email,
-        },
-      })
-
-      if (response.success && response.data) {
-        toast.success(`已创建 Tab 监控任务: ${config.tabName}`)
-        return response.data.taskId
-      } else {
-        const errorMsg = response.error?.message || '创建任务失败'
-        error.value = errorMsg
-        toast.error(errorMsg)
-        return null
-      }
-    } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : '网络请求失败'
-      error.value = errorMsg
-      toast.error(errorMsg)
-      return null
-    } finally {
-      isLoading.value = false
-    }
+    return data?.taskId ?? null
   }
 
   /**
    * 查询任务状态
    */
-  const getTaskStatus = async (taskId: string): Promise<TabTaskStatusResponse | null> => {
-    try {
-      const response = await $fetch<ApiResponse<TabTaskStatusResponse>>(
-        `/api/tab-monitor/status?taskId=${taskId}`
-      )
-
-      if (response.success && response.data) {
-        return response.data
-      } else {
-        const errorMsg = response.error?.message || '查询失败'
-        toast.error(errorMsg)
-        return null
-      }
-    } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : '网络请求失败'
-      toast.error(errorMsg)
-      return null
-    }
-  }
+  const getTaskStatus = (taskId: string): Promise<TabTaskStatusResponse | null> =>
+    fetchStatus<TabTaskStatusResponse>('/api/tab-monitor/status', taskId)
 
   return {
     // 状态
