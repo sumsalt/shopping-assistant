@@ -1,3 +1,4 @@
+import type { ApiResponse } from '@/types'
 
 // 收藏夹商品类型
 interface CollectionItem {
@@ -28,15 +29,6 @@ interface CollectionResult {
 }
 
 // API 响应类型
-interface ApiResponse<T> {
-  success: boolean
-  data?: T
-  error?: {
-    code: string
-    message: string
-  }
-}
-
 /**
  * 收藏夹管理组合式函数
  */

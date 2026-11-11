@@ -1,31 +1,27 @@
 <template>
   <div class="max-w-6xl mx-auto">
     <!-- 页面标题 -->
-    <div class="flex flex-col gap-3 mb-6 sm:flex-row sm:items-center sm:justify-between">
-      <div>
-        <h1 class="text-2xl font-bold text-gray-900">账号管理</h1>
-        <p class="mt-1 text-sm text-gray-500">
-          保存一手账号及其抓包请求信息，支持小程序 / App 抓包，可设为当前使用账号
-        </p>
-      </div>
-      <div class="flex items-center gap-2 flex-shrink-0">
+    <LayoutPageHeader
+      title="账号管理"
+      description="保存一手账号及其抓包请求信息，支持小程序 / App 抓包，可设为当前使用账号"
+    >
+      <template #actions>
         <UiButton
           variant="outline"
           size="sm"
-          class="whitespace-nowrap"
           :disabled="isLoading"
           @click="handleRefresh"
         >
           刷新
         </UiButton>
-        <UiButton size="sm" class="whitespace-nowrap" @click="openCreate">
+        <UiButton size="sm"  @click="openCreate">
           <svg class="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
           </svg>
           新增账号
         </UiButton>
-      </div>
-    </div>
+      </template>
+    </LayoutPageHeader>
 
     <!-- 当前账号提示 -->
     <div

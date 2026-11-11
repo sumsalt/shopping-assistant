@@ -70,16 +70,7 @@ interface CreatePriceTaskResponse {
   }
 }
 
-/** API 响应类型 */
-interface ApiResponse<T> {
-  success: boolean
-  data?: T
-  error?: {
-    code: string
-    message: string
-  }
-}
-
+/** 创建价格监控任务 */
 export const usePriceMonitor = () => {
   const configStore = useConfigStore()
   const { user, checkAuth } = useAuth()

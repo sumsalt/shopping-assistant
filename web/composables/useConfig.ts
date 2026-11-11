@@ -1,4 +1,4 @@
-import type { ActiveAccountSummary } from '@/types'
+import type { ApiResponse, ActiveAccountSummary } from '@/types'
 
 /**
  * 系统配置组合式函数
@@ -17,12 +17,6 @@ interface AccountOption {
   hasRequestProfile: boolean
   requestChannel: 'wx' | 'app' | null
   requestParamCount: number
-}
-
-interface ApiResponse<T> {
-  success: boolean
-  data?: T
-  error?: { code: string; message: string }
 }
 
 export const useConfig = () => {

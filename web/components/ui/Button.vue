@@ -67,7 +67,7 @@ const emit = defineEmits<{
 }>()
 
 // 基础样式
-const baseClasses = 'inline-flex items-center justify-center font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2'
+const baseClasses = 'inline-flex items-center justify-center whitespace-nowrap font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2'
 
 // 变体样式映射
 const variantClasses: Record<string, string> = {

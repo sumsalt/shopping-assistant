@@ -6,18 +6,6 @@
 
 import type { User } from '~/server/types/auth'
 
-/** 认证状态 */
-interface AuthState {
-  /** 当前用户 */
-  user: User | null
-  /** 是否已登录 */
-  isLoggedIn: boolean
-  /** 是否正在加载 */
-  isLoading: boolean
-  /** 是否已初始化 */
-  initialized: boolean
-}
-
 export const useAuth = () => {
   // 全局状态（使用 useState 保持跨组件共享）
   const user = useState<User | null>('auth-user', () => null)

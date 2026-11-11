@@ -11,11 +11,6 @@ interface ConfirmOptions {
   showIcon?: boolean
 }
 
-// 确认弹窗结果
-interface ConfirmResult {
-  confirmed: boolean
-}
-
 /**
  * 确认弹窗组合式函数
  * @returns 包含 confirm 方法的对象

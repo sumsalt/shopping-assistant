@@ -89,18 +89,6 @@ export interface BatchStockCheckResult {
 // ==================== 一手平台专用类型 ====================
 
 /**
- * 一手平台 API 响应
- */
-export interface YishouGoodsResponse {
-  /** 响应码，"200" 表示成功 */
-  code: string;
-  /** 响应消息 */
-  msg: string;
-  /** 商品数据 */
-  data: YishouGoodsData;
-}
-
-/**
  * 一手商品数据（精简版，仅包含需要的字段）
  */
 export interface YishouGoodsData {
@@ -203,20 +191,6 @@ export interface YishouCollectionGoodsData {
 }
 
 /**
- * 一手收藏夹 API 响应
- */
-export interface YishouCollectionResponse {
-  /** 商品数据列表 */
-  data: YishouCollectionGoodsData[];
-  /** 总数量 */
-  total: number;
-  /** 总页数 */
-  total_page: number;
-  /** 当前页码 */
-  page: number;
-}
-
-/**
  * 一手 H5 Tab 商品列表数据
  */
 export interface YishouTabGoodsData {
@@ -270,20 +244,6 @@ export interface YishouTabGoodsData {
   first_sale_period: string;
   /** 首次销售时间格式化 */
   format_first_sale_time: string;
-}
-
-/**
- * 一手 H5 Tab 商品列表 API 响应
- */
-export interface YishouTabListResponse {
-  /** 商品数据列表 */
-  list: YishouTabGoodsData[];
-  /** 总数量 */
-  total: number;
-  /** 当前页码 */
-  page: number;
-  /** 每页数量 */
-  page_size: number;
 }
 
 /**
@@ -384,18 +344,6 @@ export interface YishouColorAttribute {
   is_recommend: string;
   /** 该颜色下的所有尺码 SKU */
   item: YishouSkuItem[];
-}
-
-/**
- * 一手商品详情 API 响应（cart_detail 接口）
- */
-export interface YishouCartDetailResponse {
-  /** 响应码 */
-  code: string;
-  /** 响应消息 */
-  msg: string;
-  /** 商品详情数据 */
-  data: YishouCartDetailData;
 }
 
 /**

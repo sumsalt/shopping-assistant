@@ -1,18 +1,14 @@
 <template>
   <div class="max-w-6xl mx-auto">
     <!-- 页面标题 -->
-    <div class="flex flex-col gap-3 mb-6 sm:flex-row sm:items-center sm:justify-between">
-      <div>
-        <h1 class="text-2xl font-bold text-gray-900">店铺评分</h1>
-        <p class="mt-1 text-sm text-gray-500">
-          记录店铺星级与备注，挑店时先看一眼历史评价
-        </p>
-      </div>
-      <div class="flex items-center gap-2 flex-shrink-0">
+    <LayoutPageHeader
+      title="店铺评分"
+      description="记录店铺星级与备注，挑店时先看一眼历史评价"
+    >
+      <template #actions>
         <UiButton
           variant="outline"
           size="sm"
-          class="whitespace-nowrap"
           @click="navigateTo('/shops/blacklist')"
         >
           黑名单
@@ -20,20 +16,19 @@
         <UiButton
           variant="outline"
           size="sm"
-          class="whitespace-nowrap"
           :disabled="isLoading"
           @click="handleRefresh"
         >
           刷新
         </UiButton>
-        <UiButton size="sm" class="whitespace-nowrap" @click="openCreate">
+        <UiButton size="sm"  @click="openCreate">
           <svg class="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
           </svg>
           新增店铺
         </UiButton>
-      </div>
-    </div>
+      </template>
+    </LayoutPageHeader>
 
     <!-- 概览 -->
     <div v-if="!error && (isLoading || total > 0)" class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">

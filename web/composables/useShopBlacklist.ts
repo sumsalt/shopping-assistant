@@ -1,3 +1,5 @@
+import type { ApiResponse } from '@/types'
+
 /**
  * 店铺黑名单管理组合式函数
  *
@@ -26,15 +28,6 @@ export interface ShopBlacklistPayload {
 }
 
 /** API 响应 */
-interface ApiResponse<T> {
-  success: boolean
-  data?: T
-  error?: {
-    code: string
-    message: string
-  }
-}
-
 /** 提交结果 */
 export interface BlacklistSubmitResult {
   success: boolean

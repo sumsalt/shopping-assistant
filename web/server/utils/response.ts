@@ -61,16 +61,3 @@ export const ErrorCode = {
   API_ERROR: 'API_ERROR',
   UNKNOWN_ERROR: 'UNKNOWN_ERROR',
 } as const
-
-/**
- * 错误消息映射
- */
-export const ErrorMessage: Record<string, string> = {
-  [ErrorCode.INVALID_PARAMS]: '参数错误',
-  [ErrorCode.MISSING_CONFIG]: '缺少必要的配置信息',
-  [ErrorCode.PRODUCT_NOT_FOUND]: '商品不存在',
-  [ErrorCode.PLATFORM_NOT_SUPPORTED]: '不支持该平台',
-  [ErrorCode.NETWORK_ERROR]: '网络请求失败',
-  [ErrorCode.API_ERROR]: 'API 响应错误',
-  [ErrorCode.UNKNOWN_ERROR]: '未知错误',
-}

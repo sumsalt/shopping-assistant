@@ -68,11 +68,3 @@ export interface LoginResponse {
   /** 错误信息（失败时返回） */
   message?: string
 }
-
-/**
- * 认证错误响应
- */
-export interface AuthError {
-  code: number
-  message: string
-}

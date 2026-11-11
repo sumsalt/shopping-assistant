@@ -67,7 +67,6 @@
               <UiButton
                 type="button"
                 variant="outline"
-                class="whitespace-nowrap"
                 :loading="isSwitchingAccount"
                 :disabled="isLoadingAccounts || isSwitchingAccount"
                 @click="selectAccount"

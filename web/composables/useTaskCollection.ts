@@ -1,3 +1,5 @@
+import type { ApiResponse } from '@/types'
+
 /**
  * 任务列表通用逻辑
  *
@@ -10,12 +12,6 @@
  */
 
 import type { Ref } from 'vue'
-
-interface ApiResponse<T> {
-  success: boolean
-  data?: T
-  error?: { code: string; message: string }
-}
 
 interface TaskListResponse<T> {
   tasks: T[]

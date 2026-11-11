@@ -1,3 +1,4 @@
+import type { ApiResponse } from '@/types'
 
 // 库存查询结果类型
 interface StockCheckResult {
@@ -59,15 +60,6 @@ interface ProductSkuResult {
 }
 
 // API 响应类型
-interface ApiResponse<T> {
-  success: boolean
-  data?: T
-  error?: {
-    code: string
-    message: string
-  }
-}
-
 /**
  * 库存查询组合式函数
  */

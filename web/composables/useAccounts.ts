@@ -3,7 +3,7 @@
  */
 
 import { ref } from 'vue'
-import type { RequestProfile, RequestChannel } from '@/types'
+import type { ApiResponse, RequestProfile, RequestChannel } from '@/types'
 
 /** 账号记录（列表接口返回的脱敏结构） */
 export interface AccountItem {
@@ -62,15 +62,6 @@ export interface AccountPayload {
 export type RevealField = 'password' | 'token'
 
 /** API 响应 */
-interface ApiResponse<T> {
-  success: boolean
-  data?: T
-  error?: {
-    code: string
-    message: string
-  }
-}
-
 /** 提交结果 */
 export interface AccountSubmitResult {
   success: boolean

@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import type { ActiveAccountSummary, RuntimeSettings } from '@/types'
+import type { ApiResponse, ActiveAccountSummary, RuntimeSettings } from '@/types'
 
 /**
  * 运行配置 store
@@ -12,12 +12,6 @@ import type { ActiveAccountSummary, RuntimeSettings } from '@/types'
 
 /** 旧版 localStorage 键，只用于一次性迁移 */
 const LEGACY_KEY = 'shopping-assistant-config'
-
-interface ApiResponse<T> {
-  success: boolean
-  data?: T
-  error?: { code: string; message: string }
-}
 
 interface ActiveAccountPayload {
   account: {

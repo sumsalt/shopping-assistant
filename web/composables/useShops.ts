@@ -1,3 +1,5 @@
+import type { ApiResponse } from '@/types'
+
 /**
  * 店铺评分管理组合式函数
  */
@@ -36,15 +38,6 @@ interface ShopListData {
 }
 
 /** API 响应 */
-interface ApiResponse<T> {
-  success: boolean
-  data?: T
-  error?: {
-    code: string
-    message: string
-  }
-}
-
 /** 提交结果 */
 export interface ShopSubmitResult {
   success: boolean

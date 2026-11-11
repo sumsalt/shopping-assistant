@@ -1,31 +1,27 @@
 <template>
   <div class="max-w-4xl mx-auto">
     <!-- 页面标题 -->
-    <div class="flex flex-col gap-3 mb-6 sm:flex-row sm:items-center sm:justify-between">
-      <div>
-        <h1 class="text-2xl font-bold text-gray-900">店铺黑名单</h1>
-        <p class="mt-1 text-sm text-gray-500">
-          黑名单店铺的商品不再出现在 Tab 监控里，也不会写进提醒邮件
-        </p>
-      </div>
-      <div class="flex items-center gap-2 flex-shrink-0">
+    <LayoutPageHeader
+      title="店铺黑名单"
+      description="黑名单店铺的商品不再出现在 Tab 监控里，也不会写进提醒邮件"
+    >
+      <template #actions>
         <UiButton
           variant="outline"
           size="sm"
-          class="whitespace-nowrap"
           :disabled="isLoading"
           @click="fetchBlacklist"
         >
           刷新
         </UiButton>
-        <UiButton size="sm" class="whitespace-nowrap" @click="openCreate">
+        <UiButton size="sm"  @click="openCreate">
           <svg class="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
           </svg>
           加入黑名单
         </UiButton>
-      </div>
-    </div>
+      </template>
+    </LayoutPageHeader>
 
     <!-- 说明 -->
     <div class="mb-5 rounded-lg border border-amber-100 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-700">

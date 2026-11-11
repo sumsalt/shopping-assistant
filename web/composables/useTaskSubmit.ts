@@ -1,3 +1,5 @@
+import type { ApiResponse } from '@/types'
+
 /**
  * 任务提交 / 状态查询
  *
@@ -5,12 +7,6 @@
  * 加载态 → POST → 成功提示 / 失败提示 → 返回结果。
  * 这里只写一次，各 composable 只保留自己的校验与配置组装。
  */
-
-interface ApiResponse<T> {
-  success: boolean
-  data?: T
-  error?: { code: string; message: string }
-}
 
 export interface SubmitOptions {
   /** 成功后的提示文案，不传则不提示 */

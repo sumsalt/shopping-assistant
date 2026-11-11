@@ -1,22 +1,20 @@
 <template>
   <div class="max-w-6xl mx-auto">
     <!-- 页面标题 -->
-    <div class="flex items-center justify-between mb-6">
-      <div>
-        <h1 class="text-2xl font-bold text-gray-900">监控任务</h1>
-        <p class="mt-1 text-sm text-gray-500">管理商品到货监控任务</p>
-      </div>
-      <UiButton
-        :loading="isLoading"
-        :disabled="isLoading"
-        @click="handleRefresh"
-      >
-        <svg class="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-        </svg>
-        刷新
-      </UiButton>
-    </div>
+    <LayoutPageHeader title="监控任务" description="管理商品到货监控任务">
+      <template #actions>
+        <UiButton
+          :loading="isLoading"
+          :disabled="isLoading"
+          @click="handleRefresh"
+        >
+          <svg class="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+          刷新
+        </UiButton>
+      </template>
+    </LayoutPageHeader>
 
     <!-- 加载状态 -->
     <div v-if="isLoading && tasks.length === 0" class="space-y-4">

@@ -1,25 +1,21 @@
 <template>
   <div class="max-w-6xl mx-auto">
     <!-- 页面标题 -->
-    <div class="flex flex-col gap-3 mb-6 sm:flex-row sm:items-center sm:justify-between">
-      <div>
-        <h1 class="text-2xl font-bold text-gray-900">价格监控</h1>
-        <p class="mt-1 text-sm text-gray-500">
-          监控登录态下的商品拿货价，价格变动时发送邮件提醒；任务在商品详情页创建
-        </p>
-      </div>
-      <div class="flex items-center gap-2 flex-shrink-0">
+    <LayoutPageHeader
+      title="价格监控"
+      description="监控登录态下的商品拿货价，价格变动时发送邮件提醒；任务在商品详情页创建"
+    >
+      <template #actions>
         <UiButton
           variant="outline"
           size="sm"
-          class="whitespace-nowrap"
           :disabled="isLoading"
           @click="handleRefresh"
         >
           刷新
         </UiButton>
-      </div>
-    </div>
+      </template>
+    </LayoutPageHeader>
 
     <!-- 加载状态 -->
     <div v-if="isLoading && tasks.length === 0" class="space-y-4">

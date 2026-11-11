@@ -47,21 +47,11 @@ interface TabTaskStatusResponse {
   lastDetectedAt?: Date
 }
 
-// API 响应类型
-interface ApiResponse<T> {
-  success: boolean
-  data?: T
-  error?: {
-    code: string
-    message: string
-  }
-}
-
 /**
  * Tab 监控任务管理组合式函数
  */
 export const useTabMonitor = () => {
-  const { user, isLoggedIn, checkAuth } = useAuth()
+  const { user, checkAuth } = useAuth()
   const toast = useToast()
   const { isLoading, error, submit, fetchStatus } = useTaskSubmit()
 

@@ -1,12 +1,13 @@
+import type { ApiResponse } from '@/types'
+import { useTaskCollection } from './useTaskCollection'
+import { formatDuration, formatTime, getStatusColor, getStatusText } from '@/utils/taskFormat'
+
 /**
  * Tab 监控任务列表
  *
  * 通用列表逻辑在 useTaskCollection，这里保留 Tab 特有的
  * 「累计商品分页」「展开状态」与展示函数。
  */
-
-import { useTaskCollection } from './useTaskCollection'
-import { formatDuration, formatTime, getStatusColor, getStatusText } from '@/utils/taskFormat'
 
 /** Tab 监控任务 */
 export interface TabMonitorTaskItem {
@@ -61,12 +62,6 @@ interface TabSeenListResponse {
   limit: number
   hasMore: boolean
   items: TabSeenProductItem[]
-}
-
-interface ApiResponse<T> {
-  success: boolean
-  data?: T
-  error?: { code: string; message: string }
 }
 
 export const useTabMonitorTasks = () => {

@@ -74,13 +74,3 @@ export const findUserByUsername = (username: string): UserConfig | undefined => 
   const users = loadUsersConfig()
   return users.find(user => user.username === username)
 }
-
-/**
- * 检查用户名是否存在
- * 
- * @param username 用户名
- * @returns 是否存在
- */
-export const userExists = (username: string): boolean => {
-  return findUserByUsername(username) !== undefined
-}

@@ -242,7 +242,7 @@
       <div class="flex gap-2 w-full">
         <UiButton
           variant="outline"
-          class="flex-1 whitespace-nowrap"
+          class="flex-1"
           :disabled="isLoading"
           @click="handleClose"
         >
@@ -251,7 +251,7 @@
         <UiButton
           v-if="autoOrderEnabled && hasCredential"
           variant="outline"
-          class="flex-1 whitespace-nowrap"
+          class="flex-1"
           :loading="isChecking"
           :disabled="isLoading || isChecking || !product?.productNo"
           @click="handlePrecheck"
@@ -260,7 +260,7 @@
         </UiButton>
         <UiButton
           variant="primary"
-          class="flex-1 whitespace-nowrap"
+          class="flex-1"
           :loading="isLoading"
           :disabled="!canSubmit"
           @click="handleSubmit"
@@ -278,41 +278,12 @@ import {
   STOCK_MONITOR_DURATION_OPTIONS,
   buildStockMonitorConfig,
 } from '@/utils/stockMonitorConfig'
+import { toBoolean, stageText, maskMobile, type AddressItem, type PrecheckResult, type SkuOption } from '@/utils/autoOrder'
 interface StockMonitorProduct {
   productId: string
   productName?: string
   productImage?: string
   productNo?: string
-}
-
-interface AddressItem {
-  addressId: string
-  consignee: string
-  mobile: string
-  area: string
-  address: string
-  province: string
-  city: string
-  district: string
-}
-
-interface PrecheckResult {
-  success: boolean
-  message?: string
-  skuLabel?: string
-  items?: Array<{ sku: string; skuLabel: string; num: number }>
-  num?: number
-  requestedNum?: number
-  numReduced?: boolean
-  goodsAmount?: number
-  shippingFee?: number
-  stage?: string
-}
-
-interface SkuOption {
-  skuId: string
-  label: string
-  saleStock: number
 }
 
 const props = withDefaults(defineProps<{ open: boolean; product?: StockMonitorProduct | null }>(), {
@@ -352,22 +323,6 @@ const canSubmit = computed(
     !isLoading.value &&
     (!autoOrderEnabled.value || (hasCredential.value && Boolean(props.product?.productNo)))
 )
-
-const toBoolean = (value: boolean | '1' | '0'): boolean => value === true || value === '1'
-
-const stageText = (stage: string): string => {
-  const map: Record<string, string> = {
-    address: '收货地址',
-    sku: '查询规格',
-    cart: '加入购物车',
-    confirm: '结算确认',
-    create: '创建订单',
-  }
-  return map[stage] || stage
-}
-
-const maskMobile = (mobile: string): string =>
-  mobile ? mobile.replace(/^(\d{3})\d{4}(\d{4})$/, '$1****$2') : ''
 
 /**
  * 读取规格列表
