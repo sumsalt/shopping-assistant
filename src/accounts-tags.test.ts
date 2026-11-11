@@ -83,6 +83,7 @@ describe('toAccountView - 标签与掩码', () => {
     isVerified: true,
     isNewUser: false,
     hasOrdered: true,
+    requestProfile: null,
     createdAt: new Date('2026-11-11T00:00:00.000Z'),
     updatedAt: new Date('2026-11-11T01:00:00.000Z'),
   }
@@ -104,5 +105,30 @@ describe('toAccountView - 标签与掩码', () => {
     expect(maskPassword('abc')).toBe('••••••••')
     expect(maskToken('short')).toBe('••••••••')
     expect(maskToken('a878dabfb1eaf3d4acf19fa3f81f9cef')).toBe('a878••••9cef')
+  })
+
+  it('抓包快照进入列表视图时 token 被打码，其它参数原样透出', () => {
+    const view = toAccountView({
+      ...base,
+      requestProfile: {
+        channel: 'app',
+        params: {
+          uid: '20478621',
+          token: 'a878dabfb1eaf3d4acf19fa3f81f9cef',
+          udid: 'udid-xyz',
+          model: 'Pixel 7',
+        },
+        headers: { 'User-Agent': 'okhttp/3.14.9' },
+        path: '/goods/get_goods_info_v2',
+      },
+    })
+
+    expect(view.hasRequestProfile).toBe(true)
+    expect(view.requestChannel).toBe('app')
+    expect(view.requestParamCount).toBe(4)
+    expect(view.requestPath).toBe('/goods/get_goods_info_v2')
+    expect(view.requestParams.udid).toBe('udid-xyz')
+    expect(view.requestParams.token).toBe('a878••••9cef')
+    expect(JSON.stringify(view)).not.toContain('a878dabfb1eaf3d4acf19fa3f81f9cef')
   })
 })

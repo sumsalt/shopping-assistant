@@ -7,22 +7,16 @@
 import { checkStock, checkStockBatch } from '@core'
 import type { StockCheckRequest, StockCheckResult, StockCheckError } from '@core'
 import { createSuccessResponse, createErrorResponse, ErrorCode } from '../../utils/response'
+import { readAdapterConfigFromBody } from '../../utils/adapterConfig'
 
 // 请求体类型
 interface CheckStockBody {
   productId?: string | string[]
   sku?: string | string[]
-  config?: {
-    uid?: string
-    token?: string
-    openid?: string
-    model?: string
-    version?: string
-    version_name?: string
-    wx_version_name?: string
-    proxyUrl?: string
-    proxyEnabled?: '1' | '0'
-  }
+  /** 账号快照组装好的完整适配器配置（匿名，不含 uid/token） */
+  adapterConfig?: unknown
+  /** 旧形态：摊平的用户配置，保留兼容 */
+  config?: Record<string, unknown>
 }
 
 export default defineEventHandler(async (event) => {
@@ -35,21 +29,9 @@ export default defineEventHandler(async (event) => {
       return createErrorResponse(ErrorCode.INVALID_PARAMS, '商品 ID 不能为空')
     }
 
-    // config 为可选，uid、token、openid 也为可选
-    const config = body.config || {}
-
-    // 构建适配器配置
-    const adapterConfig = {
-      // uid: config.uid || '',
-      // token: config.token || '',
-      openid: config.openid || '',
-      model: config.model || 'iPhone 14 Pro Max',
-      version: config.version || '5.11.0',
-      version_name: config.version_name || '5.11.0',
-      wx_version_name: config.wx_version_name || '8.0.43',
-      proxyUrl: config.proxyUrl,
-      proxyEnabled: config.proxyEnabled,
-    }
+    // 前端已按当前账号组装好完整快照（匿名链路剔除 uid/token），这里原样透传；
+    // 没有账号时适配器自己回退到旧的默认 wx 匿名参数，行为与改造前一致
+    const adapterConfig = readAdapterConfigFromBody(body)
 
     // 判断是单个查询还是批量查询
     if (Array.isArray(body.productId)) {

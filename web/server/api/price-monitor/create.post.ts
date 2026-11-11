@@ -243,7 +243,7 @@ export default defineEventHandler(async (event) => {
     if (!adapterConfig.uid || !adapterConfig.token) {
       return createErrorResponse(
         ErrorCode.AUTH_REQUIRED,
-        '价格监控需要登录态，请先在系统配置中填写 uid 和 token'
+        '价格监控需要登录态，请先在账号管理中选择带登录态的账号'
       )
     }
 

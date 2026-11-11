@@ -6,6 +6,7 @@
 import { checkCollectionStock } from '@core'
 import type { CollectionStockRequest, CollectionStockCheckResult, StockCheckError } from '@core'
 import { createSuccessResponse, createErrorResponse, ErrorCode } from '../../utils/response'
+import { readAdapterConfigFromQuery } from '../../utils/adapterConfig'
 
 export default defineEventHandler(async (event) => {
   try {
@@ -13,11 +14,6 @@ export default defineEventHandler(async (event) => {
     const query = getQuery(event)
     const page = parseInt(query.page as string) || 1
     const pageSize = parseInt(query.pageSize as string) || 20
-
-    // 获取配置（uid、token、openid 为可选）
-    const uid = (query.uid as string) || ''
-    const token = (query.token as string) || ''
-    const openid = (query.openid as string) || ''
 
     // 验证分页参数
     if (page < 1) {
@@ -35,18 +31,8 @@ export default defineEventHandler(async (event) => {
       pageSize,
     }
 
-    // 构建适配器配置
-    const adapterConfig = {
-      uid,
-      token,
-      openid,
-      model: (query.model as string) || 'iPhone 14 Pro Max',
-      version: (query.version as string) || '5.11.0',
-      version_name: (query.version_name as string) || '5.11.0',
-      wx_version_name: (query.wx_version_name as string) || '8.0.43',
-      proxyUrl: query.proxyUrl as string | undefined,
-      proxyEnabled: (query.proxyEnabled as '1' | '0') || '0',
-    }
+    // 前端按当前账号组装好的完整快照（含登录态），原样透传给适配器
+    const adapterConfig = readAdapterConfigFromQuery(query as Record<string, unknown>)
 
     // 调用核心库查询收藏夹
     const result: CollectionStockCheckResult = await checkCollectionStock(request, { adapterConfig })

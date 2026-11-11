@@ -184,9 +184,9 @@
             1
           </div>
           <div class="ml-4">
-            <h4 class="text-sm font-medium text-gray-900">配置认证信息</h4>
+            <h4 class="text-sm font-medium text-gray-900">保存账号并选择当前账号</h4>
             <p class="text-sm text-gray-500 mt-1">
-              首先进入"系统配置"页面，填写平台认证信息（uid、token、openid 等）。这些信息可以通过抓包工具从一手 App 获取。
+              先到「账号管理」新增账号，粘贴一次抓包请求即可自动识别公共参数，再到「系统配置」把它设为当前使用账号。支持小程序与 App 两种抓包内容。
             </p>
           </div>
         </div>

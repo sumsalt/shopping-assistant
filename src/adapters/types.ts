@@ -67,6 +67,15 @@ export interface AdapterConfig {
   wx_version_name?: string;
   /** 平台类型（默认: wx） */
   plat_type?: string;
+  /**
+   * 抓包得到的完整公共参数快照（含 uid/token/udid/openid 等静态字段）。
+   * 存在时，请求体以它为基础，只覆盖动态 t_t；匿名请求由前端先剔除 uid/token。
+   */
+  requestParams?: Record<string, string>;
+  /** 抓包得到的关键请求头（User-Agent / Content-Type / equipmd5 等） */
+  requestHeaders?: Record<string, string>;
+  /** 抓包通道：决定 UA、t_t 单位（app 秒级 / wx 毫秒级）与签名首段 */
+  channel?: 'wx' | 'app';
   /** 代理 URL（可选） */
   proxyUrl?: string;
   /** 是否启用代理（"1" 或 "0"） */

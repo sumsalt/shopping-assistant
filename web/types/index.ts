@@ -2,15 +2,38 @@
  * 前端类型定义
  */
 
-// 用户配置类型
+/** 一手请求通道 */
+export type RequestChannel = 'wx' | 'app'
+
+/**
+ * 一次抓包的完整请求快照
+ *
+ * params 是公共参数（含 uid/token/udid/openid 等，不含 t_t/sign 与业务参数）；
+ * headers 是关键请求头。发请求时以它们为基础，只覆盖动态 t_t / 签名。
+ */
+export interface RequestProfile {
+  channel: RequestChannel
+  params: Record<string, string>
+  headers: Record<string, string>
+  path?: string
+}
+
+/**
+ * 用户配置
+ *
+ * 设备 / 登录信息已迁移到「账号管理」：这里只记当前选用的账号，
+ * 并把该账号的完整请求快照缓存下来（与旧版 uid/token 明文存 localStorage 同一安全边界）。
+ * 代理是全局网络设置，仍保留在这里。
+ */
 export interface UserConfig {
-  uid?: string
-  token?: string
-  openid?: string
-  model: string
-  version: string
-  version_name: string
-  wx_version_name?: string
+  /** 当前使用的账号 id；为空表示未选账号，走匿名默认参数 */
+  activeAccountId?: string
+  /** 当前账号摘要（仅用于界面展示，不参与发请求） */
+  activeAccountPhone?: string
+  activeAccountUin?: string
+  activeAccountChannel?: RequestChannel | null
+  /** 当前账号的完整请求快照（明文，选账号时从服务端取回缓存） */
+  activeAccountProfile?: RequestProfile | null
   proxyUrl?: string
   proxyEnabled?: '1' | '0'
 }

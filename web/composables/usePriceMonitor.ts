@@ -5,6 +5,7 @@
  */
 
 import type { UserConfig } from '@/types'
+import { buildAdapterConfig, hasLoginCredential } from '@/utils/adapterConfig'
 
 /** 检测间隔硬下限（秒） */
 export const MIN_PRICE_MONITOR_INTERVAL = 60
@@ -81,8 +82,8 @@ export const usePriceMonitor = () => {
       return null
     }
 
-    if (!config.uid || !config.token) {
-      toast.warning('价格监控需要登录态，请先在系统配置中填写 uid 和 token')
+    if (!hasLoginCredential(config)) {
+      toast.warning('价格监控需要登录态，请先在账号管理中选择带登录态的账号')
       return null
     }
 
@@ -144,17 +145,8 @@ export const usePriceMonitor = () => {
               duration: options.duration || DEFAULT_PRICE_MONITOR_DURATION,
               notifyOn: options.notifyOn || 'any',
               minPriceDelta: options.minPriceDelta ?? 0.01,
-              adapterConfig: {
-                uid: userConfig.uid || '',
-                token: userConfig.token || '',
-                openid: userConfig.openid || '',
-                model: userConfig.model || '',
-                version: userConfig.version || '',
-                version_name: userConfig.version_name || '',
-                wx_version_name: userConfig.wx_version_name || '',
-                proxyUrl: userConfig.proxyUrl,
-                proxyEnabled: userConfig.proxyEnabled || '0',
-              },
+              // 价格监控必须登录态，完整回放当前账号的抓包快照
+              adapterConfig: buildAdapterConfig(userConfig, true),
             },
           },
         }

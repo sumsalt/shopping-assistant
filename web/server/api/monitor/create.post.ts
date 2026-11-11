@@ -163,7 +163,7 @@ export default defineEventHandler(async (event) => {
       if (!adapterConfig.uid || !adapterConfig.token) {
         return createErrorResponse(
           ErrorCode.AUTH_REQUIRED,
-          '自动下单需要一手登录态，请先在系统配置中填写 uid 和 token'
+          '自动下单需要一手登录态，请先在账号管理中选择带登录态的账号'
         )
       }
 

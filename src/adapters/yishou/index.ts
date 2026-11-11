@@ -380,16 +380,47 @@ export class YishouAdapter extends BaseAdapter {
     super(config);
   }
 
+  /** 默认 wx 小程序 UA（无抓包快照时使用） */
+  private static readonly WX_USER_AGENT = 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_5_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 MicroMessenger/8.0.60(0x18003c32) NetType/4G Language/zh_CN';
+  /** 默认 App UA（抓包没带 UA 时兜底，网关靠 UA 分流） */
+  private static readonly APP_USER_AGENT = 'okhttp/3.14.9';
+
+  /** 大小写不敏感地读抓包参数 */
+  private static readParam(params: Record<string, string> | undefined, key: string): string {
+    if (!params) return '';
+    for (const [name, value] of Object.entries(params)) {
+      if (name.toLowerCase() === key) return value;
+    }
+    return '';
+  }
+
   /**
    * 构建通用请求头
-   * @param sign 签名
-   * @returns 请求头
+   *
+   * 有抓包快照时以抓包请求头为基础（原样回放 UA / Referer / equipmd5 等），
+   * 只覆盖每次重新生成的 sign；没有则回退旧的写死微信 UA，保证线上老行为。
    */
   private buildHeaders(sign: string): Record<string, string> {
+    const captured = this.config.requestHeaders;
+    if (captured && Object.keys(captured).length > 0) {
+      const headers: Record<string, string> = { ...captured };
+      const hasUserAgent = Object.keys(headers).some(name => name.toLowerCase() === 'user-agent');
+      if (!hasUserAgent) {
+        headers['User-Agent'] = this.config.channel === 'app'
+          ? YishouAdapter.APP_USER_AGENT
+          : YishouAdapter.WX_USER_AGENT;
+      }
+      headers.sign = sign;
+      return headers;
+    }
+    const isApp = this.config.channel === 'app';
     return {
       sign,
-      'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_5_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 MicroMessenger/8.0.60(0x18003c32) NetType/4G Language/zh_CN',
-      'Referer': 'https://servicewechat.com/wxe9634876e78aafd5/454/page-frame.html',
+      'User-Agent': isApp ? YishouAdapter.APP_USER_AGENT : YishouAdapter.WX_USER_AGENT,
+      // 微信小程序网关靠这个 Referer 分流；App 通道带上反而会被判成 H5 请求
+      ...(isApp
+        ? {}
+        : { 'Referer': 'https://servicewechat.com/wxe9634876e78aafd5/454/page-frame.html' }),
     };
   }
 
@@ -408,21 +439,42 @@ export class YishouAdapter extends BaseAdapter {
 
   /**
    * 构建通用请求体基础参数
-   * @param t_t 时间戳
-   * @returns 基础请求参数
+   *
+   * 有抓包快照时：原样回放快照里的公共参数（用户粘贴的是自己设备上真实可用的请求，
+   * 不做任何猜测/删改），只覆盖每次动态生成的 t_t；匿名请求的前端已先剔除 uid/token。
+   * 没有快照时：回退旧的写死 wx 参数，保证线上历史任务行为不变。
    */
   private buildBaseRequestBody(t_t: number): Record<string, string> {
-    return {
+    const captured = this.config.requestParams;
+    if (captured && Object.keys(captured).length > 0) {
+      const body: Record<string, string> = {};
+      for (const [key, value] of Object.entries(captured)) {
+        const lower = key.toLowerCase();
+        // t_t / sign 是动态字段，抓包里若残留也覆盖掉
+        if (lower === 't_t' || lower === 'sign') continue;
+        body[key] = value;
+      }
+      body.t_t = `${t_t}`;
+      return body;
+    }
+    const body: Record<string, string> = {
       model: this.config.model || 'iPhone 14 Pro<iPhone15,2>',
       t_t: `${t_t}`,
       openid: this.config.openid || '',
       version: this.config.version || '8.0.60',
       version_name: this.config.version_name || '4.9.0',
       wx_version_name: this.config.wx_version_name || '3.5.32',
-      uid: this.config.uid!,
-      token: this.config.token!,
       plat_type: this.config.plat_type || 'wx',
     };
+    // 匿名请求不带这两个字段。若写成 undefined，URLSearchParams 会序列化成
+    // "uid=undefined&token=undefined"，一手接口会当作无效凭证返回「请登录」
+    if (this.config.uid) {
+      body.uid = this.config.uid;
+    }
+    if (this.config.token) {
+      body.token = this.config.token;
+    }
+    return body;
   }
 
   /**
@@ -433,15 +485,26 @@ export class YishouAdapter extends BaseAdapter {
 
   /**
    * 生成签名和时间戳
-   * @returns { sign, t_t }
+   *
+   * 服务端不校验 sign，但 t_t 会进请求体且被业务校验（必须 10 位数字），
+   * 因此按通道选单位：App 抓包是秒级（10 位），小程序/H5 是毫秒级（Date.now()）。
+   * 首段按文档：App 用 udid 且 model 需 URL 编码，小程序用 openid。
    */
   private generateSignature(): { sign: string; t_t: number } {
-    const t_t = this.config.timestamp || Date.now();
+    const isApp = this.config.channel === 'app';
+    const t_t = this.config.timestamp || (isApp ? Math.floor(Date.now() / 1000) : Date.now());
+    const params = this.config.requestParams;
+
+    const firstSegment = isApp
+      ? YishouAdapter.readParam(params, 'udid')
+      : (this.config.openid ?? YishouAdapter.readParam(params, 'openid'));
+    const rawModel = this.config.model || YishouAdapter.readParam(params, 'model');
     const sign = this.config.sign || generateYishouSign({
-      openid: this.config.openid,
-      model: this.config.model!,
-      version: this.config.version!,
-      version_name: this.config.version_name!,
+      openid: firstSegment,
+      // App 的签名在 OkHttp 拦截器里用 encodedValue 计算（空格 -> %20）
+      model: isApp ? encodeURIComponent(rawModel) : rawModel,
+      version: this.config.version || YishouAdapter.readParam(params, 'version'),
+      version_name: this.config.version_name || YishouAdapter.readParam(params, 'version_name'),
       t_t,
     });
     return { sign, t_t };
@@ -460,7 +523,7 @@ export class YishouAdapter extends BaseAdapter {
     if (!this.config.uid || !this.config.token) {
       throw new StockCheckError(
         StockCheckErrorType.AUTH_REQUIRED,
-        '价格监控需要登录态，请先配置 uid 和 token'
+        '价格监控需要登录态，请先在账号管理中选择带登录态的账号'
       );
     }
 
@@ -514,7 +577,7 @@ export class YishouAdapter extends BaseAdapter {
       if (snapshot.authState !== 'logged_in') {
         throw new StockCheckError(
           StockCheckErrorType.AUTH_REQUIRED,
-          '登录态已失效，请在系统配置中更新 uid 和 token'
+          '登录态已失效，请在账号管理中重新选择账号或更新抓包'
         );
       }
 
@@ -698,7 +761,10 @@ export class YishouAdapter extends BaseAdapter {
     // 构建请求参数
     const requestBody: Record<string, string> = {
       ...this.buildBaseRequestBody(t_t),
-      version_name: '7.65.0',
+      // 无抓包快照时沿用旧的 Tab 专用版本；有快照则原样回放，不覆盖用户抓包里的值
+      ...(this.config.requestParams && Object.keys(this.config.requestParams).length > 0
+        ? {}
+        : { version_name: '7.65.0' }),
       tabId,
       sort: `${sort}`,
       my_collection_supply: '',
@@ -840,7 +906,7 @@ export class YishouAdapter extends BaseAdapter {
     if (!this.config.uid || !this.config.token) {
       throw new StockCheckError(
         StockCheckErrorType.AUTH_REQUIRED,
-        '自动下单需要登录态，请先在系统配置中填写 uid 和 token'
+        '自动下单需要登录态，请先在账号管理中选择带登录态的账号'
       );
     }
 

@@ -6,7 +6,7 @@
  * - shops 表：店铺评分记录
  * - shop_blacklist 表：店铺黑名单
  * - sessions 表：登录会话（落盘，重启不掉线）
- * - accounts 表：账号凭据（手机号 / 密码 / uid / token / 备注）与账号标签
+ * - accounts 表：账号凭据（手机号 / 密码 / uid / token / 备注）、账号标签与抓包请求快照
  *
  * 运行要求：Node.js >= 22.5（node:sqlite）
  */
@@ -127,21 +127,23 @@ const createTables = (instance: SqliteDatabase): void => {
       is_verified INTEGER NOT NULL DEFAULT 0,
       is_new_user INTEGER NOT NULL DEFAULT 0,
       has_ordered INTEGER NOT NULL DEFAULT 0,
+      request_profile TEXT NOT NULL DEFAULT '',
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
     )
   `)
   instance.exec('CREATE INDEX IF NOT EXISTS idx_accounts_user ON accounts (user_id, updated_at DESC)')
 
-  // 老库兼容：三个账号标签是后加的列，缺哪个补哪个（幂等，重复执行不会报错）
+  // 老库兼容：标签列、抓包请求快照列都是后加的，缺哪个补哪个（幂等，重复执行不会报错）
   const accountColumns = instance.prepare('PRAGMA table_info(accounts)').all() as { name: string }[]
   const existing = new Set(accountColumns.map(column => column.name))
-  const tagColumns: Array<[string, string]> = [
+  const addedColumns: Array<[string, string]> = [
     ['is_verified', 'INTEGER NOT NULL DEFAULT 0'],
     ['is_new_user', 'INTEGER NOT NULL DEFAULT 0'],
     ['has_ordered', 'INTEGER NOT NULL DEFAULT 0'],
+    ['request_profile', "TEXT NOT NULL DEFAULT ''"],
   ]
-  for (const [column, definition] of tagColumns) {
+  for (const [column, definition] of addedColumns) {
     if (!existing.has(column)) {
       instance.exec(`ALTER TABLE accounts ADD COLUMN ${column} ${definition}`)
     }

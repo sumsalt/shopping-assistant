@@ -20,7 +20,7 @@
       </form>
 
       <div class="p-3 bg-blue-50 rounded-lg text-sm text-blue-700">
-        价格监控只对比登录态（uid + token）下的拿货价，需先在系统配置中填写凭证。
+        价格监控只对比登录态下的拿货价，需先在账号管理中选择带登录态的账号。
       </div>
     </div>
 
@@ -55,8 +55,8 @@
         class="p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800"
       >
         价格监控只监控登录态下的拿货价，请先在
-        <NuxtLink to="/settings" class="underline font-medium">系统配置</NuxtLink>
-        中填写 uid 和 token。
+        <NuxtLink to="/accounts" class="underline font-medium">账号管理</NuxtLink>
+        中选择带登录态的账号并设为当前账号。
       </div>
 
       <!-- 检测间隔 -->
@@ -192,6 +192,7 @@ import {
   type PriceMonitorProduct,
   type PriceNotifyOn,
 } from '~/composables/usePriceMonitor'
+import { hasLoginCredential } from '@/utils/adapterConfig'
 
 // 组件属性
 interface Props {
@@ -247,11 +248,8 @@ const notifyOptions: Array<{ value: PriceNotifyOn; label: string }> = [
 // 实际要监控的商品（一个任务只监控一个商品）
 const displayProduct = computed(() => props.product ?? searchedProduct.value)
 
-// 是否已配置登录态
-const hasCredential = computed(() => {
-  const config = configStore.config
-  return Boolean(config?.uid && config?.token)
-})
+// 是否已配置登录态（当前账号的抓包快照里带 uid + token）
+const hasCredential = computed(() => hasLoginCredential(configStore.getConfigForApi()))
 
 // 预计检测周期
 const cycleText = computed(() => {

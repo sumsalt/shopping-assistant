@@ -1,8 +1,9 @@
 /**
  * 账号凭据持久化存储（node:sqlite）
  *
- * 单表 accounts：一个账号一条记录，存手机号、密码、一手 uid（uin）、token、备注和三个账号标签。
- * 数据按登录用户隔离（user_id），列表接口只返回掩码，明文由 reveal 接口单独取。
+ * 单表 accounts：一个账号一条记录，存手机号、密码、一手 uid（uin）、token、备注、
+ * 三个账号标签，以及一次抓包得到的完整请求快照 requestProfile。
+ * 数据按登录用户隔离（user_id），列表接口只返回掩码，明文由 reveal / active 接口单独取。
  *
  * 安全边界：凭据以明文落库（与项目现有 uid/token 配置一致），
  * 依赖 data 目录 700 权限 + 登录态鉴权，不做额外加密，避免密钥丢失导致数据不可读。
@@ -10,6 +11,23 @@
 
 import { randomBytes } from 'node:crypto'
 import { getDb } from './db'
+
+/** 一手请求通道 */
+export type RequestChannel = 'wx' | 'app'
+
+/**
+ * 一次抓包的完整请求快照
+ *
+ * params 是公共参数（含 uid/token/udid/openid 等，不含 t_t/sign 与业务参数）；
+ * headers 是关键请求头（User-Agent / Content-Type / equipmd5 等）。
+ * 发请求时以 params/headers 为基础，只覆盖动态 t_t 与签名。
+ */
+export interface AccountRequestProfile {
+  channel: RequestChannel
+  params: Record<string, string>
+  headers: Record<string, string>
+  path?: string
+}
 
 /** 账号记录 */
 export interface AccountRecord {
@@ -31,6 +49,8 @@ export interface AccountRecord {
   isNewUser: boolean
   /** 标签：是否已下单 */
   hasOrdered: boolean
+  /** 抓包得到的完整请求快照；没有则为 null */
+  requestProfile: AccountRequestProfile | null
   createdAt: Date
   updatedAt: Date
 }
@@ -46,6 +66,13 @@ export interface AccountInput {
   isVerified?: boolean
   isNewUser?: boolean
   hasOrdered?: boolean
+  /**
+   * 抓包请求快照：
+   * - undefined：更新时保持原值（新增时为空）
+   * - null：清空
+   * - 对象：整体替换
+   */
+  requestProfile?: AccountRequestProfile | null
 }
 
 /** 数据库行 */
@@ -60,9 +87,41 @@ interface AccountRow {
   is_verified: number
   is_new_user: number
   has_ordered: number
+  request_profile: string
   created_at: number
   updated_at: number
 }
+
+/** 解析落库的请求快照（容错：脏数据当作没有） */
+export const decodeRequestProfile = (raw: string | null | undefined): AccountRequestProfile | null => {
+  if (!raw) {
+    return null
+  }
+  try {
+    const parsed = JSON.parse(raw)
+    if (
+      parsed &&
+      typeof parsed === 'object' &&
+      (parsed.channel === 'wx' || parsed.channel === 'app') &&
+      parsed.params && typeof parsed.params === 'object' &&
+      parsed.headers && typeof parsed.headers === 'object'
+    ) {
+      return {
+        channel: parsed.channel,
+        params: parsed.params as Record<string, string>,
+        headers: parsed.headers as Record<string, string>,
+        ...(typeof parsed.path === 'string' ? { path: parsed.path } : {}),
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return null
+}
+
+/** 序列化请求快照 */
+const encodeRequestProfile = (profile: AccountRequestProfile | null): string =>
+  profile ? JSON.stringify(profile) : ''
 
 /** 行转记录 */
 const toRecord = (row: AccountRow): AccountRecord => ({
@@ -76,6 +135,7 @@ const toRecord = (row: AccountRow): AccountRecord => ({
   isVerified: Boolean(row.is_verified),
   isNewUser: Boolean(row.is_new_user),
   hasOrdered: Boolean(row.has_ordered),
+  requestProfile: decodeRequestProfile(row.request_profile),
   createdAt: new Date(row.created_at),
   updatedAt: new Date(row.updated_at),
 })
@@ -156,17 +216,19 @@ export const createAccount = (userId: string, input: AccountInput): AccountRecor
   const isVerified = Boolean(input.isVerified)
   const isNewUser = Boolean(input.isNewUser)
   const hasOrdered = Boolean(input.hasOrdered)
+  const requestProfile = input.requestProfile ?? null
 
   try {
     db.prepare(`
       INSERT INTO accounts (
         id, user_id, phone, password, uin, token, remark,
-        is_verified, is_new_user, has_ordered, created_at, updated_at
+        is_verified, is_new_user, has_ordered, request_profile, created_at, updated_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id, userId, input.phone, password, uin, token, remark,
-      isVerified ? 1 : 0, isNewUser ? 1 : 0, hasOrdered ? 1 : 0, now, now
+      isVerified ? 1 : 0, isNewUser ? 1 : 0, hasOrdered ? 1 : 0,
+      encodeRequestProfile(requestProfile), now, now
     )
 
     return {
@@ -180,6 +242,7 @@ export const createAccount = (userId: string, input: AccountInput): AccountRecor
       isVerified,
       isNewUser,
       hasOrdered,
+      requestProfile,
       createdAt: new Date(now),
       updatedAt: new Date(now),
     }
@@ -213,18 +276,24 @@ export const updateAccount = (id: string, input: AccountInput): AccountRecord | 
   const isVerified = input.isVerified !== undefined ? input.isVerified : existing.isVerified
   const isNewUser = input.isNewUser !== undefined ? input.isNewUser : existing.isNewUser
   const hasOrdered = input.hasOrdered !== undefined ? input.hasOrdered : existing.hasOrdered
+  // 抓包快照：undefined 保持原值，null 清空，对象整体替换
+  const requestProfile =
+    input.requestProfile === undefined
+      ? existing.requestProfile
+      : input.requestProfile
 
   try {
     const result = db
       .prepare(`
         UPDATE accounts
         SET phone = ?, password = ?, uin = ?, token = ?, remark = ?,
-            is_verified = ?, is_new_user = ?, has_ordered = ?, updated_at = ?
+            is_verified = ?, is_new_user = ?, has_ordered = ?, request_profile = ?, updated_at = ?
         WHERE id = ?
       `)
       .run(
         input.phone, password, uin, token, remark,
-        isVerified ? 1 : 0, isNewUser ? 1 : 0, hasOrdered ? 1 : 0, Date.now(), id
+        isVerified ? 1 : 0, isNewUser ? 1 : 0, hasOrdered ? 1 : 0,
+        encodeRequestProfile(requestProfile), Date.now(), id
       ) as { changes?: number }
 
     if (typeof result?.changes === 'number' && result.changes === 0) {

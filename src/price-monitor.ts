@@ -105,7 +105,7 @@ export interface PriceMonitorConfig {
   interval?: number;
   /** 循环总时长（秒），不传则无限循环 */
   duration?: number;
-  /** 平台认证配置（必须包含 uid 和 token） */
+  /** 平台请求配置（必须包含带登录态的账号快照） */
   adapterConfig?: AdapterConfig;
   /** 通知条件，默认 any */
   notifyOn?: PriceNotifyOn;
@@ -376,7 +376,7 @@ export const createCancellablePriceMonitor = (
       if (!adapterConfig.uid || !adapterConfig.token) {
         throw new StockCheckError(
           StockCheckErrorType.AUTH_REQUIRED,
-          '价格监控需要登录态，请先配置 uid 和 token'
+          '价格监控需要登录态，请先在账号管理中选择带登录态的账号'
         );
       }
 

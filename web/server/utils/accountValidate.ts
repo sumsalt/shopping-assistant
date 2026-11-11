@@ -2,7 +2,7 @@
  * 账号表单校验与规范化
  */
 
-import type { AccountInput } from './accountStore'
+import type { AccountInput, AccountRequestProfile } from './accountStore'
 
 /** 校验结果 */
 export type ParseAccountResult =
@@ -15,6 +15,71 @@ const PASSWORD_MAX = 128
 const UIN_MAX = 64
 const TOKEN_MAX = 256
 const REMARK_MAX = 500
+/** 抓包快照上限：防止塞入超大对象 */
+const PROFILE_MAX_KEYS = 120
+const PROFILE_VALUE_MAX = 2048
+const PROFILE_PATH_MAX = 512
+
+/** 清洗字符串 map：只保留 string 值，去掉超长项 */
+const cleanStringMap = (raw: unknown): Record<string, string> | null => {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return null
+  }
+  const result: Record<string, string> = {}
+  let count = 0
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (count >= PROFILE_MAX_KEYS) {
+      break
+    }
+    if (typeof value === 'string' && key.length <= 64 && value.length <= PROFILE_VALUE_MAX) {
+      result[key] = value
+      count++
+    }
+  }
+  return result
+}
+
+/**
+ * 校验抓包请求快照
+ *
+ * 返回 undefined 表示「未传」（更新时保持原值），null 表示「显式清空」。
+ */
+const readRequestProfile = (raw: Record<string, unknown>):
+  | { ok: true; value: AccountRequestProfile | null | undefined }
+  | { ok: false; error: string } => {
+  if (!('requestProfile' in raw)) {
+    return { ok: true, value: undefined }
+  }
+  const value = raw.requestProfile
+  if (value === null) {
+    return { ok: true, value: null }
+  }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return { ok: false, error: '抓包信息格式不正确' }
+  }
+  const obj = value as Record<string, unknown>
+  if (obj.channel !== 'wx' && obj.channel !== 'app') {
+    return { ok: false, error: '抓包通道只能是 wx 或 app' }
+  }
+  const params = cleanStringMap(obj.params)
+  const headers = cleanStringMap(obj.headers)
+  if (!params || !headers) {
+    return { ok: false, error: '抓包参数格式不正确' }
+  }
+  const path =
+    typeof obj.path === 'string' && obj.path.length <= PROFILE_PATH_MAX
+      ? obj.path
+      : undefined
+  return {
+    ok: true,
+    value: {
+      channel: obj.channel,
+      params,
+      headers,
+      ...(path ? { path } : {}),
+    },
+  }
+}
 
 /** 取字符串字段并 trim */
 const readField = (raw: Record<string, unknown>, key: string): string =>
@@ -95,6 +160,14 @@ export const parseAccountInput = (body: unknown): ParseAccountResult => {
   }
   if (hasOrdered !== undefined) {
     value.hasOrdered = hasOrdered
+  }
+
+  const profile = readRequestProfile(raw)
+  if (!profile.ok) {
+    return { ok: false, error: profile.error }
+  }
+  if (profile.value !== undefined) {
+    value.requestProfile = profile.value
   }
 
   return { ok: true, value }

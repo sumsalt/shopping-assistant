@@ -3,6 +3,7 @@
  */
 
 import type { UserConfig } from '@/types'
+import { buildAdapterConfig } from '@/utils/adapterConfig'
 
 // Tab 监控配置类型
 interface TabMonitorConfig {
@@ -118,15 +119,8 @@ export const useTabMonitor = () => {
         minChangeCount: config.minChangeCount || 10,
         mode: config.mode ?? 'accumulate',
         ...(config.activeWindow ? { activeWindow: config.activeWindow } : {}),
-        adapterConfig: {
-          openid: userConfig.openid || '',
-          model: userConfig.model || '',
-          version: userConfig.version || '',
-          version_name: userConfig.version_name || '',
-          wx_version_name: userConfig.wx_version_name || '',
-          proxyUrl: userConfig.proxyUrl,
-          proxyEnabled: userConfig.proxyEnabled || '0',
-        },
+        // Tab 列表检测始终保持匿名：剔除 uid/token，与改造前一致
+        adapterConfig: buildAdapterConfig(userConfig, false),
       }
 
       // 调用 API 创建任务

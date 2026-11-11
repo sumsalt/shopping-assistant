@@ -3,118 +3,96 @@
     <!-- 页面标题 -->
     <div class="mb-6">
       <h1 class="text-2xl font-bold text-gray-900">系统配置</h1>
-      <p class="mt-1 text-sm text-gray-500">配置平台认证信息以使用库存查询功能</p>
+      <p class="mt-1 text-sm text-gray-500">选择当前使用的一手账号、配置网络代理</p>
     </div>
 
-    <!-- 配置表单 -->
     <UiCard>
       <form @submit.prevent="handleSubmit">
         <div class="space-y-6">
-          <!-- 认证信息区域 -->
+          <!-- 当前使用账号 -->
           <div>
-            <h3 class="text-lg font-medium text-gray-900 mb-4">
-              认证信息
-              <span class="text-sm font-normal text-gray-500">（可选）</span>
-            </h3>
+            <h3 class="text-lg font-medium text-gray-900 mb-1">当前使用账号</h3>
+            <p class="text-xs text-gray-500 mb-4">
+              设备与登录信息保存在「账号管理」，这里只决定本浏览器当前用哪个账号发请求。
+              匿名检测（库存 / Tab 监控）会自动剔除 uid 和 token。
+            </p>
 
-            <div class="space-y-4">
-              <!-- 用户 ID -->
-              <UiInput
-                v-model="formData.uid"
-                label="用户 ID (uid)"
-                placeholder="请输入用户 ID"
-                :error="formErrors.uid"
-                @blur="handleFieldBlur('uid')"
-              />
+            <!-- 当前账号概览 -->
+            <div
+              class="rounded-lg border p-3 mb-4"
+              :class="activeAccount.id ? 'border-blue-200 bg-blue-50/50' : 'border-gray-200 bg-gray-50'"
+            >
+              <template v-if="activeAccount.id">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <span class="text-sm font-semibold text-gray-900 font-mono">{{ activeAccount.phone }}</span>
+                  <span
+                    v-if="activeAccount.channel"
+                    class="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium"
+                    :class="activeAccount.channel === 'app' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'"
+                  >
+                    {{ activeAccount.channel === 'app' ? 'App' : '小程序' }}
+                  </span>
+                  <span v-if="activeAccount.profile" class="text-xs text-gray-500">
+                    {{ Object.keys(activeAccount.profile.params).length }} 个请求参数
+                  </span>
+                </div>
+                <p class="mt-1 text-xs text-gray-500">
+                  uin：{{ activeAccount.uin || '未填写' }}
+                  <span v-if="!activeAccount.profile" class="text-amber-600">· 该账号暂无抓包信息，请求将走默认匿名参数</span>
+                </p>
+              </template>
+              <template v-else>
+                <p class="text-sm text-gray-600">未选择账号（匿名模式）</p>
+                <p class="mt-1 text-xs text-gray-500">查询库存 / Tab 监控可用；价格监控、SKU 详情、收藏夹、自动下单需要选择带登录态的账号。</p>
+              </template>
+            </div>
 
-              <!-- Token -->
-              <div class="relative">
-                <UiInput
-                  v-model="formData.token"
-                  :type="showSensitive ? 'text' : 'password'"
-                  label="Token"
-                  placeholder="请输入 Token"
-                  :error="formErrors.token"
-                  @blur="handleFieldBlur('token')"
-                >
-                  <template #suffix>
-                    <button
-                      type="button"
-                      class="text-gray-400 hover:text-gray-600"
-                      :aria-label="showSensitive ? '隐藏' : '显示'"
-                      @click="toggleSensitiveDisplay"
-                    >
-                      <svg v-if="showSensitive" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
-                      </svg>
-                      <svg v-else class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                      </svg>
-                    </button>
-                  </template>
-                </UiInput>
-              </div>
-
-              <!-- OpenID -->
-              <UiInput
-                v-model="formData.openid"
-                :type="showSensitive ? 'text' : 'password'"
-                label="OpenID"
-                placeholder="请输入微信 OpenID"
-                :error="formErrors.openid"
-                @blur="handleFieldBlur('openid')"
-              />
+            <!-- 选择账号 -->
+            <label class="block text-sm font-medium text-gray-700 mb-1">从账号列表选择</label>
+            <div class="flex flex-col sm:flex-row gap-2">
+              <select
+                v-model="selectedAccountId"
+                :disabled="isLoadingAccounts || isSwitchingAccount"
+                class="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value="">不使用账号（匿名模式）</option>
+                <option v-for="item in accountList" :key="item.id" :value="item.id">
+                  {{ item.phone }}{{ item.uin ? ' · ' + item.uin : '' }}{{ item.requestChannel ? ' · ' + (item.requestChannel === 'app' ? 'App' : '小程序') : '' }}{{ item.hasRequestProfile ? '' : ' · 无抓包信息' }}
+                </option>
+              </select>
+              <UiButton
+                type="button"
+                variant="outline"
+                class="whitespace-nowrap"
+                :loading="isSwitchingAccount"
+                :disabled="isLoadingAccounts || isSwitchingAccount"
+                @click="selectAccount"
+              >
+                设为当前账号
+              </UiButton>
+            </div>
+            <div class="mt-2 flex items-center gap-3">
+              <NuxtLink to="/accounts" class="text-xs text-blue-600 hover:text-blue-700">
+                去账号管理新增 / 粘贴抓包 →
+              </NuxtLink>
+              <button
+                v-if="activeAccount.id"
+                type="button"
+                class="text-xs text-gray-400 hover:text-gray-600"
+                @click="clearActiveAccount"
+              >
+                恢复匿名模式
+              </button>
             </div>
           </div>
 
-          <!-- 分隔线 -->
           <hr class="border-gray-200" />
 
-          <!-- 可选信息区域 -->
-          <div>
-            <h3 class="text-lg font-medium text-gray-900 mb-4">设备信息（可选）</h3>
-
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <!-- 设备型号 -->
-              <UiInput
-                v-model="formData.model"
-                label="设备型号"
-                placeholder="如：iPhone 14 Pro Max"
-              />
-
-              <!-- 版本号 -->
-              <UiInput
-                v-model="formData.version"
-                label="版本号"
-                placeholder="如：5.11.0"
-              />
-
-              <!-- 版本名称 -->
-              <UiInput
-                v-model="formData.version_name"
-                label="版本名称"
-                placeholder="如：5.11.0"
-              />
-
-              <!-- 微信版本 -->
-              <UiInput
-                v-model="formData.wx_version_name"
-                label="微信版本"
-                placeholder="如：8.0.43"
-              />
-            </div>
-          </div>
-
-          <!-- 分隔线 -->
-          <hr class="border-gray-200" />
-
-          <!-- 代理设置区域 -->
+          <!-- 代理设置 -->
           <div>
             <h3 class="text-lg font-medium text-gray-900 mb-4">代理设置（可选）</h3>
 
             <div class="space-y-4">
-              <!-- 代理开关 -->
               <div class="flex items-center justify-between">
                 <div>
                   <div class="text-sm font-medium text-gray-900">启用代理</div>
@@ -126,7 +104,6 @@
                 />
               </div>
 
-              <!-- 代理 URL -->
               <UiInput
                 v-model="formData.proxyUrl"
                 label="代理 URL"
@@ -143,26 +120,15 @@
 
           <!-- 操作按钮 -->
           <div class="flex items-center justify-between pt-4">
-            <UiButton
-              type="button"
-              variant="ghost"
-              @click="handleReset"
-            >
+            <UiButton type="button" variant="ghost" @click="handleReset">
               重置配置
             </UiButton>
 
             <div class="flex space-x-3">
-              <UiButton
-                type="button"
-                variant="outline"
-                @click="handleCancel"
-              >
+              <UiButton type="button" variant="outline" @click="handleCancel">
                 取消
               </UiButton>
-              <UiButton
-                type="submit"
-                :loading="isSaving"
-              >
+              <UiButton type="submit" :loading="isSaving">
                 保存配置
               </UiButton>
             </div>
@@ -173,51 +139,53 @@
 
     <!-- 使用说明 -->
     <div class="mt-6 p-4 bg-blue-50 rounded-lg">
-      <h4 class="text-sm font-medium text-blue-800 mb-2">如何获取配置信息？</h4>
+      <h4 class="text-sm font-medium text-blue-800 mb-2">如何开始使用？</h4>
       <ol class="text-sm text-blue-700 list-decimal list-inside space-y-1">
-        <li>打开一手 App 或小程序</li>
-        <li>使用抓包工具（如 Charles）捕获网络请求</li>
-        <li>在请求头或参数中找到对应的 uid、token、openid 等信息</li>
-        <li>将获取到的信息填入上方表单并保存</li>
+        <li>用抓包工具（如 Charles）捕获一手 App 或小程序的任意一条 POST 请求</li>
+        <li>到「账号管理」新增账号，把整条请求粘进「粘贴抓包请求」并点识别，公共参数会自动填好</li>
+        <li>回到本页把它设为当前账号；小程序与 App 两种抓包内容都支持</li>
       </ol>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-// 页面元信息
 definePageMeta({
   title: '系统配置',
 })
 
-// 使用配置管理 composable
 const {
   formData,
-  formErrors,
-  showSensitive,
   isSaving,
-  initFormData,
+  accountList,
+  selectedAccountId,
+  isLoadingAccounts,
+  isSwitchingAccount,
+  activeAccount: rawActiveAccount,
+  selectAccount,
+  clearActiveAccount,
   saveConfig,
   resetConfig,
-  toggleSensitiveDisplay,
+  initFormData,
 } = useConfig()
+
+// 当前账号存在 localStorage，SSR 阶段读不到；挂载后再展示，避免水合不一致
+const mounted = ref(false)
+onMounted(() => {
+  mounted.value = true
+})
+const activeAccount = computed(() =>
+  mounted.value
+    ? rawActiveAccount.value
+    : ({ id: '', phone: '', uin: '', channel: null, profile: null } as typeof rawActiveAccount.value)
+)
 
 const router = useRouter()
 const route = useRoute()
 
-// 字段失焦验证
-const handleFieldBlur = (field: string) => {
-  // 清除该字段的错误
-  if (formErrors.value[field]) {
-    delete formErrors.value[field]
-  }
-}
-
-// 提交表单
 const handleSubmit = async () => {
   const success = await saveConfig()
   if (success) {
-    // 如果有重定向参数，则跳转
     const redirect = route.query.redirect as string
     if (redirect) {
       router.push(redirect)
@@ -225,14 +193,12 @@ const handleSubmit = async () => {
   }
 }
 
-// 重置配置
 const handleReset = () => {
-  if (confirm('确定要重置所有配置吗？')) {
+  if (confirm('确定要重置所有配置吗？当前账号选择也会被清除。')) {
     resetConfig()
   }
 }
 
-// 取消操作
 const handleCancel = () => {
   initFormData()
   router.back()

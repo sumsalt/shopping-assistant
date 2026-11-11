@@ -1,5 +1,6 @@
 import type { UserConfig } from '@/types'
 import { DEFAULT_STOCK_MONITOR_DURATION } from '@/utils/stockMonitorConfig'
+import { buildAdapterConfig } from '@/utils/adapterConfig'
 
 /** 库存监控的最小检测间隔（秒），与后端 MIN_STOCK_MONITOR_INTERVAL 保持一致 */
 export const MIN_STOCK_MONITOR_INTERVAL = 2
@@ -130,18 +131,9 @@ export const useMonitor = () => {
       const monitorConfig: MonitorConfig = {
         interval: config?.interval || MIN_STOCK_MONITOR_INTERVAL,
         duration: config?.duration || DEFAULT_STOCK_MONITOR_DURATION,
-        adapterConfig: {
-          ...(needAuth
-            ? { uid: userConfig.uid || '', token: userConfig.token || '' }
-            : {}),
-          openid: userConfig.openid || '',
-          model: userConfig.model || '',
-          version: userConfig.version || '',
-          version_name: userConfig.version_name || '',
-          wx_version_name: userConfig.wx_version_name || '',
-          proxyUrl: userConfig.proxyUrl,
-          proxyEnabled: userConfig.proxyEnabled || '0',
-        },
+        // 自动下单带登录态；普通到货监控剔除 uid/token 走匿名桶。
+        // 两者都以当前账号的完整抓包快照为基础发请求
+        adapterConfig: buildAdapterConfig(userConfig, needAuth),
         ...(config?.autoOrder ? { autoOrder: config.autoOrder } : {}),
       }
 

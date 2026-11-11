@@ -1,4 +1,5 @@
 import type { UserConfig } from '@/types'
+import { buildAdapterConfig, adapterConfigToQuery } from '@/utils/adapterConfig'
 
 // 收藏夹商品类型
 interface CollectionItem {
@@ -86,23 +87,14 @@ export const useCollection = () => {
     error.value = null
 
     try {
-      // 构建查询参数
-      const params = new URLSearchParams({
+      // 收藏夹需要登录态；把当前账号的完整抓包快照放进单个查询参数
+      const query = adapterConfigToQuery(buildAdapterConfig(config, true), {
         page: page.toString(),
         pageSize: pageSize.value.toString(),
-        uid: config.uid || '',
-        token: config.token || '',
-        openid: config.openid || '',
-        model: config.model || '',
-        version: config.version || '',
-        version_name: config.version_name || '',
-        wx_version_name: config.wx_version_name || '',
-        proxyUrl: config.proxyUrl || '',
-        proxyEnabled: config.proxyEnabled || '0',
       })
 
       const response = await $fetch<ApiResponse<CollectionResult>>(
-        `/api/collection?${params.toString()}`
+        `/api/collection?${query}`
       )
 
       if (response.success && response.data) {

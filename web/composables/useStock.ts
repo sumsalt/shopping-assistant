@@ -1,4 +1,5 @@
 import type { UserConfig } from '@/types'
+import { buildAdapterConfig, hasLoginCredential, adapterConfigToQuery } from '@/utils/adapterConfig'
 
 // 库存查询结果类型
 interface StockCheckResult {
@@ -100,7 +101,7 @@ export const useStock = () => {
   }
 
   /**
-   * 查询单品库存
+   * 查询单品库存（匿名：剔除 uid/token）
    */
   const checkStock = async (productId: string): Promise<StockCheckResult | null> => {
     const config = checkConfig()
@@ -118,7 +119,7 @@ export const useStock = () => {
         method: 'POST',
         body: {
           productId,
-          config,
+          adapterConfig: buildAdapterConfig(config, false),
         },
       })
 
@@ -142,7 +143,7 @@ export const useStock = () => {
   }
 
   /**
-   * 批量查询商品库存
+   * 批量查询商品库存（匿名：剔除 uid/token）
    */
   const checkStockBatch = async (
     productIds: string[],
@@ -164,7 +165,7 @@ export const useStock = () => {
         body: {
           productId: productIds,
           sku: skus,
-          config,
+          adapterConfig: buildAdapterConfig(config, false),
         },
       })
 
@@ -194,7 +195,7 @@ export const useStock = () => {
   }
 
   /**
-   * 获取商品 SKU 列表
+   * 获取商品 SKU 列表（需要登录态）
    */
   const getProductSkus = async (productNo: string): Promise<ProductSkuResult | null> => {
     const config = checkConfig()
@@ -202,10 +203,10 @@ export const useStock = () => {
       return null
     }
 
-    // add_cart_goods_info 必须带登录态，缺 uid/token 时一手直接返回「请登录」，
+    // add_cart_goods_info 必须带登录态，缺凭证时一手直接返回「请登录」，
     // 这里提前拦下来给出可操作的提示，不用等接口失败
-    if (!config.uid || !config.token) {
-      const message = '查看 SKU 详情需要登录态，请先在系统配置中填写 uid 和 token'
+    if (!hasLoginCredential(config)) {
+      const message = '查看 SKU 详情需要登录态，请先在账号管理中选择带登录态的账号'
       skuError.value = message
       toast.warning(message)
       return null
@@ -216,21 +217,11 @@ export const useStock = () => {
     skuResult.value = null
 
     try {
-      // 构建查询参数
-      const params = new URLSearchParams({
-        uid: config.uid || '',
-        token: config.token || '',
-        openid: config.openid || '',
-        model: config.model || '',
-        version: config.version || '',
-        version_name: config.version_name || '',
-        wx_version_name: config.wx_version_name || '',
-        proxyUrl: config.proxyUrl || '',
-        proxyEnabled: config.proxyEnabled || '0',
-      })
+      // 完整抓包快照放进单个查询参数，服务端原样透传给适配器
+      const query = adapterConfigToQuery(buildAdapterConfig(config, true))
 
       const response = await $fetch<ApiResponse<ProductSkuResult>>(
-        `/api/stock/skus/${productNo}?${params.toString()}`
+        `/api/stock/skus/${productNo}?${query}`
       )
 
       if (response.success && response.data) {
@@ -240,7 +231,7 @@ export const useStock = () => {
         const rawError = response.error?.message || '查询失败'
         // 登录态失效时一手只回「请登录」，补一句下一步该怎么办
         const errorMsg = rawError.includes('登录')
-          ? `${rawError}（一手登录态缺失或已失效，请到系统配置更新 uid 和 token）`
+          ? `${rawError}（一手登录态缺失或已失效，请到账号管理重新选择账号或更新抓包）`
           : rawError
         skuError.value = errorMsg
         toast.error(errorMsg)
@@ -249,7 +240,7 @@ export const useStock = () => {
     } catch (error) {
       const rawError = error instanceof Error ? error.message : '网络请求失败'
       const errorMsg = rawError.includes('登录')
-        ? `${rawError}（一手登录态缺失或已失效，请到系统配置更新 uid 和 token）`
+        ? `${rawError}（一手登录态缺失或已失效，请到账号管理重新选择账号或更新抓包）`
         : rawError
       skuError.value = errorMsg
       toast.error(errorMsg)

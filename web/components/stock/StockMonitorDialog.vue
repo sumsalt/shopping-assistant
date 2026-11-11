@@ -72,8 +72,8 @@
           class="p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800"
         >
           自动下单必须使用登录态，请先在
-          <NuxtLink to="/settings" class="underline font-medium">系统配置</NuxtLink>
-          中填写 uid 和 token。也可以关掉开关，只做普通到货监控。
+          <NuxtLink to="/accounts" class="underline font-medium">账号管理</NuxtLink>
+          中选择带登录态的账号并设为当前账号。也可以关掉开关，只做普通到货监控。
         </div>
 
         <template v-else>
@@ -202,6 +202,10 @@ import {
   STOCK_MONITOR_DURATION_OPTIONS,
   buildStockMonitorConfig,
 } from '@/utils/stockMonitorConfig'
+import {
+  buildAdapterConfig as buildAccountAdapterConfig,
+  hasLoginCredential,
+} from '@/utils/adapterConfig'
 
 interface StockMonitorProduct {
   productId: string
@@ -256,10 +260,7 @@ const addressError = ref('')
 const isChecking = ref(false)
 const precheck = ref<PrecheckResult | null>(null)
 
-const hasCredential = computed(() => {
-  const config = configStore.getConfigForApi()
-  return Boolean(config?.uid && config?.token)
-})
+const hasCredential = computed(() => hasLoginCredential(configStore.getConfigForApi()))
 
 /** 普通监控不要求登录态与货号；开启自动下单则两者都必须具备 */
 const canSubmit = computed(
@@ -284,25 +285,8 @@ const stageText = (stage: string): string => {
 const maskMobile = (mobile: string): string =>
   mobile ? mobile.replace(/^(\d{3})\d{4}(\d{4})$/, '$1****$2') : ''
 
-/** 取配置里的凭证，统一透传给服务端 */
-const buildAdapterConfig = () => {
-  const config = configStore.getConfigForApi()
-  if (!config) {
-    return null
-  }
-
-  return {
-    uid: config.uid || '',
-    token: config.token || '',
-    openid: config.openid || '',
-    model: config.model || '',
-    version: config.version || '',
-    version_name: config.version_name || '',
-    wx_version_name: config.wx_version_name || '',
-    proxyUrl: config.proxyUrl,
-    proxyEnabled: config.proxyEnabled || '0',
-  }
-}
+/** 取当前账号的完整抓包快照（下单链路需要登录态），统一透传给服务端 */
+const buildAdapterConfig = () => buildAccountAdapterConfig(configStore.getConfigForApi(), true)
 
 const loadAddresses = async () => {
   const adapterConfig = buildAdapterConfig()
@@ -342,8 +326,8 @@ const handlePrecheck = async () => {
   }
 
   const adapterConfig = buildAdapterConfig()
-  if (!adapterConfig) {
-    toast.warning('请先完成系统配置')
+  if (!adapterConfig.uid || !adapterConfig.token) {
+    toast.warning('请先在账号管理中选择带登录态的账号')
     return
   }
 
