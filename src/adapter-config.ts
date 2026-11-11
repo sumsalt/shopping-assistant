@@ -89,6 +89,25 @@ export const buildAdapterConfigFromProfile = (
   return config;
 };
 
+/**
+ * 去掉登录态的适配器配置（到货检测专用）
+ *
+ * 到货监控的轮询只判断「有没有货」，不需要身份：自动下单才需要。
+ * 凭证同时存在于顶层 `uid/token` 与 `requestParams` 两处，必须一起摘掉，
+ * 否则适配器会从快照里把 uid/token 读回去（profile 优先读 requestParams）。
+ *
+ * 不修改入参，返回新对象。
+ */
+export const toAnonymousAdapterConfig = (config: AdapterConfig = {}): AdapterConfig => {
+  const anonymous: AdapterConfig = { ...config };
+  delete anonymous.uid;
+  delete anonymous.token;
+  if (config.requestParams) {
+    anonymous.requestParams = stripAuthParams(config.requestParams);
+  }
+  return anonymous;
+};
+
 /** 账号快照是否带登录态（uid + token 同时存在） */
 export const hasProfileCredential = (
   profile: StoredRequestProfile | null | undefined

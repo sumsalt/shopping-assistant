@@ -152,11 +152,29 @@ interface RequestProfile {
 | 场景 | needAuth | 说明 |
 |---|---|---|
 | 库存查询 / Tab 监控 | false | 剔除 uid/token，走匿名限流桶 |
-| 到货监控 | 看是否自动下单 | `needsAuth(body)` 由任务定义声明 |
+| 到货监控 | 仅自动下单时 true | 凭证只给下单链路；检测阶段在 `stock-monitor` 内再匿名化 |
 | SKU 详情 / 收藏夹 / 价格监控 / 下单 | true | 无凭证直接返回 `AUTH_REQUIRED`，不等一手 201 |
 
 **任务会固化创建时的快照**：之后切换账号不影响已创建任务；重启沿用原快照，
 要换账号请新建任务。
+
+### 请求闸门（分桶）
+
+后台任务的出网请求统一在 `src/utils/http.ts` 排队，分桶键是 `accountKey`：
+
+| `accountKey` | 桶 | 默认间隔 | 谁在用 |
+|---|---|---|---|
+| 有值（账号 uid） | `auth:<uid>` | 15s | 价格监控（登录态） |
+| 空 | `anon`（全局单桶） | 1s | 到货检测、Tab 监控 |
+
+`accountKey` 是「按谁的身份限流」的标识，不是凭证本身：同一 uid 的多个任务共享
+15 秒配额，避免同一账号被并发打爆；不传则进全局匿名桶，所有匿名任务共享
+1 秒一个槽位，按 `taskId` 轮转。用户手动操作不经过闸门（没有任务上下文）。
+
+**到货检测是双重匿名**：`createStockGateContext` 不传 `accountKey`（排匿名桶），
+`toAnonymousAdapterConfig` 同时剔除顶层和快照里的 `uid/token`（请求本身也不带身份）。
+凭证只交给 `YishouOrderApi`，那条链路 `skipGate`（抢库存不排队）、超时 20 秒。
+代价是检测价格回退 `alone_price`，邮件带「游客参考价」标注。
 
 ### 抓包存什么
 
@@ -190,7 +208,7 @@ interface RequestProfile {
 - 代理是**全局**运行设置（影响服务器出网），不按登录用户隔离；多用户共用同一出口。
 - 抓包快照原样回放，只覆盖动态 `t_t`；不对 `udid` 是否必需做猜测。
 - `sign` 服务端当前不校验，但保留生成逻辑以兼容网关变化。
-- 任务状态接口会返回该任务的 `config.adapterConfig`（仅本人可读），包含登录态凭证。
+- 任务详情不会下发 `config.adapterConfig`（创建时固化在服务端），凭证不随状态轮询传播。
 - **匿名查询的价格口径**：一手对游客把 `shop_price` 返回成 `??.??`，但 `alone_price`
   （单独购买价）仍是真实可售价格，实测与登录态拿货价同值。映射层按
   `shop_price → alone_price` 顺序取值，回退时给结果打上 `priceNote: '游客参考价'`，

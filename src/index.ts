@@ -17,6 +17,7 @@ export {
 } from './adapters';
 export {
   buildAdapterConfigFromProfile,
+  toAnonymousAdapterConfig,
   stripAuthParams,
   hasProfileCredential,
   DEFAULT_WX_ADAPTER_CONFIG,

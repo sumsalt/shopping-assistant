@@ -16,6 +16,7 @@ import {
   loadEmailConfigFromEnv,
 } from './email';
 import { runWithGateContext, type GateContext } from './utils/request-gate';
+import { toAnonymousAdapterConfig } from './adapter-config';
 
 // SMTP 配置来自环境变量（SMTP_PASS 等），代码里不保存授权码
 const emailConfig = loadEmailConfigFromEnv();
@@ -205,7 +206,7 @@ export const monitorSingleStock = async (
  * 库存监控的闸门上下文
  *
  * 检测阶段固定走匿名桶：即使任务带了登录态（自动下单必须配 uid/token），
- * 轮询本身也不占用账号配额，否则检测节奏会被压到 15 秒一次。
+ * 轮询本身不用身份、也不占账号配额，否则检测节奏会被压到 15 秒一次。
  * 登录态只在真正下单时使用，那条链路 skipGate，不进闸门排队。
  */
 export const createStockGateContext = (config: StockMonitorConfig): GateContext => ({
@@ -274,6 +275,10 @@ export const createCancellableMonitor = (
       const autoOrderEnabled = Boolean(autoOrder?.enabled && adapterConfig.uid && adapterConfig.token);
       const orderAdapter = autoOrderEnabled ? getOrderAdapter('yishou', adapterConfig) : null;
 
+      // 检测始终匿名：排的是匿名桶，请求里也不带 uid/token（两者口径一致）。
+      // 凭证只交给下单链路，检测拿到的价格会回退到 alone_price，邮件里带「游客参考价」标注。
+      const detectionConfig = toAnonymousAdapterConfig(adapterConfig);
+
       const startTime = Date.now();
 
       // 建单失败后的冷却截止时间：一手会给「订单支付中」临时锁，冷却期内只检测不重复下单
@@ -299,7 +304,9 @@ export const createCancellableMonitor = (
         }
 
         try {
-          const checkResult: StockCheckResult = await checkStock(task.request, { adapterConfig });
+          const checkResult: StockCheckResult = await checkStock(task.request, {
+            adapterConfig: detectionConfig,
+          });
           result.productName = checkResult.productName;
           result.checkCount++;
 

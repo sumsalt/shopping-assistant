@@ -105,6 +105,38 @@ describe('库存监控轮次间隔', () => {
     await promise
   })
 
+  it('检测请求剔除 uid/token，凭证只留给下单链路', async () => {
+    const { controller, promise } = createCancellableMonitor(task, {
+      duration: 3600,
+      adapterConfig: {
+        uid: '20536811',
+        token: 'tok',
+        openid: 'oXxx123',
+        requestParams: { uid: '20536811', token: 'tok', udid: 'dev-1', plat_type: 'wx' },
+      },
+    })
+
+    await vi.advanceTimersByTimeAsync(0)
+
+    const options = mocks.checkStock.mock.calls[0]?.[1] as {
+      adapterConfig: {
+        uid?: string
+        token?: string
+        openid?: string
+        requestParams?: Record<string, string>
+      }
+    }
+    expect(options.adapterConfig.uid).toBeUndefined()
+    expect(options.adapterConfig.token).toBeUndefined()
+    expect(options.adapterConfig.requestParams?.uid).toBeUndefined()
+    expect(options.adapterConfig.requestParams?.token).toBeUndefined()
+    expect(options.adapterConfig.requestParams?.udid).toBe('dev-1')
+    expect(options.adapterConfig.openid).toBe('oXxx123')
+
+    controller.abort()
+    await promise
+  })
+
   it('等待期间取消任务可以立刻结束，不用等满间隔', async () => {
     const { controller, promise } = start(30)
 

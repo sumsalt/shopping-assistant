@@ -8,6 +8,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildAdapterConfigFromProfile,
+  toAnonymousAdapterConfig,
   stripAuthParams,
   hasProfileCredential,
   DEFAULT_WX_ADAPTER_CONFIG,
@@ -124,5 +125,35 @@ describe('hasProfileCredential', () => {
     expect(hasProfileCredential(appProfile)).toBe(true)
     expect(hasProfileCredential({ channel: 'app', params: { uid: '1' }, headers: {} })).toBe(false)
     expect(hasProfileCredential(null)).toBe(false)
+  })
+})
+
+describe('toAnonymousAdapterConfig', () => {
+  it('同时剔除顶层与快照里的 uid/token，保留设备参数', () => {
+    const authed = buildAdapterConfigFromProfile(wxProfile, true)
+    const anonymous = toAnonymousAdapterConfig(authed)
+
+    expect(anonymous.uid).toBeUndefined()
+    expect(anonymous.token).toBeUndefined()
+    expect(anonymous.requestParams).not.toHaveProperty('uid')
+    expect(anonymous.requestParams).not.toHaveProperty('token')
+    // 签名与网关需要的字段不能一起丢掉
+    expect(anonymous.openid).toBe('oXxx123')
+    expect(anonymous.requestParams?.model).toBe('iPhone 14 Pro<iPhone15,2>')
+    expect(anonymous.requestParams?.plat_type).toBe('wx')
+  })
+
+  it('不修改入参（原始配置仍可用于下单）', () => {
+    const authed = buildAdapterConfigFromProfile(appProfile, true)
+    const before = JSON.stringify(authed)
+
+    toAnonymousAdapterConfig(authed)
+
+    expect(JSON.stringify(authed)).toBe(before)
+  })
+
+  it('空配置或没有快照时原样返回空对象语义', () => {
+    expect(toAnonymousAdapterConfig({})).toEqual({})
+    expect(toAnonymousAdapterConfig({ uid: '1', token: '2' }).uid).toBeUndefined()
   })
 })
