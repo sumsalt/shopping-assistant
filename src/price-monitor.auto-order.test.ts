@@ -29,7 +29,10 @@ vi.mock('./adapters', () => ({
 
 const { createCancellablePriceMonitor } = await import('./price-monitor')
 
-const snapshot = (shopPrice: number): PriceSnapshot => ({
+const snapshot = (
+  shopPrice: number,
+  overrides: Partial<PriceSnapshot> = {}
+): PriceSnapshot => ({
   platform: 'yishou',
   productId: '333816379',
   productName: '测试商品',
@@ -41,6 +44,7 @@ const snapshot = (shopPrice: number): PriceSnapshot => ({
   coupons: [],
   couponsNew: [],
   capturedAt: 1793167751000,
+  ...overrides,
 })
 
 const task = {
@@ -184,5 +188,53 @@ describe('价格到点自动下单', () => {
     await promise
 
     expect(placeAutoOrder).not.toHaveBeenCalled()
+  })
+
+  it('价格达标但商品无货时直接跳过下单链路', async () => {
+    // 详情响应本身带库存状态：无货就连查规格、加购都不发
+    priceInfo.mockImplementation(() =>
+      Promise.resolve(snapshot(99, { inStock: false, stockMessage: '商品暂时缺货' }))
+    )
+
+    const { promise } = createCancellablePriceMonitor(task, {
+      ...baseConfig,
+      autoOrder: { enabled: true, targetPrice: 100, num: 1 },
+    })
+
+    const result = await promise
+
+    expect(placeAutoOrder).not.toHaveBeenCalled()
+    expect(result.orderSkipped).toBe('no_stock')
+    expect(result.orderError).toContain('无货')
+    expect(result.orderError).toContain('商品暂时缺货')
+    expect(result.orderSn).toBeUndefined()
+  })
+
+  it('商品有货时照常下单，不被库存预判挡掉', async () => {
+    priceInfo.mockImplementation(() =>
+      Promise.resolve(snapshot(99, { inStock: true, stockMessage: '商品有货，可以购买' }))
+    )
+    placeAutoOrder.mockResolvedValue({
+      success: true,
+      stage: 'done',
+      orderSn: '12641415441627',
+      orderAmount: 99,
+      skuLabel: '黑色 / M',
+      items: [{ sku: '850002', skuLabel: '黑色 / M', num: 1 }],
+      num: 1,
+      requestedNum: 1,
+      expireAt: 1794336279000,
+    })
+
+    const { promise } = createCancellablePriceMonitor(task, {
+      ...baseConfig,
+      autoOrder: { enabled: true, targetPrice: 100, num: 1 },
+    })
+
+    const result = await promise
+
+    expect(placeAutoOrder).toHaveBeenCalledTimes(1)
+    expect(result.orderSkipped).toBeUndefined()
+    expect(result.orderSn).toBe('12641415441627')
   })
 })

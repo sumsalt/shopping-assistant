@@ -179,15 +179,21 @@
             </p>
           </div>
 
-          <!-- 下单失败（继续监控） -->
+          <!-- 到价但没下成：无货时只是跳过，不算下单失败 -->
           <div
             v-else-if="task.orderError"
             class="mt-4 p-3 rounded-lg bg-amber-50 border border-amber-100 text-sm text-amber-800"
           >
-            <p class="font-medium">已到目标价，但自动下单未成功</p>
+            <p class="font-medium">
+              {{ task.orderSkipped === 'no_stock' ? '已到目标价，等待补货' : '已到目标价，但自动下单未成功' }}
+            </p>
             <p class="mt-1 text-xs">{{ task.orderError }}</p>
             <p v-if="task.status === 'running'" class="mt-1 text-xs text-amber-700">
-              任务仍在监控，下一轮会继续尝试。
+              {{
+                task.orderSkipped === 'no_stock'
+                  ? '本轮没有发起下单，补货后会自动买入。'
+                  : '任务仍在监控，下一轮会继续尝试。'
+              }}
             </p>
           </div>
 

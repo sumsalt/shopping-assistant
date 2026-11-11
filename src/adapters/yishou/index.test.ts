@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { isInStock, getStockMessage, mapToStockResult, isCollectionItemInStock, getCollectionItemMessage, mapCollectionItemToResult, mapCartDetailToSkuResult } from './index';
+import { isInStock, getStockMessage, mapToStockResult, isCollectionItemInStock, getCollectionItemMessage, mapCollectionItemToResult, mapCartDetailToSkuResult, mapToPriceSnapshot } from './index';
 import type { YishouGoodsData, YishouCollectionGoodsData, YishouCartDetailData } from '../../types';
 
 // 创建测试用的商品数据工厂函数
@@ -44,8 +44,30 @@ describe('isInStock - 库存状态判断', () => {
   });
 });
 
-describe('getStockMessage - 库存状态描述', () => {
-  it('当有货时，应返回"商品有货，可以购买"', () => {
+describe('mapToPriceSnapshot - 价格快照同时带出库存状态', () => {
+  it('有货时 inStock 为 true，文案说明可购买', () => {
+    const snapshot = mapToPriceSnapshot(createMockGoodsData());
+    expect(snapshot.inStock).toBe(true);
+    expect(snapshot.stockMessage).toBe('商品有货，可以购买');
+    expect(snapshot.shopPrice).toBe(99);
+  });
+
+  it('缺货时 inStock 为 false，文案说明原因', () => {
+    const snapshot = mapToPriceSnapshot(createMockGoodsData({ is_stockout: '1' }));
+    expect(snapshot.inStock).toBe(false);
+    expect(snapshot.stockMessage).toBe('商品暂时缺货');
+  });
+
+  it('下架时 inStock 为 false，文案取 remind_off_sale', () => {
+    const snapshot = mapToPriceSnapshot(
+      createMockGoodsData({ goods_status: '2', remind_off_sale: '已下架，不再补货' })
+    );
+    expect(snapshot.inStock).toBe(false);
+    expect(snapshot.stockMessage).toContain('下架');
+  });
+});
+
+describe('getStockMessage - 库存状态描述', () => {  it('当有货时，应返回"商品有货，可以购买"', () => {
     const data = createMockGoodsData();
     expect(getStockMessage(data, true)).toBe('商品有货，可以购买');
   });

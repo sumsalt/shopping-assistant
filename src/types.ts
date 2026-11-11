@@ -538,6 +538,15 @@ export interface PriceSnapshot {
   shoppePrice?: number;
   /** 登录态是否有效（由 coupons_new / check_status 判断） */
   authState: 'logged_in' | 'guest';
+  /**
+   * 商品级是否有货
+   *
+   * 与价格同属一次详情响应（is_stockout / is_on_sale / goods_status），
+   * 价格到点自动下单前先用它挡一层：无货时连查规格、加购都不必发。
+   */
+  inStock?: boolean;
+  /** 库存状态文案，无货时说明原因（缺货 / 已下架 / 已停售） */
+  stockMessage?: string;
   /** 红包列表 */
   coupons: CouponInfo[];
   /** 满减券列表 */

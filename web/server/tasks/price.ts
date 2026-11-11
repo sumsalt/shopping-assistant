@@ -79,6 +79,8 @@ export interface PriceTaskRecord extends StoredTaskBase {
   order?: PriceOrderRecord
   /** 最近一次自动下单失败原因 */
   orderError?: string
+  /** 本轮因商品无货跳过了下单（没有真正发起下单请求） */
+  orderSkipped?: 'no_stock'
   controller?: AbortController
 }
 
@@ -319,6 +321,7 @@ export const priceDefinition: TaskDefinition<PriceTaskRecord> = {
               }
             }
             record.orderError = result.orderError
+            record.orderSkipped = result.orderSkipped
 
             if (result.detected && result.changeInfo) {
               record.changes.unshift({ ...result.changeInfo, emailSent: Boolean(result.emailSent) })
@@ -375,6 +378,7 @@ export const priceDefinition: TaskDefinition<PriceTaskRecord> = {
       detectedCount: task.detectedCount,
       lastError: task.lastError,
       orderError: task.orderError,
+      orderSkipped: task.orderSkipped,
       order: task.order ?? null,
       snapshot: task.snapshot,
       changes: task.changes,
@@ -396,6 +400,7 @@ export const priceDefinition: TaskDefinition<PriceTaskRecord> = {
       detectedCount: task.detectedCount,
       lastError: task.lastError,
       orderError: task.orderError,
+      orderSkipped: task.orderSkipped,
       order: task.order ?? null,
       snapshot: task.snapshot,
       changes: task.changes,

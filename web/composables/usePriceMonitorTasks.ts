@@ -80,6 +80,8 @@ export interface PriceMonitorTaskItem {
   lastError?: string
   order?: PriceOrderRecord | null
   orderError?: string
+  /** 本轮因商品无货跳过了下单（未真正发起下单请求） */
+  orderSkipped?: 'no_stock'
   snapshot?: PriceSnapshotSummary
   changes: PriceChangeRecord[]
   couponChanges?: CouponChangeRecord[]

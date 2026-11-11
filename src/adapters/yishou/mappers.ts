@@ -167,6 +167,10 @@ export const mapToPriceSnapshot = (data: YishouGoodsData): PriceSnapshot => {
       ? 'logged_in'
       : 'guest';
 
+  // 价格与库存同属一次详情响应：顺手把商品级有货状态带出去，
+  // 价格到点需要下单时就能先挡掉「注定买不到」的情况
+  const inStock = isInStock(data);
+
   return {
     platform: 'yishou',
     productId: data.goods_id,
@@ -179,6 +183,8 @@ export const mapToPriceSnapshot = (data: YishouGoodsData): PriceSnapshot => {
     alonePrice: toOptionalNumber(data.alone_price),
     shoppePrice: toOptionalNumber(data.shoppe_price),
     authState,
+    inStock,
+    stockMessage: getStockMessage(data, inStock),
     coupons,
     couponsNew,
     capturedAt: Date.now(),

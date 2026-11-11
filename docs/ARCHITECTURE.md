@@ -211,11 +211,18 @@ interface RequestProfile {
 触发条件与到货不同：**拿货价 ≤ 目标价** 就下单，与涨跌通知相互独立。
 
 - 首次检测也参与判断：创建任务时价格已经在目标价以下，会立刻买入，不等基线。
+- **先看同一次响应的库存状态**：价格监控拿到的商品详情里本就带 `is_stockout` /
+  `is_on_sale` / `goods_status`，`PriceSnapshot.inStock` 由 `mapToPriceSnapshot` 顺带填出。
+  到价但商品级无货时直接跳过整条下单链路（`orderSkipped: 'no_stock'`），
+  不发查规格 / 加购 / 结算 / 清购物车这四个请求；只有 `inStock === false` 才跳过，
+  旧快照缺该字段时仍按原逻辑尝试。
+- 商品级有货但所选规格无货，仍由 `placeAutoOrder` 的 `sku` 阶段兜住（详情接口没有规格级库存）。
 - 下单成功即结束任务（`orderPlaced`），避免每轮重复建单；下单邮件替代当轮的价格变动邮件。
 - 下单失败分两类：`retryable`（没货、被抢完）只记 `orderError`，继续监控、下轮再试；
   其余（登录态失效、建单结果未知）发失败邮件并停任务。
 - 建单失败会触发一手「订单支付中」临时锁，冷却期内只检测不重试（与到货任务同一套 `cooldownMs`）。
-- 任务卡片展示 `order`（订单号/金额/规格/件数/付款截止）与 `orderError`。
+- 任务卡片展示 `order`（订单号/金额/规格/件数/付款截止）与 `orderError`；
+  `orderSkipped === 'no_stock'` 时措辞是「已到目标价，等待补货」，不当作下单失败。
 
 ### 抓包存什么
 

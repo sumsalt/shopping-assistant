@@ -185,6 +185,8 @@ export interface PriceMonitorResult {
   orderNum?: number;
   /** 下单失败原因 */
   orderError?: string;
+  /** 本轮因商品无货跳过了下单（没有真正发起下单请求） */
+  orderSkipped?: 'no_stock';
   /** 下单失败所处阶段 */
   orderStage?: AutoOrderStage;
   /** 建单结果未知（需要人工核对） */
@@ -480,6 +482,7 @@ export const createCancellablePriceMonitor = (
           result.couponsNew = current.couponsNew;
           // 每轮重置，避免上一轮的下单失败原因一直挂在卡片上
           result.orderError = undefined;
+          result.orderSkipped = undefined;
 
           // 目标价触发：拿货价 ≤ 目标价就下单，与「涨跌通知」相互独立。
           // 首次检测也参与判断——创建任务时价格已经在目标价以下，应该立刻买。
@@ -491,7 +494,13 @@ export const createCancellablePriceMonitor = (
             current.shopPrice > 0 &&
             current.shopPrice <= autoOrder.targetPrice
           ) {
-            if (Date.now() < orderCooldownUntil) {
+            // 商品详情这一次响应本身就带库存状态，无货时直接跳过整条下单链路：
+            // 省掉查规格、加购、结算、清购物车四个请求，也不用把「买不到」记成下单失败。
+            // 只有明确 inStock === false 才跳过，旧快照缺这个字段时仍按原逻辑尝试。
+            if (current.inStock === false) {
+              result.orderSkipped = 'no_stock';
+              result.orderError = `商品当前无货（${current.stockMessage || '暂时缺货'}），已到目标价，等待补货`;
+            } else if (Date.now() < orderCooldownUntil) {
               const waitSeconds = Math.ceil((orderCooldownUntil - Date.now()) / 1000);
               result.orderError = `上次建单失败，冷却中（约 ${waitSeconds} 秒后重试）`;
             } else {
