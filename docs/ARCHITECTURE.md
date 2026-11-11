@@ -167,3 +167,18 @@ interface RequestProfile {
 - `minPrice` / `maxPrice` 是**传给一手接口的筛选参数**，不是本地过滤，因此游客态的价格 0
   不会导致本地误过滤；若一手在游客态不按价格筛选，属于服务端行为。
 
+## 七、部署
+
+```
+npm run web:build            # 产物在 web/.output
+bash deploy.sh upload        # 同步到 .output.next，再原子切换成 .output
+bash deploy.sh restart       # pm2 startOrReload（读 ecosystem，保留环境变量）
+```
+
+**不要直接 `rsync --delete` 覆盖运行中的 `.output`**：旧进程持有的文件被就地替换后，
+可能加载到新旧混合的 chunk，表现为「`xxx is not a function`」这类与代码不符的运行时错误。
+`deploy.sh upload` 已改为「同步到 `.output.next` → `mv` 原子切换」，并保留 `.output.prev` 作为回滚点。
+
+数据库 `data/tasks.db` 不在 `.output` 内，不会被覆盖；`accounts.request_profile` 列在服务启动时幂等补齐。
+
+

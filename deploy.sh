@@ -100,18 +100,28 @@ upload() {
     # 显示将要上传的文件大小
     OUTPUT_SIZE=$(du -sh .output | cut -f1)
     log_info "将上传 .output 目录 (大小: ${OUTPUT_SIZE})"
-    
+
     # 创建远程目录（如果不存在）- 使用 sudo 创建
     log_info "创建远程目录..."
     ssh -p "$VPS_PORT" "${VPS_USER}@${VPS_HOST}" "sudo mkdir -p ${REMOTE_PATH} && sudo chown ${VPS_USER}:${VPS_USER} ${REMOTE_PATH}"
-    
-    # 使用 rsync 同步文件
-    log_info "开始同步文件..."
-    rsync -avz --delete --progress \
+
+    # 先同步到临时目录，再原子切换。
+    # 直接 rsync --delete 覆盖运行中的 .output 时，旧进程可能读到已被删除的 chunk，
+    # 出现「registry.listFor is not a function」这类新旧混合的运行时错误。
+    log_info "同步到临时目录 .output.next ..."
+    rsync -az --delete \
         -e "ssh -p ${VPS_PORT}" \
         .output/ \
-        "${VPS_USER}@${VPS_HOST}:${REMOTE_PATH}/.output/"
-    
+        "${VPS_USER}@${VPS_HOST}:${REMOTE_PATH}/.output.next/"
+
+    log_info "原子切换 .output（保留 .output.prev 作为回滚点）..."
+    ssh -p "$VPS_PORT" "${VPS_USER}@${VPS_HOST}" "
+        cd ${REMOTE_PATH} &&
+        rm -rf .output.prev &&
+        if [ -d .output ]; then mv .output .output.prev; fi &&
+        mv .output.next .output
+    "
+
     log_success "文件上传完成！"
     log_info "远程路径: ${REMOTE_PATH}/.output/"
 }
