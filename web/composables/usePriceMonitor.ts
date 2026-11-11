@@ -23,6 +23,22 @@ export interface PriceMonitorProduct {
   productId: string
   productName?: string
   productImage?: string
+  /** 商品货号（下单链路查 SKU 用，缺失时由服务端查询） */
+  productNo?: string
+}
+
+/** 价格到点自动下单 */
+export interface PriceAutoOrderOptions {
+  /** 拿货价低于或等于该价格时自动下单 */
+  targetPrice: number
+  /** 购买件数 */
+  num?: number
+  /** 支付方式：1 支付宝 / 4 微信 */
+  payTool?: '1' | '4'
+  /** 收货地址，缺省用账号默认地址 */
+  addressId?: string
+  /** 只在这些规格里下单，空表示全部 */
+  skus?: string[]
 }
 
 /** 创建价格监控的参数 */
@@ -35,6 +51,8 @@ export interface PriceMonitorOptions {
   notifyOn?: PriceNotifyOn
   /** 最小价格变动（元） */
   minPriceDelta?: number
+  /** 价格到点自动下单（可选） */
+  autoOrder?: PriceAutoOrderOptions
 }
 
 /** 创建任务响应 */
@@ -127,6 +145,7 @@ export const usePriceMonitor = () => {
           duration: options.duration || DEFAULT_PRICE_MONITOR_DURATION,
           notifyOn: options.notifyOn || 'any',
           minPriceDelta: options.minPriceDelta ?? 0.01,
+          ...(options.autoOrder ? { autoOrder: options.autoOrder } : {}),
         },
       },
       { successMessage: '已创建价格监控任务', failureMessage: '创建价格监控失败' }

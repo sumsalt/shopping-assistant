@@ -80,6 +80,12 @@
               <span class="px-3 py-1.5 bg-gray-50 rounded-lg border border-gray-100 text-gray-600">
                 {{ getNotifyOnText(task.notifyOn) }}
               </span>
+              <span
+                v-if="task.autoOrder?.enabled"
+                class="px-3 py-1.5 bg-orange-50 rounded-lg border border-orange-100 text-orange-600"
+              >
+                ≤ ¥{{ task.autoOrder.targetPrice.toFixed(2) }} 自动下单 × {{ task.autoOrder.num || 1 }}
+              </span>
             </div>
           </div>
 
@@ -147,6 +153,42 @@
                 {{ formatTime(task.snapshot.checkedAt) }}
               </p>
             </div>
+          </div>
+
+          <!-- 自动下单结果 -->
+          <div
+            v-if="task.order"
+            class="mt-4 p-3 rounded-lg bg-green-50 border border-green-100 text-sm text-green-800"
+          >
+            <p class="font-medium">✓ 价格到点已自动下单</p>
+            <div class="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+              <span>订单号：<strong class="tabular-nums">{{ task.order.orderSn }}</strong></span>
+              <span>金额：{{ formatAmount(task.order.orderAmount) }}</span>
+              <span v-if="task.order.items?.length">
+                规格：{{ task.order.items.map(item => `${item.skuLabel} × ${item.num}`).join('、') }}
+              </span>
+              <span v-else-if="task.order.skuLabel">
+                规格：{{ task.order.skuLabel }}<template v-if="task.order.num"> × {{ task.order.num }}</template>
+              </span>
+              <span v-if="task.order.expireAt">
+                付款截止：{{ formatExpire(task.order.expireAt) }}
+              </span>
+            </div>
+            <p class="mt-2 text-xs text-green-700">
+              订单已锁库存但尚未付款，请到一手 App「我的 → 待付款」完成支付，超时会自动关闭。
+            </p>
+          </div>
+
+          <!-- 下单失败（继续监控） -->
+          <div
+            v-else-if="task.orderError"
+            class="mt-4 p-3 rounded-lg bg-amber-50 border border-amber-100 text-sm text-amber-800"
+          >
+            <p class="font-medium">已到目标价，但自动下单未成功</p>
+            <p class="mt-1 text-xs">{{ task.orderError }}</p>
+            <p v-if="task.status === 'running'" class="mt-1 text-xs text-amber-700">
+              任务仍在监控，下一轮会继续尝试。
+            </p>
           </div>
 
           <!-- 变化记录 -->
@@ -277,6 +319,7 @@
         <li>检测间隔最低 60 秒；一个任务只监控一个商品，多个商品请分别创建任务</li>
         <li>首次检测只建立基线，不会发送通知</li>
         <li>价格变化会通过邮件通知，每轮检测（最短 60 秒）最多一封，检测到变化即推送</li>
+        <li>开启「价格到点自动下单」后，拿货价 ≤ 目标价时会自动创建待付款订单；下单成功后任务自动结束，货款仍需你手动支付</li>
       </ul>
     </div>
   </div>
@@ -304,6 +347,8 @@ const {
   getNotifyOnText,
   getCycleText,
   formatDuration,
+  formatAmount,
+  formatExpire,
 } = usePriceMonitorTasks()
 
 // 创建弹窗（页面入口不指定商品，弹窗内先查询再设置参数）

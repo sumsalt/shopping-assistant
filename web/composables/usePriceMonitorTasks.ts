@@ -5,7 +5,7 @@
  */
 
 import { useTaskCollection } from './useTaskCollection'
-import { formatDuration, formatTime, getStatusColor, getStatusText } from '@/utils/taskFormat'
+import { formatAmount, formatDuration, formatExpire, formatTime, getStatusColor, getStatusText } from '@/utils/taskFormat'
 
 /** 商品信息 */
 export interface PriceTaskProduct {
@@ -43,6 +43,27 @@ export interface CouponChangeRecord {
   emailSent: boolean
 }
 
+/** 价格到点自动下单配置 */
+export interface PriceAutoOrderConfig {
+  enabled: boolean
+  targetPrice: number
+  num?: number
+  payTool?: string
+  addressId?: string
+  skus?: string[]
+}
+
+/** 自动下单成功记录 */
+export interface PriceOrderRecord {
+  orderSn: string
+  orderAmount?: number
+  skuLabel?: string
+  items?: Array<{ sku: string; skuLabel: string; num: number }>
+  num?: number
+  expireAt?: number
+  orderedAt: number
+}
+
 /** 价格监控任务 */
 export interface PriceMonitorTaskItem {
   id: string
@@ -52,10 +73,13 @@ export interface PriceMonitorTaskItem {
   duration?: number
   notifyOn?: 'any' | 'drop' | 'rise'
   minPriceDelta?: number
+  autoOrder?: PriceAutoOrderConfig | null
   createdAt: string
   checkCount: number
   detectedCount: number
   lastError?: string
+  order?: PriceOrderRecord | null
+  orderError?: string
   snapshot?: PriceSnapshotSummary
   changes: PriceChangeRecord[]
   couponChanges?: CouponChangeRecord[]
@@ -86,5 +110,7 @@ export const usePriceMonitorTasks = () => {
     getNotifyOnText,
     getCycleText,
     formatDuration,
+    formatAmount,
+    formatExpire,
   }
 }

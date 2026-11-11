@@ -107,6 +107,7 @@ export type {
   PriceMonitorTask,
   PriceMonitorResult,
   PriceMonitorProgress,
+  PriceAutoOrderConfig,
   PriceChangeInfo,
   PriceNotifyOn,
   PriceProgressCallback,

@@ -8,11 +8,25 @@
  * 4. 不做额外通知冷却：检测间隔（最短 60 秒）就是最小提醒间隔
  */
 
-import { getAdapter } from './adapters';
+import { getAdapter, getOrderAdapter } from './adapters';
 import type { AdapterConfig } from './adapters';
-import type { CouponInfo, CouponNewInfo, Platform, PriceSnapshot } from './types';
+import type {
+  AutoOrderConfig,
+  AutoOrderItem,
+  AutoOrderStage,
+  CouponInfo,
+  CouponNewInfo,
+  Platform,
+  PriceSnapshot,
+} from './types';
 import { StockCheckError, StockCheckErrorType } from './types';
-import { sendEmail, createPriceChangeTemplate } from './email';
+import {
+  sendEmail,
+  createPriceChangeTemplate,
+  createAutoOrderTemplate,
+  createAutoOrderFailedTemplate,
+} from './email';
+import { placeAutoOrder } from './auto-order';
 import { runWithGateContext } from './utils/request-gate';
 
 /** 检测间隔硬下限（秒），需求要求大于 1 分钟一次 */
@@ -98,6 +112,18 @@ export interface PriceMonitorTask {
 }
 
 /**
+ * 价格触发的自动下单配置
+ *
+ * 和到货下单的区别只在于触发条件：这里盯的是拿货价，价格 ≤ targetPrice 就下单。
+ */
+export interface PriceAutoOrderConfig extends AutoOrderConfig {
+  /** 目标价（元）：拿货价低于或等于该值时自动下单 */
+  targetPrice: number;
+  /** 只在这些规格里下单；空表示全部规格参与 */
+  skus?: string[];
+}
+
+/**
  * 价格监控配置
  */
 export interface PriceMonitorConfig {
@@ -111,6 +137,8 @@ export interface PriceMonitorConfig {
   notifyOn?: PriceNotifyOn;
   /** 最小价格变动（元），默认 0.01 */
   minPriceDelta?: number;
+  /** 价格到点自动下单（可选） */
+  autoOrder?: PriceAutoOrderConfig;
   /** 初始基线快照（由创建任务时预取） */
   initialSnapshot?: PriceSnapshot;
   /** 续跑时的已检测次数（重启后继续累加，避免进度归零） */
@@ -141,6 +169,28 @@ export interface PriceMonitorResult {
   couponsNew?: CouponNewInfo[];
   /** 当前价格 */
   currentPrice?: number;
+  /** 本次是否因价格到点触发了自动下单 */
+  orderTriggered?: boolean;
+  /** 自动下单成功的订单号 */
+  orderSn?: string;
+  /** 订单金额 */
+  orderAmount?: number;
+  /** 支付截止时间（毫秒时间戳） */
+  orderExpireAt?: number;
+  /** 下单规格（多规格合单时用「、」连接） */
+  orderSkuLabel?: string;
+  /** 下单明细 */
+  orderItems?: AutoOrderItem[];
+  /** 实际下单件数 */
+  orderNum?: number;
+  /** 下单失败原因 */
+  orderError?: string;
+  /** 下单失败所处阶段 */
+  orderStage?: AutoOrderStage;
+  /** 建单结果未知（需要人工核对） */
+  orderUncertain?: boolean;
+  /** 下单尝试次数 */
+  orderAttempts?: number;
   /** 发送邮件是否成功 */
   emailSent?: boolean;
   /** 错误信息 */
@@ -354,6 +404,7 @@ export const createCancellablePriceMonitor = (
         adapterConfig = {},
         notifyOn = 'any',
         minPriceDelta = DEFAULT_MIN_PRICE_DELTA,
+        autoOrder,
         initialSnapshot,
         initialCheckCount = 0,
         initialDetectedCount = 0,
@@ -380,6 +431,17 @@ export const createCancellablePriceMonitor = (
       }
 
       const adapter = getAdapter(task.request.platform, adapterConfig);
+
+      // 价格到点自动下单：只在开关打开且目标价有效时建立下单链路
+      const autoOrderEnabled = Boolean(autoOrder?.enabled && Number(autoOrder.targetPrice) > 0);
+      const orderAdapter = autoOrderEnabled
+        ? getOrderAdapter(task.request.platform, adapterConfig)
+        : null;
+
+      /** 建单失败会触发一手「订单支付中」临时锁，冷却期内只检测不建单 */
+      let orderCooldownUntil = 0;
+      /** 已成功下单：结束监控，避免同一任务重复建单 */
+      let orderPlaced = false;
 
       /** 基线快照，首次检测只建立基线不通知 */
       let snapshot: PriceSnapshot | undefined = initialSnapshot;
@@ -416,13 +478,109 @@ export const createCancellablePriceMonitor = (
           result.currentPrice = current.shopPrice;
           result.coupons = current.coupons;
           result.couponsNew = current.couponsNew;
+          // 每轮重置，避免上一轮的下单失败原因一直挂在卡片上
+          result.orderError = undefined;
+
+          // 目标价触发：拿货价 ≤ 目标价就下单，与「涨跌通知」相互独立。
+          // 首次检测也参与判断——创建任务时价格已经在目标价以下，应该立刻买。
+          if (
+            autoOrder &&
+            autoOrderEnabled &&
+            orderAdapter &&
+            !orderPlaced &&
+            current.shopPrice > 0 &&
+            current.shopPrice <= autoOrder.targetPrice
+          ) {
+            if (Date.now() < orderCooldownUntil) {
+              const waitSeconds = Math.ceil((orderCooldownUntil - Date.now()) / 1000);
+              result.orderError = `上次建单失败，冷却中（约 ${waitSeconds} 秒后重试）`;
+            } else {
+              const orderResult = await placeAutoOrder(orderAdapter, {
+                goodsId: current.productId,
+                goodsNo: current.productNo,
+                config: autoOrder,
+                skus: autoOrder.skus ?? [],
+              });
+
+              result.orderAttempts = (result.orderAttempts || 0) + 1;
+              result.orderStage = orderResult.stage;
+
+              if (!orderResult.success && orderResult.cooldownMs) {
+                orderCooldownUntil = Date.now() + orderResult.cooldownMs;
+              }
+
+              if (orderResult.success) {
+                orderPlaced = true;
+                result.orderTriggered = true;
+                result.orderSn = orderResult.orderSn;
+                result.orderAmount = orderResult.orderAmount;
+                result.orderExpireAt = orderResult.expireAt;
+                result.orderSkuLabel = orderResult.skuLabel;
+                result.orderItems = orderResult.items;
+                result.orderNum = orderResult.num;
+                result.orderError = undefined;
+
+                const emailResult = await sendEmail({
+                  to: task.recipient,
+                  subject: `✅ 价格到点已自动下单：${current.productName}（订单 ${orderResult.orderSn}）`,
+                  html: createAutoOrderTemplate({
+                    productName: current.productName,
+                    productImage: task.productImage || current.productImage,
+                    orderSn: orderResult.orderSn,
+                    orderAmount: orderResult.orderAmount,
+                    skuLabel: orderResult.skuLabel,
+                    items: orderResult.items,
+                    num: orderResult.num,
+                    requestedNum: orderResult.requestedNum,
+                    payTool: orderResult.payTool,
+                    expireAt: orderResult.expireAt,
+                  }),
+                });
+
+                result.emailSent = emailResult.success;
+                if (!emailResult.success) {
+                  result.error = emailResult.error;
+                }
+              } else if (orderResult.retryable) {
+                // 没货 / 被抢完：不结束任务，下一轮价格仍达标时会再试
+                result.orderError = orderResult.message;
+              } else {
+                // 登录态失效、配置错误、建单结果未知：继续重试没有意义，停下并告警
+                result.orderError = orderResult.message;
+                result.orderUncertain = orderResult.uncertain;
+
+                const emailResult = await sendEmail({
+                  to: task.recipient,
+                  subject: `⚠️ 价格到点自动下单失败：${current.productName}`,
+                  html: createAutoOrderFailedTemplate({
+                    productName: current.productName,
+                    message: orderResult.message || '未知原因',
+                    stage: orderResult.stage,
+                    uncertain: orderResult.uncertain,
+                  }),
+                });
+
+                result.emailSent = emailResult.success;
+                if (!emailResult.success) {
+                  result.error = emailResult.error;
+                }
+
+                if (resultCallback) {
+                  resultCallback({ ...result });
+                }
+                break;
+              }
+            }
+          }
 
           if (!snapshot) {
-            // 首次检测：只建立基线，不通知
+            // 首次检测：只建立基线，不通知（已下单时保留 detected）
             snapshot = current;
-            result.detected = false;
-            result.changeInfo = undefined;
-            result.couponChangeInfo = undefined;
+            if (!orderPlaced) {
+              result.detected = false;
+              result.changeInfo = undefined;
+              result.couponChangeInfo = undefined;
+            }
           } else {
             const change = comparePrice(snapshot, current, minPriceDelta);
             const couponChange = compareCoupons(snapshot, current);
@@ -439,6 +597,15 @@ export const createCancellablePriceMonitor = (
               result.changeInfo = notifyPrice && change ? change : undefined;
               result.couponChangeInfo = notifyCoupon && couponChange ? couponChange : undefined;
               detectedCount++;
+
+              // 本轮已经下单成功：下单邮件已经说清价格与订单，
+              // 不再重复发一封价格变动邮件，但变化本身仍然记录。
+              if (orderPlaced) {
+                if (resultCallback) {
+                  resultCallback({ ...result });
+                }
+                break;
+              }
 
               // 标题把涨跌方向和幅度放在最前面，邮件列表里一眼能看出变化类型
               const parts: string[] = [];
@@ -503,6 +670,11 @@ export const createCancellablePriceMonitor = (
         }
 
         if (signal.aborted) {
+          break;
+        }
+
+        // 已成功下单：任务到此结束，继续跑只会重复建单
+        if (orderPlaced) {
           break;
         }
 
