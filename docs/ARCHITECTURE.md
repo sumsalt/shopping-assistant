@@ -213,8 +213,8 @@ interface RequestProfile {
 - 首次检测也参与判断：创建任务时价格已经在目标价以下，会立刻买入，不等基线。
 - **先看同一次响应的库存状态**：价格监控拿到的商品详情里本就带 `is_stockout` /
   `is_on_sale` / `goods_status`，`PriceSnapshot.inStock` 由 `mapToPriceSnapshot` 顺带填出。
-  到价但商品级无货时直接跳过整条下单链路（`orderSkipped: 'no_stock'`），
-  不发查规格 / 加购 / 结算 / 清购物车这四个请求；只有 `inStock === false` 才跳过，
+  到价但商品级无货时直接跳过整条下单链路（`orderSkipped: 'no_stock'`）：
+  不再发查规格请求，也不会把「注定买不到」记成一次下单失败；只有 `inStock === false` 才跳过，
   旧快照缺该字段时仍按原逻辑尝试。
 - 商品级有货但所选规格无货，仍由 `placeAutoOrder` 的 `sku` 阶段兜住（详情接口没有规格级库存）。
 - 下单成功即结束任务（`orderPlaced`），避免每轮重复建单；下单邮件替代当轮的价格变动邮件。
