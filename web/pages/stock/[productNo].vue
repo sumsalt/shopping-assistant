@@ -110,32 +110,17 @@
               </div>
             </div>
 
-            <!-- 操作按钮 -->
+            <!-- 操作按钮：到货监控一个入口，是否自动下单在配置里选 -->
             <div class="flex flex-wrap gap-2 pt-2">
               <UiButton
-                v-if="skuResult.inStockSkuCount < skuResult.totalSkuCount"
                 variant="primary"
                 size="sm"
-                :loading="isCreatingMonitor && monitoringProductId === skuResult.productId"
-                :disabled="isCreatingMonitor"
-                @click="handleMonitor"
-              >
-                <svg v-if="!isCreatingMonitor || monitoringProductId !== skuResult.productId" class="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-                </svg>
-                {{ isCreatingMonitor && monitoringProductId === skuResult.productId ? '创建中' : '监控到货通知' }}
-              </UiButton>
-
-              <UiButton
-                variant="outline"
-                size="sm"
-                class="text-orange-600 border-orange-200 hover:bg-orange-50 hover:border-orange-300"
-                @click="openAutoOrder"
+                @click="openStockMonitor"
               >
                 <svg class="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
                 </svg>
-                有货自动下单
+                到货监控
               </UiButton>
 
               <UiButton
@@ -170,10 +155,10 @@
       :product="priceMonitorProduct"
     />
 
-    <!-- 有货自动下单弹窗 -->
-    <StockAutoOrderDialog
-      v-model:open="showAutoOrderDialog"
-      :product="autoOrderProduct"
+    <!-- 到货监控配置弹窗（内部可选是否自动下单） -->
+    <StockMonitorDialog
+      v-model:open="showStockMonitorDialog"
+      :product="monitorProduct"
     />
   </div>
 </template>
@@ -197,17 +182,8 @@ const {
   getProductSkus,
 } = useStock()
 
-// 使用监控 composable
-const { createMonitorTask, isLoading: isCreatingMonitor } = useMonitor()
-
-// 使用 toast
-const toast = useToast()
-
-// 正在监控的商品 ID
-const monitoringProductId = ref<string | null>(null)
-
-// 有货自动下单弹窗
-const showAutoOrderDialog = ref(false)
+// 到货监控配置弹窗（监控时长、是否自动下单都在弹窗里设置）
+const showStockMonitorDialog = ref(false)
 
 // 价格监控弹窗
 const showPriceDialog = ref(false)
@@ -217,22 +193,17 @@ const priceMonitorProduct = ref<{
   productImage?: string
 } | null>(null)
 
-// 打开自动下单弹窗
-const openAutoOrder = () => {
+// 打开到货监控配置弹窗
+const openStockMonitor = () => {
   if (!skuResult.value) {
     return
   }
 
-  if (!skuResult.value.productNo) {
-    toast.warning('缺少商品货号，无法自动下单')
-    return
-  }
-
-  showAutoOrderDialog.value = true
+  showStockMonitorDialog.value = true
 }
 
-// 自动下单弹窗要的商品信息
-const autoOrderProduct = computed(() => {
+// 弹窗需要的商品信息
+const monitorProduct = computed(() => {
   if (!skuResult.value) {
     return null
   }
@@ -273,33 +244,6 @@ const formatSales = (sales: number): string => {
 // 返回上一页
 const handleBack = () => {
   router.back()
-}
-
-// 监控商品
-const handleMonitor = async () => {
-  if (!skuResult.value) {
-    return
-  }
-
-  const result = skuResult.value
-
-  // 如果所有 SKU 都有货，提示用户
-  if (result.inStockSkuCount === result.totalSkuCount) {
-    toast.warning('商品所有规格都有货，无需监控')
-    return
-  }
-
-  monitoringProductId.value = result.productId
-
-  try {
-    await createMonitorTask({
-      productId: result.productId,
-      productName: result.productName,
-      productImage: result.productImage,
-    })
-  } finally {
-    monitoringProductId.value = null
-  }
 }
 
 // 重试加载

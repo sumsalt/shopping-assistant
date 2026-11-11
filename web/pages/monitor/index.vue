@@ -85,7 +85,7 @@
                 <svg class="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                <span class="text-gray-600">最多 {{ task.duration }} 秒</span>
+                <span class="text-gray-600">最多 {{ formatMonitorDuration(task.duration) }}</span>
               </div>
             </div>
           </div>
@@ -238,6 +238,8 @@
 </template>
 
 <script setup lang="ts">
+import { formatMonitorDuration } from '@/utils/stockMonitorConfig'
+
 // 页面元信息
 definePageMeta({
   title: '监控任务',

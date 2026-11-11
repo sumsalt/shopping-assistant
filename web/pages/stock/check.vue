@@ -132,7 +132,6 @@
               :in-stock="item.inStock"
               :message="item.message"
               :show-monitor-button="!item.inStock"
-              :is-monitoring="isCreatingMonitor && monitoringProductId === item.productId"
               show-price-monitor-button
               @click="handleProductClick(item)"
               @monitor="handleMonitor(item)"
@@ -178,7 +177,6 @@
           :in-stock="stockResult.inStock"
           :message="stockResult.message"
           :show-monitor-button="!stockResult.inStock"
-          :is-monitoring="isCreatingMonitor && monitoringProductId === stockResult.productId"
           show-price-monitor-button
           @click="handleProductClick(stockResult)"
           @monitor="handleMonitor(stockResult)"
@@ -217,20 +215,18 @@
 
           <template #footer>
             <div class="flex gap-2">
-              <!-- 监控按钮 -->
+              <!-- 到货监控按钮（打开统一配置弹窗） -->
               <UiButton
                 v-if="!stockResult.inStock"
                 variant="primary"
                 size="sm"
                 class="flex-1"
-                :loading="isCreatingMonitor && monitoringProductId === stockResult.productId"
-                :disabled="isCreatingMonitor"
                 @click="handleMonitor(stockResult)"
               >
-                <svg v-if="!isCreatingMonitor || monitoringProductId !== stockResult.productId" class="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg class="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
                 </svg>
-                {{ isCreatingMonitor && monitoringProductId === stockResult.productId ? '创建中' : '监控到货' }}
+                到货监控
               </UiButton>
               <!-- 价格监控按钮 -->
               <UiButton
@@ -291,10 +287,18 @@
       v-model:open="showPriceDialog"
       :product="priceMonitorProduct"
     />
+
+    <!-- 到货监控配置弹窗（监控时长、是否自动下单） -->
+    <StockMonitorDialog
+      v-model:open="showStockMonitorDialog"
+      :product="monitorProduct"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
+import { DEFAULT_STOCK_MONITOR_DURATION, formatMonitorDuration } from '@/utils/stockMonitorConfig'
+
 // 页面元信息
 definePageMeta({
   title: '库存查询',
@@ -317,14 +321,20 @@ const {
   goToProductDetail,
 } = useStock()
 
-// 使用监控 composable
-const { createMonitorTask, monitorAllOutOfStock, isLoading: isCreatingMonitor } = useMonitor()
+// 使用监控 composable（单商品走配置弹窗，只有批量还直接创建）
+const { monitorAllOutOfStock, isLoading: isCreatingMonitor } = useMonitor()
 
 // 搜索关键词
 const searchQuery = ref('')
 
-// 正在监控的商品 ID
-const monitoringProductId = ref<string | null>(null)
+// 到货监控配置弹窗
+const showStockMonitorDialog = ref(false)
+const monitorProduct = ref<{
+  productId: string
+  productName?: string
+  productImage?: string
+  productNo?: string
+} | null>(null)
 
 // 价格监控弹窗
 const showPriceDialog = ref(false)
@@ -387,9 +397,9 @@ const handleProductClick = (item: any) => {
   }
 }
 
-// 监控商品
-const handleMonitor = async (item: any) => {
-  if (!item) {
+// 打开到货监控配置弹窗（单商品入口）
+const handleMonitor = (item: any) => {
+  if (!item?.productId) {
     return
   }
 
@@ -399,17 +409,13 @@ const handleMonitor = async (item: any) => {
     return
   }
 
-  monitoringProductId.value = item.productId
-
-  try {
-    await createMonitorTask({
-      productId: item.productId,
-      productName: item.productName,
-      productImage: item.productImage,
-    })
-  } finally {
-    monitoringProductId.value = null
+  monitorProduct.value = {
+    productId: item.productId,
+    productName: item.productName,
+    productImage: item.productImage,
+    productNo: item.productNo,
   }
+  showStockMonitorDialog.value = true
 }
 
 // 批量监控所有无货商品
@@ -427,7 +433,7 @@ const handleBatchMonitor = async () => {
 
   const confirmed = await confirmDialog.confirm({
     title: '批量创建监控',
-    message: `确定要为 ${outOfStockItems.length} 个无货商品创建到货监控吗？`,
+    message: `确定要为 ${outOfStockItems.length} 个无货商品创建到货监控吗？将使用默认配置：仅邮件提醒、时长 ${formatMonitorDuration(DEFAULT_STOCK_MONITOR_DURATION)}。单独商品可点「到货监控」自定义配置（含自动下单）。`,
     confirmText: '确定',
     cancelText: '取消',
   })

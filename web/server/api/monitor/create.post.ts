@@ -202,7 +202,8 @@ export default defineEventHandler(async (event) => {
     // 构建监控配置
     const config: StockMonitorConfig = {
       interval,
-      duration: body.config?.duration || 3 * 60 * 60,
+      // 与前端 DEFAULT_STOCK_MONITOR_DURATION（24 小时）保持一致；正常请求都会显式传 duration
+      duration: body.config?.duration || 24 * 60 * 60,
       adapterConfig,
       ...(autoOrder ? { autoOrder } : {}),
     }

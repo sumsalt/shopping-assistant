@@ -1,4 +1,5 @@
 import type { UserConfig } from '@/types'
+import { DEFAULT_STOCK_MONITOR_DURATION } from '@/utils/stockMonitorConfig'
 
 /** 库存监控的最小检测间隔（秒），与后端 MIN_STOCK_MONITOR_INTERVAL 保持一致 */
 export const MIN_STOCK_MONITOR_INTERVAL = 2
@@ -128,7 +129,7 @@ export const useMonitor = () => {
       // 构建监控配置
       const monitorConfig: MonitorConfig = {
         interval: config?.interval || MIN_STOCK_MONITOR_INTERVAL,
-        duration: config?.duration || 3 * 60 * 60,
+        duration: config?.duration || DEFAULT_STOCK_MONITOR_DURATION,
         adapterConfig: {
           ...(needAuth
             ? { uid: userConfig.uid || '', token: userConfig.token || '' }
@@ -155,7 +156,11 @@ export const useMonitor = () => {
 
       if (response.success && response.data) {
         if (!options.silent) {
-          toast.success(config?.autoOrder?.enabled ? '已创建自动下单任务' : '已创建到货监控任务')
+          toast.success(
+            config?.autoOrder?.enabled
+              ? '已创建到货监控任务（有货自动下单）'
+              : '已创建到货监控任务（仅邮件提醒）'
+          )
         }
         return response.data.taskId
       } else {
@@ -199,7 +204,11 @@ export const useMonitor = () => {
     let failed = 0
 
     for (const item of outOfStockItems) {
-      const taskId = await createMonitorTask(item, undefined, { silent: true })
+      const taskId = await createMonitorTask(
+        item,
+        { duration: DEFAULT_STOCK_MONITOR_DURATION },
+        { silent: true }
+      )
       if (taskId) {
         created++
       } else {
