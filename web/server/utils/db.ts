@@ -6,6 +6,7 @@
  * - shops 表：店铺评分记录
  * - shop_blacklist 表：店铺黑名单
  * - sessions 表：登录会话（落盘，重启不掉线）
+ * - accounts 表：账号凭据（手机号 / 密码 / uid / token / 备注）
  *
  * 运行要求：Node.js >= 22.5（node:sqlite）
  */
@@ -111,6 +112,23 @@ const createTables = (instance: SqliteDatabase): void => {
     )
   `)
   instance.exec('CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions (expires_at)')
+
+  // 账号管理：一手账号的手机号 / 密码 / uid / token 等凭据
+  // 只对登录用户可见，列表接口默认返回掩码，明文需单独取
+  instance.exec(`
+    CREATE TABLE IF NOT EXISTS accounts (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      phone TEXT NOT NULL,
+      password TEXT NOT NULL DEFAULT '',
+      uin TEXT NOT NULL DEFAULT '',
+      token TEXT NOT NULL DEFAULT '',
+      remark TEXT NOT NULL DEFAULT '',
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    )
+  `)
+  instance.exec('CREATE INDEX IF NOT EXISTS idx_accounts_user ON accounts (user_id, updated_at DESC)')
 }
 
 /**
