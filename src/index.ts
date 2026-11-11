@@ -13,10 +13,11 @@ export {
   registerAdapter,
   BaseAdapter,
   YishouAdapter,
+  checkYishouAuth,
 } from './adapters';
 export { placeAutoOrder, precheckAutoOrder, DEFAULT_AUTO_ORDER_PAY_TOOL, MAX_AUTO_ORDER_NUM } from './auto-order';
 export type { AutoOrderAdapter, PlaceOrderParams, PrecheckOrderResult } from './auto-order';
-export type { PlatformAdapter, AdapterConfig } from './adapters';
+export type { PlatformAdapter, AdapterConfig, AuthCheckResult } from './adapters';
 
 // 导出工具函数
 export { httpRequest, httpPost } from './utils/http';

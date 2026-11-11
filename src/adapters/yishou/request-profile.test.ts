@@ -18,8 +18,9 @@ vi.mock('../../utils/http', () => ({
   httpRequest: vi.fn(),
 }))
 
-import { resolveRequestProfile } from './profile'
+import { encodeFormComponent, resolveRequestProfile } from './profile'
 import { YishouClient } from './client'
+import { md5 } from '../../utils/crypto'
 
 const WX_CONFIG: AdapterConfig = {
   channel: 'wx',
@@ -232,5 +233,69 @@ describe('请求客户端 - 实际发出的请求', () => {
 
     expect(() => client.requireAuth('需要登录')).toThrow('需要登录')
     expect(mocks.httpPost).not.toHaveBeenCalled()
+  })
+})
+
+describe('请求档案 - 签名编码与 App 设备指纹（对齐实测指南）', () => {
+  it('model 按 OkHttp 规则编码：空格 %20、括号与特殊字符也要编码', () => {
+    // 实测：MI 8 UD → MI%208%20UD
+    expect(encodeFormComponent('MI 8 UD')).toBe('MI%208%20UD')
+    // encodeURIComponent 不编码 ( ) ! ' *，OkHttp 会编码，这是两者唯一的差异
+    expect(encodeFormComponent('MI 8 (UD)')).toBe('MI%208%20%28UD%29')
+    expect(encodeFormComponent("1234!*'()")).toBe('1234%21%2A%27%28%29')
+    // 中文机型名按 UTF-8 逐字节编码
+    expect(encodeFormComponent('小米 8')).toBe('%E5%B0%8F%E7%B1%B3%208')
+    // 无特殊字符时两种算法等价
+    expect(encodeFormComponent('Pixel7')).toBe('Pixel7')
+  })
+
+  it('App 签名首段优先 udid，缺失时用 device_id 兜底', () => {
+    const build = (params: Record<string, string>) =>
+      resolveRequestProfile({
+        channel: 'app',
+        requestParams: { model: 'MI 8 UD', version: '29', version_name: '7.65.00', ...params },
+        requestHeaders: { 'User-Agent': 'okhttp/3.14.9' },
+      })
+
+    const withUdid = build({ udid: 'udid-a', device_id: 'udid-a' })
+    const onlyDeviceId = build({ device_id: 'udid-a' })
+
+    expect(withUdid.sign(1_700_000_000)).toBe(onlyDeviceId.sign(1_700_000_000))
+    expect(withUdid.sign(1_700_000_000)).toMatch(/^[a-f0-9]{32}$/)
+  })
+
+  it('App 通道抓包没带 equipmd5 时补 md5(udid)，已带则原样保留', () => {
+    const base = {
+      channel: 'app' as const,
+      requestParams: {
+        udid: 'be21db39a316aafd',
+        model: 'MI 8 UD',
+        version: '29',
+        version_name: '7.65.00',
+        plat_type: 'Android',
+      },
+      requestHeaders: { 'User-Agent': 'okhttp/3.14.9' },
+    }
+
+    expect(resolveRequestProfile(base).headers.equipmd5).toBe(md5('be21db39a316aafd'))
+
+    const captured = resolveRequestProfile({
+      ...base,
+      requestHeaders: { 'User-Agent': 'okhttp/3.14.9', equipmd5: '11' },
+    })
+    // 预发环境该值是字符串 11，不能覆盖用户抓到的真实值
+    expect(captured.headers.equipmd5).toBe('11')
+  })
+
+  it('wx 通道不补 equipmd5（该字段只属于 App 通道）', () => {
+    const profile = resolveRequestProfile(WX_CONFIG)
+    expect(profile.headers.equipmd5).toBe('equip-wx')
+
+    const noEquip = resolveRequestProfile({
+      channel: 'wx',
+      requestParams: { openid: 'o', model: 'm', version: 'v', version_name: 'vn' },
+      requestHeaders: { 'User-Agent': 'Mozilla/5.0 MicroMessenger/8.0.60' },
+    })
+    expect(noEquip.headers.equipmd5).toBeUndefined()
   })
 })

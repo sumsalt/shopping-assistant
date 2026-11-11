@@ -147,3 +147,43 @@ export const readAdapterConfigFromQuery = (query: Record<string, unknown>): Adap
   query.adapterConfig !== undefined
     ? normalizeAdapterConfig(query.adapterConfig)
     : legacyAdapterConfig(query)
+
+/** 账号里保存的请求快照（与 accountStore.AccountRequestProfile 结构一致） */
+export interface StoredRequestProfile {
+  channel?: 'wx' | 'app'
+  params?: Record<string, string>
+  headers?: Record<string, string>
+}
+
+/** 大小写不敏感地取快照参数 */
+const pickParam = (params: Record<string, string>, key: string): string => {
+  for (const [name, value] of Object.entries(params)) {
+    if (name.toLowerCase() === key) return value
+  }
+  return ''
+}
+
+/**
+ * 把账号里落盘的请求快照转成 AdapterConfig
+ *
+ * 用于服务端自己发起的一手请求（登录态自检、下单预检等）：
+ * 这类请求没有前端传来的 adapterConfig，只能从库里读账号快照。
+ */
+export const profileToAdapterConfig = (
+  profile: StoredRequestProfile | null | undefined,
+  extra: Record<string, unknown> = {}
+): AdapterConfig => {
+  if (!profile?.params || Object.keys(profile.params).length === 0) {
+    return normalizeAdapterConfig(extra)
+  }
+
+  return normalizeAdapterConfig({
+    ...extra,
+    channel: profile.channel,
+    requestParams: profile.params,
+    requestHeaders: profile.headers,
+    // 顶层 uid/token 供适配器做登录态判断（快照里没有时为空）
+    uid: pickParam(profile.params, 'uid'),
+    token: pickParam(profile.params, 'token'),
+  })
+}

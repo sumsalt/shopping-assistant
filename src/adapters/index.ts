@@ -78,3 +78,5 @@ registerAdapter('yishou', YishouAdapter);
 export * from './types';
 export { BaseAdapter } from './base-adapter';
 export { YishouAdapter } from './yishou';
+export { checkYishouAuth } from './yishou/auth-check';
+export type { AuthCheckResult } from './yishou/auth-check';

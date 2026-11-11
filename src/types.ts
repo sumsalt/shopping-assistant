@@ -641,7 +641,7 @@ export interface YishouCreateOrderData {
   orderAmount?: number;
   /** 支付方式 */
   payTool?: string;
-  /** 支付参数（微信小程序支付需要 userName + path） */
+  /** 支付参数：服务端实际下发的是小程序跳转参数（userName + path），不是 App 的 prepay 五元组 */
   payParams?: Record<string, unknown>;
 }
 

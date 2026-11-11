@@ -81,6 +81,16 @@ export interface AccountSubmitResult {
   error?: string
 }
 
+/** 登录态自检结果 */
+export interface AccountVerifyResult {
+  ok: boolean
+  /** 服务端返回的用户 ID */
+  uid: string
+  nickname: string
+  /** 直接展示的结论 */
+  message: string
+}
+
 /** 补零 */
 const pad = (value: number): string => String(value).padStart(2, '0')
 
@@ -110,6 +120,8 @@ export const useAccounts = () => {
   const total = ref(0)
   const isLoading = ref(true)
   const isSubmitting = ref(false)
+  /** 正在校验登录态的账号 id */
+  const verifyingId = ref('')
   const error = ref<string | null>(null)
 
   /** 拉取账号列表 */
@@ -260,11 +272,54 @@ export const useAccounts = () => {
     }
   }
 
+  /**
+   * 校验账号登录态
+   *
+   * 用必须登录的接口做探针：一手对 (uid, token, udid) 三元组校验，
+   * 只有 200 才说明这份抓包还能用；201 通常是 token 过期或三者不同源。
+   */
+  const verifyAccount = async (id: string): Promise<AccountVerifyResult | null> => {
+    verifyingId.value = id
+
+    try {
+      const config = useConfigStore().getConfigForApi()
+      const response = await $fetch<ApiResponse<AccountVerifyResult>>('/api/accounts/verify', {
+        method: 'POST',
+        body: {
+          id,
+          proxyUrl: config?.proxyUrl,
+          proxyEnabled: config?.proxyEnabled || '0',
+        },
+      })
+
+      if (!response.success || !response.data) {
+        return {
+          ok: false,
+          uid: '',
+          nickname: '',
+          message: response.error?.message || '校验失败',
+        }
+      }
+
+      return response.data
+    } catch (err) {
+      return {
+        ok: false,
+        uid: '',
+        nickname: '',
+        message: err instanceof Error ? err.message : '网络请求失败',
+      }
+    } finally {
+      verifyingId.value = ''
+    }
+  }
+
   return {
     accounts,
     total,
     isLoading,
     isSubmitting,
+    verifyingId,
     error,
     fetchAccounts,
     createAccount,
@@ -272,5 +327,6 @@ export const useAccounts = () => {
     deleteAccount,
     revealField,
     revealProfile,
+    verifyAccount,
   }
 }

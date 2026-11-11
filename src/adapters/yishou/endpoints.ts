@@ -39,3 +39,10 @@ export const ORDER_DETAIL = `${BASE}/order/get_order_detail_v2`;
 
 /** 商品 H5 链接前缀 */
 export const GOODS_URL_PREFIX = 'https://www.yishouapp.com/goods/';
+
+/**
+ * 当前用户信息
+ *
+ * 必须登录，且会校验 uid + token + udid 三元组；用于账号登录态自检。
+ */
+export const USER_INFO = `${BASE}/users/get_user_info`;

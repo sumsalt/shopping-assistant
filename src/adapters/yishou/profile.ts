@@ -14,7 +14,7 @@
  */
 
 import type { AdapterConfig } from '../types';
-import { generateYishouSign } from '../../utils/crypto';
+import { generateYishouSign, md5 } from '../../utils/crypto';
 
 /** 请求通道：小程序 / H5 与 App 的公共参数、UA、时间戳单位都不同 */
 export type RequestChannel = 'wx' | 'app';
@@ -72,6 +72,22 @@ export const readParam = (
   return '';
 };
 
+/**
+ * 按 OkHttp 的 form 编码规则编码单个字段
+ *
+ * 签名不在业务层算，而在 OkHttp 拦截器里用 **已编码** 的值算：
+ *   `MI 8 UD` → `MI%208%20UD`。
+ *
+ * `encodeURIComponent` 与 OkHttp 只差 5 个字符：它不编码 `! ' ( ) *`，
+ * 而 OkHttp 的 UNRESERVED 只有 `A-Za-z0-9-._~`，其余一律 `%XX`。
+ * 机型名里出现括号（如 `MI 8 (UD)`）时两者结果不同，必须补上。
+ */
+export const encodeFormComponent = (value: string): string =>
+  encodeURIComponent(value).replace(
+    /[!'()*]/g,
+    char => `%${char.charCodeAt(0).toString(16).toUpperCase()}`
+  );
+
 /** 剔除动态字段，避免抓包里残留的 t_t / sign 被当成静态参数回放 */
 const stripDynamicFields = (params: Record<string, string>): Record<string, string> => {
   const result: Record<string, string> = {};
@@ -106,6 +122,24 @@ const resolveHeaders = (
   }
 
   return headers;
+};
+
+/**
+ * App 通道补 `equipmd5 = md5(udid)`
+ *
+ * 服务端当前不校验，但真机每个请求都带；补上成本为零，能让请求更像真实客户端。
+ * 抓包已经带了就原样保留（预发环境该值可能是字符串 `11`）。
+ */
+const ensureAppFingerprint = (
+  headers: Record<string, string>,
+  params: Record<string, string>
+): void => {
+  const udid = readParam(params, 'udid') || readParam(params, 'device_id');
+  if (!udid) return;
+  const hasEquipMd5 = Object.keys(headers).some(name => name.toLowerCase() === 'equipmd5');
+  if (!hasEquipMd5) {
+    headers.equipmd5 = md5(udid);
+  }
 };
 
 /**
@@ -145,13 +179,18 @@ export const resolveRequestProfile = (config: AdapterConfig = {}): RequestProfil
   }
 
   const headers = resolveHeaders(config.requestHeaders, channel);
+  if (channel === 'app') {
+    ensureAppFingerprint(headers, params);
+  }
 
   // 签名原料：显式字段优先，其次快照
   const rawModel = config.model || readParam(params, 'model');
+  // App 用 udid（device_id 在真机上与其完全同值，抓包工具可能只留其中一个）
   const signFirst = channel === 'app'
-    ? readParam(params, 'udid')
-    : config.openid ?? readParam(params, 'openid');
-  const signModel = channel === 'app' ? encodeURIComponent(rawModel) : rawModel;
+    ? readParam(params, 'udid') || readParam(params, 'device_id')
+    : config.openid || readParam(params, 'openid');
+  // 签名取的是 form 里「已编码」的值，见 encodeFormComponent 注释
+  const signModel = channel === 'app' ? encodeFormComponent(rawModel) : rawModel;
   const signVersion = config.version || readParam(params, 'version');
   const signVersionName = config.version_name || readParam(params, 'version_name');
 

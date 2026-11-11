@@ -134,6 +134,33 @@ describe('parseYishouCapture - 兼容与边界', () => {
     expect(result.warnings.join(' ')).toContain('游客态')
   })
 
+  it('App 通道 UA 不是 okhttp 时提示网关会 404', () => {
+    const wrongUa = APP_CAPTURE.replace('User-Agent: okhttp/3.14.9', 'User-Agent: Mozilla/5.0')
+    const result = parseYishouCapture(wrongUa)
+    expect(result.profile?.channel).toBe('app')
+    expect(result.warnings.join(' ')).toContain('okhttp/x.y.z')
+  })
+
+  it('App 通道缺 udid 且带凭证时提示三元组必须同源', () => {
+    const noUdid = APP_CAPTURE
+      .replace(/&udid=[^&]+/, '')
+      .replace(/&device_id=[^&]+/, '')
+    const result = parseYishouCapture(noUdid)
+    expect(result.profile?.channel).toBe('app')
+    expect(result.warnings.join(' ')).toContain('同一次登录')
+  })
+
+  it('微信 UA 配 plat_type=Android 时提示两者必须匹配', () => {
+    const mixed = `POST /goods/get_goods_info_v2 HTTP/1.1
+Host: api.yishouapp.com
+User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 16_5_1 like Mac OS X) MicroMessenger/8.0.60
+Content-Type: application/x-www-form-urlencoded
+
+uid=1&token=t&openid=o&model=iPhone%2014&version=8.0.60&version_name=4.9.0&plat_type=Android`
+    const result = parseYishouCapture(mixed)
+    expect(result.warnings.join(' ')).toContain('必须匹配')
+  })
+
   it('空内容 / 无 form / 无公共参数都返回明确错误', () => {
     expect(parseYishouCapture('').ok).toBe(false)
     expect(parseYishouCapture('   ').error).toContain('请先粘贴')

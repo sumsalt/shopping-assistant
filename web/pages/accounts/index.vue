@@ -272,10 +272,30 @@
           </div>
         </div>
 
+        <!-- 登录态自检结果 -->
+        <div
+          v-if="verifyResults[item.id]"
+          class="mt-3 flex items-start gap-1.5 text-xs"
+          :class="verifyResults[item.id].ok ? 'text-emerald-600' : 'text-red-600'"
+        >
+          <span class="shrink-0">{{ verifyResults[item.id].ok ? '✓' : '!' }}</span>
+          <span class="min-w-0 break-all">{{ verifyResults[item.id].message }}</span>
+        </div>
+
         <!-- 底部 -->
         <div class="mt-4 pt-3 border-t border-gray-100 flex flex-wrap items-center justify-between gap-2">
           <span class="text-xs text-gray-400">更新于 {{ formatAccountTime(item.updatedAt) }}</span>
           <div class="flex items-center gap-1 flex-wrap">
+            <UiButton
+              variant="ghost"
+              size="sm"
+              :loading="verifyingId === item.id"
+              :disabled="!item.hasRequestProfile"
+              :title="item.hasRequestProfile ? '' : '请先粘贴抓包保存请求信息'"
+              @click="handleVerify(item)"
+            >
+              {{ verifyingId === item.id ? '校验中…' : '校验登录态' }}
+            </UiButton>
             <UiButton
               v-if="!isActive(item)"
               variant="ghost"
@@ -391,7 +411,12 @@
 </template>
 
 <script setup lang="ts">
-import type { AccountItem, RevealField, AccountPayload } from '@/composables/useAccounts'
+import type {
+  AccountItem,
+  AccountVerifyResult,
+  RevealField,
+  AccountPayload,
+} from '@/composables/useAccounts'
 import type { RequestProfile } from '@/types'
 import {
   parseYishouCapture,
@@ -407,6 +432,7 @@ const {
   total,
   isLoading,
   isSubmitting,
+  verifyingId,
   error,
   fetchAccounts,
   createAccount,
@@ -414,6 +440,7 @@ const {
   deleteAccount,
   revealField,
   revealProfile,
+  verifyAccount,
 } = useAccounts()
 
 const configStore = useConfigStore()
@@ -436,6 +463,21 @@ const expandedProfiles = reactive<Record<string, boolean>>({})
 const isProfileExpanded = (id: string): boolean => Boolean(expandedProfiles[id])
 const toggleProfile = (id: string) => {
   expandedProfiles[id] = !expandedProfiles[id]
+}
+
+/** 登录态自检结果（按账号 id 存，仅本地展示） */
+const verifyResults = reactive<Record<string, AccountVerifyResult>>({})
+
+const handleVerify = async (item: AccountItem) => {
+  const result = await verifyAccount(item.id)
+  if (result) {
+    verifyResults[item.id] = result
+    if (result.ok) {
+      toast.success(result.message)
+    } else {
+      toast.error(result.message)
+    }
+  }
 }
 
 /** 按分组整理列表里的（已脱敏）公共参数 */
@@ -882,6 +924,7 @@ const handleDelete = async (item: AccountItem) => {
   if (result.success) {
     delete revealedValues[revealKey(item.id, 'password')]
     delete revealedValues[revealKey(item.id, 'token')]
+    delete verifyResults[item.id]
     // 如果删的是当前账号，回到匿名模式
     if (isActive(item)) {
       configStore.clearActiveAccount()

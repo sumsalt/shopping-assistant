@@ -78,6 +78,29 @@ return mapXxx(data);
 **匿名链路**：`buildAdapterConfig(config, false)` 会剔除 `uid`/`token`，`profile.hasAuth` 为 false。
 适配器不会补出 `uid=undefined`（`URLSearchParams` 会把它序列化成字符串，一手会判为无效凭证）。
 
+### 一手请求契约（实测结论，改动前务必对照）
+
+这些结论来自《接口请求字段与签名实测指南》《接口分析-小程序vsApp》的对照实验，
+`profile.ts` 与 `yishou-capture.ts` 的实现都以此为准：
+
+| 结论 | 影响 |
+|---|---|
+| `uid` + `token` + `udid` **三元绑定**，任一不匹配只回 `201 请登录`，不区分是哪个错了 | 复用 token 必须连带复用它登录时的 udid；不要自己编 udid |
+| 可匿名接口（`get_goods_info_v2`）不报错，只把 `shop_price` 降级成 `??.??` | 「任务在跑但价格全是问号」= 登录态失效，用自检接口确认 |
+| App 通道硬门槛：`udid` + `plat_type=Android` + `model` + `version` + `version_name` + `t_t` + `okhttp/x.y.z` UA | 缺任一项网关直接 **404**（空 body，不是 JSON） |
+| UA 与 `plat_type` 必须匹配 | 微信 UA + `plat_type=Android` 同样 404 |
+| `version` 在 App 通道是 **Android SDK 版本**（如 `29`），不是 App 版本 | 填 `7.65.00` 会 404 |
+| `t_t` 必须 **10 位秒级**数字 | App 用 `Math.floor(Date.now()/1000)`，wx 用毫秒 |
+| 签名 `md5(md5(udid + model + version + version_name) + t_t)`，**`model` 用 URL 编码后的值** | `profile.encodeFormComponent` 等价 OkHttp：`! ' ( ) *` 也要编码 |
+| 服务端当前**不校验** `sign`，也不校验 `equipmd5` | 仍需正确实现，避免名单未来生效时突然全线失败 |
+| RSA 动态包装只作用于 `_api_need_sign` 名单（`setpoint` / `address` 增改），**下单链路不在名单内** | 不需要实现 RSA，`sign` 头即可 |
+| `create_order_v4` 的 `pay_params` 是**小程序跳转参数**（`userName` + `path`），不是 App prepay 五元组 | 服务端只能建单锁库存，付款必须人工 |
+| `pay_tool`：`1` = 支付宝、`4` = 微信（以 `confirm` 返回的 `pay_tool_list` 为准） | 配置项不可用时回落到微信，再回落到第一个 |
+| `selected` 必须是 `confirm` 返回的 `stock[]` 全字段（去掉嵌套对象） | 只传 `{sku,num}` 会 500，并留下 3–5 分钟锁单 |
+
+账号卡片上的「校验登录态」就是把这些「静默失败」变成一条明确结论：
+`POST /api/accounts/verify` → `checkYishouAuth` → `/users/get_user_info`。
+
 ## 三、任务层（`web/server/tasks`）
 
 三类监控的生命周期完全一致，差异只在「创建时校验什么」和「怎么跑一轮」。
@@ -117,7 +140,10 @@ interface RequestProfile {
 
 - 抓包解析：`web/utils/yishou-capture.ts`（wx / App 双通道，纯函数，有单测）。
 - 前端组装：`web/utils/adapterConfig.ts#buildAdapterConfig(config, needAuth)`，**唯一出口**。
-- 服务端归一化：`web/server/utils/adapterConfig.ts`，兼容旧散字段 URL。
+- 服务端归一化：`web/server/utils/adapterConfig.ts`，兼容旧散字段 URL；
+  `profileToAdapterConfig` 供服务端自己发请求时（如登录态自检）从库里读快照。
+- 登录态自检：`POST /api/accounts/verify` → `checkYishouAuth`，用 `/users/get_user_info` 探针，
+  只有 200 才说明这份抓包还能用。
 - 匿名检测（库存查询、到货监控、Tab 监控）传 `needAuth=false`；
   需要登录态（SKU 详情、收藏夹、价格监控、下单）传 `true`。
 
@@ -135,3 +161,9 @@ interface RequestProfile {
 - 抓包快照原样回放，只覆盖动态 `t_t`；不对 `udid` 是否必需做猜测。
 - `sign` 服务端当前不校验，但保留生成逻辑以兼容网关变化。
 - 任务状态接口会返回该任务的 `config.adapterConfig`（仅本人可读），包含登录态凭证。
+- **匿名查询拿不到真实价格**：一手对游客把 `shop_price` 返回成 `??.??`，映射后是 `0`。
+  库存判断不受影响（监控只看是否有货），但页面上会显示 `¥0.00`。
+  想看真实拿货价必须选带登录态的账号（价格监控已有前置校验）。
+- `minPrice` / `maxPrice` 是**传给一手接口的筛选参数**，不是本地过滤，因此游客态的价格 0
+  不会导致本地误过滤；若一手在游客态不按价格筛选，属于服务端行为。
+

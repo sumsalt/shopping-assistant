@@ -191,10 +191,30 @@ export const parseYishouCapture = (raw: string): CaptureParseResult => {
     warnings.push('抓包里没有 uid/token，属于游客态请求，无法用于自动下单 / 价格监控')
   }
   if (channel === 'app' && !hasUdid) {
-    warnings.push('App 通道但没有 udid/device_id，网关可能返回 404')
+    warnings.push(
+      uid || token
+        ? 'uid / token / udid 需来自同一次登录，缺 udid 会返回「请登录」或 404'
+        : 'App 通道没有 udid/device_id，网关会直接返回 404'
+    )
   }
   if (!ua) {
     warnings.push('没有识别到 User-Agent，将按通道默认 UA 发送')
+  }
+
+  // UA 与 plat_type 必须匹配，否则网关 404（文档实测矩阵 E/F/G/J/P 行）
+  const uaIsWechat = /micromessenger/i.test(ua)
+  const uaIsOkhttp = /okhttp/i.test(ua)
+  const platIsAndroid = platType === 'android' || platType === 'ios'
+
+  if (channel === 'app' && ua && !uaIsOkhttp && !uaIsWechat) {
+    warnings.push('App 通道的 User-Agent 必须是 okhttp/x.y.z 格式，否则网关 404')
+  }
+  // 抓包工具偶尔会把两个通道的参数拼在一起，这种矛盾配置一定 404
+  if (uaIsWechat && platIsAndroid) {
+    warnings.push('User-Agent 是微信的，但 plat_type 是 Android，两者必须匹配，否则 404')
+  }
+  if (uaIsOkhttp && platType === 'wx') {
+    warnings.push('User-Agent 是 okhttp 的，但 plat_type 是 wx，两者必须匹配，否则 404')
   }
 
   return {
