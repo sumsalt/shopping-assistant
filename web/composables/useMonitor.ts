@@ -124,52 +124,6 @@ export const useMonitor = () => {
   }
 
   /**
-   * 为多个无货商品分别创建监控任务（一个商品一个任务）
-   *
-   * @returns 成功创建的任务数
-   */
-  const monitorAllOutOfStock = async (
-    outOfStockItems: Array<{
-      productId: string
-      productName: string
-      productImage?: string
-    }>
-  ): Promise<number> => {
-    if (outOfStockItems.length === 0) {
-      toast.warning('没有无货商品需要监控')
-      return 0
-    }
-
-    let created = 0
-    let failed = 0
-
-    for (const item of outOfStockItems) {
-      const taskId = await createMonitorTask(
-        item,
-        { duration: DEFAULT_STOCK_MONITOR_DURATION },
-        { silent: true }
-      )
-      if (taskId) {
-        created++
-      } else {
-        failed++
-      }
-    }
-
-    if (created > 0) {
-      toast.success(
-        failed > 0
-          ? `已创建 ${created} 个监控任务，${failed} 个失败`
-          : `已创建 ${created} 个监控任务`
-      )
-    } else {
-      toast.error('创建监控任务失败')
-    }
-
-    return created
-  }
-
-  /**
    * 查询任务状态
    */
   const getTaskStatus = (taskId: string): Promise<TaskStatusResponse | null> =>
@@ -182,7 +136,6 @@ export const useMonitor = () => {
 
     // 方法
     createMonitorTask,
-    monitorAllOutOfStock,
     getTaskStatus,
   }
 }
