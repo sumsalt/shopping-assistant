@@ -113,6 +113,8 @@ export interface MonitorResult {
   orderExpireAt?: number;
   /** 实际下单的规格 */
   orderSkuLabel?: string;
+  /** 实际下单件数（库存不足时小于配置件数） */
+  orderNum?: number;
   /** 自动下单失败原因 */
   orderError?: string;
   /** 自动下单失败所处阶段 */
@@ -337,6 +339,7 @@ export const createCancellableMonitor = (
                 result.orderAmount = orderResult.orderAmount;
                 result.orderExpireAt = orderResult.expireAt;
                 result.orderSkuLabel = orderResult.skuLabel;
+                result.orderNum = orderResult.num;
                 result.orderError = undefined;
 
                 const emailResult = await sendEmail({
@@ -349,6 +352,7 @@ export const createCancellableMonitor = (
                     orderAmount: orderResult.orderAmount,
                     skuLabel: orderResult.skuLabel,
                     num: orderResult.num,
+                    requestedNum: orderResult.requestedNum,
                     payTool: orderResult.payTool,
                     expireAt: orderResult.expireAt,
                   }),

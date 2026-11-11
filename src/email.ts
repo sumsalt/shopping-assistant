@@ -1177,6 +1177,8 @@ export interface AutoOrderTemplateParams {
   skuLabel?: string;
   /** 件数 */
   num?: number;
+  /** 用户配置的件数（库存不足时与 num 不同） */
+  requestedNum?: number;
   /** 支付方式（1 支付宝 / 4 微信） */
   payTool?: string;
   /** 支付截止时间（毫秒时间戳） */
@@ -1207,9 +1209,12 @@ export function createAutoOrderTemplate(params: AutoOrderTemplateParams): string
     orderAmount,
     skuLabel,
     num = 1,
+    requestedNum,
     payTool,
     expireAt,
   } = params;
+
+  const numReduced = Boolean(requestedNum && requestedNum > num);
 
   const amountText = orderAmount !== undefined ? `¥${orderAmount.toFixed(2)}` : '以 App 内为准';
   const payText = payTool === '1' ? '支付宝' : payTool === '4' ? '微信' : '默认支付方式';
@@ -1264,6 +1269,7 @@ export function createAutoOrderTemplate(params: AutoOrderTemplateParams): string
             <tr><td class="label">支付方式</td><td>${payText}</td></tr>
             ${expireText ? `<tr><td class="label">付款截止</td><td>${expireText}</td></tr>` : ''}
           </table>
+          ${numReduced ? `<div class="warn">库存不足，已按实际可买 <strong>${num}</strong> 件下单（你设置的是 ${requestedNum} 件）。如需更多，请补货后再发起监控。</div>` : ''}
           <div class="warn">
             订单已生成但<strong>尚未付款</strong>。一手待付款订单有效期约 <strong>20 分钟</strong>，超时未付会自动关闭并释放库存，届时需要重新抢。
           </div>

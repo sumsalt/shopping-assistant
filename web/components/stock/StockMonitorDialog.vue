@@ -89,6 +89,7 @@
                 :disabled="isLoading"
                 class="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               >
+              <p class="mt-1 text-xs text-gray-500">库存不足时按实际可买数量下单</p>
             </div>
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">支付方式</label>
@@ -139,6 +140,9 @@
           >
             <template v-if="precheck.success">
               <p class="font-medium">链路可用：{{ precheck.skuLabel }} × {{ precheck.num }}</p>
+              <p v-if="precheck.numReduced" class="mt-1 text-xs">
+                当前库存只有 {{ precheck.num }} 件，将按实际可买数量下单（你设置的是 {{ precheck.requestedNum }} 件）
+              </p>
               <p class="mt-1">
                 商品 ¥{{ precheck.goodsAmount?.toFixed(2) ?? '-' }} + 运费 ¥{{ precheck.shippingFee?.toFixed(2) ?? '-' }}
               </p>
@@ -225,6 +229,8 @@ interface PrecheckResult {
   message?: string
   skuLabel?: string
   num?: number
+  requestedNum?: number
+  numReduced?: boolean
   goodsAmount?: number
   shippingFee?: number
   stage?: string

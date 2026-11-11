@@ -148,7 +148,9 @@
               <div class="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-green-800">
                 <span>订单号：<strong class="tabular-nums">{{ task.result.orderSn }}</strong></span>
                 <span>金额：{{ formatAmount(task.result.orderAmount) }}</span>
-                <span v-if="task.result.orderSkuLabel">规格：{{ task.result.orderSkuLabel }}</span>
+                <span v-if="task.result.orderSkuLabel">
+                  规格：{{ task.result.orderSkuLabel }}<template v-if="task.result.orderNum"> × {{ task.result.orderNum }}</template>
+                </span>
                 <span v-if="task.result.orderExpireAt">
                   付款截止：{{ formatExpire(task.result.orderExpireAt) }}
                 </span>

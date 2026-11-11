@@ -79,8 +79,12 @@ export interface PrecheckOrderResult {
   /** 命中的规格 */
   sku?: string;
   skuLabel?: string;
-  /** 购买件数 */
+  /** 购买件数（实际可买数量） */
   num?: number;
+  /** 用户配置的购买件数 */
+  requestedNum?: number;
+  /** 库存不足，实际件数少于配置件数 */
+  numReduced?: boolean;
   /** 商品金额 */
   goodsAmount?: number;
   /** 运费 */
@@ -166,6 +170,22 @@ const normalizeNum = (num?: number): number => {
   return Math.min(value, MAX_AUTO_ORDER_NUM);
 };
 
+/**
+ * 结算回传的实际件数
+ *
+ * 一手在库存不足时会按剩余库存削减数量，真实可买件数以 num_total 为准；
+ * 该字段缺失时退回累加 stock 里的 num。
+ */
+const resolveActualNum = (confirm: YishouConfirmOrderData): number => {
+  if (confirm.numTotal && confirm.numTotal > 0) {
+    return confirm.numTotal;
+  }
+  return confirm.stock.reduce((total, item) => {
+    const value = Number.parseInt(String(item?.num ?? ''), 10);
+    return Number.isFinite(value) && value > 0 ? total + value : total;
+  }, 0);
+};
+
 /** 构造失败结果 */
 const failure = (
   stage: AutoOrderStage,
@@ -183,7 +203,10 @@ interface PreparedOrder {
   address: YishouAddress;
   sku: SkuInfo;
   skuLabel: string;
+  /** 实际下单件数（已被库存削减） */
   num: number;
+  /** 用户配置的件数 */
+  requestedNum: number;
   recId: string;
   confirm: YishouConfirmOrderData;
 }
@@ -202,7 +225,9 @@ const prepareOrder = async (
   params: PlaceOrderParams
 ): Promise<PrepareOutcome> => {
   const { goodsId, goodsNo, config } = params;
-  const num = normalizeNum(config.num);
+  const requestedNum = normalizeNum(config.num);
+  /** 本次实际尝试的件数：选规格后会按可售库存削减，失败信息里也用它 */
+  let num = requestedNum;
 
   let recId: string | null = null;
   let stage: AutoOrderStage = 'address';
@@ -220,7 +245,7 @@ const prepareOrder = async (
         result: failure(
           'address',
           config.addressId ? '指定的收货地址不存在，请重新选择' : '一手账号没有收货地址，请先在 App 中添加',
-          { num }
+          { num: requestedNum }
         ),
       };
     }
@@ -236,10 +261,13 @@ const prepareOrder = async (
     if (!pick) {
       return {
         ok: false,
-        result: failure('sku', '该商品当前没有可售规格', { retryable: true, num }),
+        result: failure('sku', '该商品当前没有可售规格', { retryable: true, num: requestedNum }),
       };
     }
 
+    // 能买多少买多少：可售库存不足配置件数时按库存下单。
+    // 否则库存只剩 1~2 件时，配置 5 件的任务会一直空等补货，永远抢不到。
+    num = Math.max(1, Math.min(requestedNum, pick.saleStock));
     const skuLabel = [pick.color, pick.size].filter(Boolean).join(' / ');
     const selected = JSON.stringify([{ sku: pick.skuId, num: String(num) }]);
 
@@ -252,7 +280,11 @@ const prepareOrder = async (
     stage = 'confirm';
     const confirm = await adapter.confirmOrder(recId, selected, address.addressId);
 
-    if (confirm.stock.length === 0 || confirm.outStock.length > 0) {
+    // 结算时一手会按剩余库存结算：out_stock 只代表部分失效，
+    // 只要还有可买件数就继续建单，不再因为 out_stock 非空直接放弃。
+    const actualNum = resolveActualNum(confirm);
+
+    if (confirm.stock.length === 0 || actualNum <= 0) {
       await adapter.deleteCart(recId).catch(() => undefined);
       recId = null;
       return {
@@ -266,9 +298,25 @@ const prepareOrder = async (
       };
     }
 
+    // 结算件数大于本次加购数量，说明购物车里还留着上一轮没清掉的条目，
+    // 直接建单会多买：清掉重来，下一轮按正确数量下单。
+    if (actualNum > num) {
+      await adapter.deleteCart(recId).catch(() => undefined);
+      recId = null;
+      return {
+        ok: false,
+        result: failure('confirm', '购物车存在残留商品，已清理，下一轮重新下单', {
+          retryable: true,
+          sku: pick.skuId,
+          skuLabel,
+          num,
+        }),
+      };
+    }
+
     return {
       ok: true,
-      prepared: { address, sku: pick, skuLabel, num, recId, confirm },
+      prepared: { address, sku: pick, skuLabel, num: actualNum, requestedNum, recId, confirm },
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -307,7 +355,7 @@ export const placeAutoOrder = async (
     return prepared.result;
   }
 
-  const { address, sku, skuLabel, num, recId, confirm } = prepared.prepared;
+  const { address, sku, skuLabel, num, requestedNum, recId, confirm } = prepared.prepared;
   const payTool = resolvePayTool(configuredPayTool, confirm.payTools);
 
   try {
@@ -337,9 +385,14 @@ export const placeAutoOrder = async (
       sku: sku.skuId,
       skuLabel,
       num,
+      requestedNum,
+      numReduced: num < requestedNum,
       recId,
       expireAt,
-      message: '已创建待付款订单',
+      message:
+        num < requestedNum
+          ? `已创建待付款订单（库存不足，按实际可买 ${num} 件下单）`
+          : '已创建待付款订单',
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -403,7 +456,7 @@ export const precheckAutoOrder = async (
     };
   }
 
-  const { address, sku, skuLabel, num, recId, confirm } = prepared.prepared;
+  const { address, sku, skuLabel, num, requestedNum, recId, confirm } = prepared.prepared;
 
   // 预检不建单，把购物车清干净
   await adapter.deleteCart(recId).catch(() => undefined);
@@ -413,10 +466,12 @@ export const precheckAutoOrder = async (
     sku: sku.skuId,
     skuLabel,
     num,
+    requestedNum,
+    numReduced: num < requestedNum,
     goodsAmount: confirm.goodsAmount,
     shippingFee: confirm.shippingFee,
     payTools: confirm.payTools,
     addressText: [address.area, address.address].filter(Boolean).join(' '),
-    message: '可以下单',
+    message: num < requestedNum ? `库存不足，将按 ${num} 件下单` : '可以下单',
   };
 };

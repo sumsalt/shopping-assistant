@@ -47,6 +47,8 @@ export interface MonitorTaskItem {
     orderExpireAt?: number
     /** 下单规格 */
     orderSkuLabel?: string
+    /** 实际下单件数 */
+    orderNum?: number
     /** 下单失败原因 */
     orderError?: string
     /** 失败阶段 */

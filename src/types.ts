@@ -692,8 +692,12 @@ export interface AutoOrderResult {
   sku?: string;
   /** SKU 文案：蓝色 / M */
   skuLabel?: string;
-  /** 购买件数 */
+  /** 购买件数（实际下单件数，库存不足时可能小于配置件数） */
   num?: number;
+  /** 用户配置的购买件数 */
+  requestedNum?: number;
+  /** 库存不足，已按实际可买件数下单 */
+  numReduced?: boolean;
   /** 购物车 rec_id */
   recId?: string;
   /** 支付截止时间（毫秒时间戳） */
