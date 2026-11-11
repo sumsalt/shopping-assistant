@@ -68,22 +68,7 @@
     <div v-else-if="batchStockResults" class="space-y-6">
       <!-- 统计信息 -->
       <div class="bg-white rounded-lg border border-gray-200 p-6">
-        <div class="flex items-center justify-between mb-4">
-          <h3 class="text-lg font-medium text-gray-900">查询结果统计</h3>
-          <UiButton
-            v-if="outOfStockCount > 0"
-            variant="primary"
-            size="sm"
-            :loading="isCreatingMonitor"
-            :disabled="isCreatingMonitor"
-            @click="handleBatchMonitor"
-          >
-            <svg v-if="!isCreatingMonitor" class="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-            </svg>
-            {{ isCreatingMonitor ? '创建中' : '监控所有无货商品' }}
-          </UiButton>
-        </div>
+        <h3 class="text-lg font-medium text-gray-900 mb-4">查询结果统计</h3>
         <div class="grid grid-cols-3 gap-4">
           <div class="text-center">
             <div class="text-3xl font-bold text-blue-600">{{ batchStockResults.total }}</div>
@@ -96,20 +81,6 @@
           <div class="text-center">
             <div class="text-3xl font-bold text-red-600">{{ batchStockResults.failedCount }}</div>
             <div class="text-sm text-gray-500">失败</div>
-          </div>
-        </div>
-        <div v-if="outOfStockCount > 0" class="mt-4 p-3 bg-orange-50 rounded-lg">
-          <div class="flex items-center justify-between">
-            <div class="text-sm text-orange-800">
-              发现 <span class="font-bold">{{ outOfStockCount }}</span> 个无货商品
-            </div>
-            <UiButton
-              variant="outline"
-              size="xs"
-              @click="handleBatchMonitor"
-            >
-              点击批量创建监控
-            </UiButton>
           </div>
         </div>
       </div>
@@ -132,11 +103,7 @@
               :price-note="item.priceNote"
               :in-stock="item.inStock"
               :message="item.message"
-              :show-monitor-button="!item.inStock"
-              show-price-monitor-button
               @click="handleProductClick(item)"
-              @monitor="handleMonitor(item)"
-              @price-monitor="openPriceMonitor(item)"
             />
           </div>
         </div>
@@ -178,11 +145,7 @@
           :price-note="stockResult.priceNote"
           :in-stock="stockResult.inStock"
           :message="stockResult.message"
-          :show-monitor-button="!stockResult.inStock"
-          show-price-monitor-button
           @click="handleProductClick(stockResult)"
-          @monitor="handleMonitor(stockResult)"
-          @price-monitor="openPriceMonitor(stockResult)"
         />
 
         <!-- 详细信息卡片 -->
@@ -221,42 +184,14 @@
           </dl>
 
           <template #footer>
-            <div class="flex gap-2">
-              <!-- 到货监控按钮（打开统一配置弹窗） -->
-              <UiButton
-                v-if="!stockResult.inStock"
-                variant="primary"
-                size="sm"
-                class="flex-1"
-                @click="handleMonitor(stockResult)"
-              >
-                <svg class="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-                </svg>
-                到货监控
-              </UiButton>
-              <!-- 价格监控按钮 -->
-              <UiButton
-                variant="outline"
-                size="sm"
-                class="flex-1 text-emerald-600 border-emerald-200 hover:bg-emerald-50 hover:border-emerald-300"
-                @click="openPriceMonitor(stockResult)"
-              >
-                <svg class="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-                </svg>
-                价格监控
-              </UiButton>
-              <!-- 查看详情按钮 -->
-              <UiButton
-                variant="outline"
-                size="sm"
-                :class="stockResult.inStock ? 'flex-1' : ''"
-                @click="handleProductClick(stockResult)"
-              >
-                查看 SKU 详情
-              </UiButton>
-            </div>
+            <UiButton
+              variant="primary"
+              size="sm"
+              class="w-full"
+              @click="handleProductClick(stockResult)"
+            >
+              查看 SKU 详情（创建监控）
+            </UiButton>
           </template>
         </UiCard>
       </div>
@@ -284,38 +219,18 @@
         <li>支持输入单个或多个商品 ID 进行查询，多个 ID 用逗号分隔</li>
         <li>批量查询时，会显示成功和失败的商品列表及统计信息</li>
         <li>查询结果显示商品基本信息和库存状态</li>
-        <li>点击商品卡片或"查看 SKU 详情"按钮可查看所有颜色尺码的库存</li>
-        <li>点击"价格监控"可监控该商品拿货价的涨跌变化</li>
+        <li>点击商品卡片或「查看 SKU 详情」可查看所有颜色尺码的库存</li>
+        <li>到货监控、价格监控统一在商品详情页创建</li>
       </ul>
     </div>
-
-    <!-- 价格监控弹窗 -->
-    <PriceMonitorDialog
-      v-model:open="showPriceDialog"
-      :product="priceMonitorProduct"
-    />
-
-    <!-- 到货监控配置弹窗（监控时长、是否自动下单） -->
-    <StockMonitorDialog
-      v-model:open="showStockMonitorDialog"
-      :product="monitorProduct"
-    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { DEFAULT_STOCK_MONITOR_DURATION, formatMonitorDuration } from '@/utils/stockMonitorConfig'
-
 // 页面元信息
 definePageMeta({
   title: '库存查询',
 })
-
-// 使用 toast
-const toast = useToast()
-
-// 使用确认对话框
-const confirmDialog = useConfirmDialog()
 
 // 使用库存查询 composable
 const {
@@ -328,50 +243,8 @@ const {
   goToProductDetail,
 } = useStock()
 
-// 使用监控 composable（单商品走配置弹窗，只有批量还直接创建）
-const { monitorAllOutOfStock, isLoading: isCreatingMonitor } = useMonitor()
-
 // 搜索关键词
 const searchQuery = ref('')
-
-// 到货监控配置弹窗
-const showStockMonitorDialog = ref(false)
-const monitorProduct = ref<{
-  productId: string
-  productName?: string
-  productImage?: string
-  productNo?: string
-} | null>(null)
-
-// 价格监控弹窗
-const showPriceDialog = ref(false)
-const priceMonitorProduct = ref<{
-  productId: string
-  productName?: string
-  productImage?: string
-} | null>(null)
-
-// 打开价格监控弹窗
-const openPriceMonitor = (item: any) => {
-  if (!item?.productId) {
-    return
-  }
-
-  priceMonitorProduct.value = {
-    productId: item.productId,
-    productName: item.productName,
-    productImage: item.productImage,
-  }
-  showPriceDialog.value = true
-}
-
-// 计算无货商品数量
-const outOfStockCount = computed(() => {
-  if (!batchStockResults.value) {
-    return 0
-  }
-  return batchStockResults.value.successItems.filter(item => !item.inStock).length
-})
 
 // 搜索处理
 const handleSearch = async () => {
@@ -402,60 +275,5 @@ const handleProductClick = (item: any) => {
   if (item?.productNo) {
     goToProductDetail(item.productNo)
   }
-}
-
-// 打开到货监控配置弹窗（单商品入口）
-const handleMonitor = (item: any) => {
-  if (!item?.productId) {
-    return
-  }
-
-  // 如果有货，提示用户
-  if (item.inStock) {
-    toast.warning('商品当前有货，无需监控')
-    return
-  }
-
-  monitorProduct.value = {
-    productId: item.productId,
-    productName: item.productName,
-    productImage: item.productImage,
-    productNo: item.productNo,
-  }
-  showStockMonitorDialog.value = true
-}
-
-// 批量监控所有无货商品
-const handleBatchMonitor = async () => {
-  if (!batchStockResults.value) {
-    return
-  }
-
-  const outOfStockItems = batchStockResults.value.successItems.filter(item => !item.inStock)
-
-  if (outOfStockItems.length === 0) {
-    toast.info('没有需要监控的无货商品')
-    return
-  }
-
-  const confirmed = await confirmDialog.confirm({
-    title: '批量创建监控',
-    message: `确定要为 ${outOfStockItems.length} 个无货商品创建到货监控吗？将使用默认配置：仅邮件提醒、时长 ${formatMonitorDuration(DEFAULT_STOCK_MONITOR_DURATION)}。单独商品可点「到货监控」自定义配置（含自动下单）。`,
-    confirmText: '确定',
-    cancelText: '取消',
-  })
-
-  if (!confirmed) {
-    return
-  }
-
-  // 一个任务只监控一个商品，批量场景拆成多个任务串行创建（提示由 composable 统一给出）
-  await monitorAllOutOfStock(
-    outOfStockItems.map(item => ({
-      productId: item.productId,
-      productName: item.productName,
-      productImage: item.productImage,
-    }))
-  )
 }
 </script>

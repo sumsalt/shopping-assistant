@@ -3,8 +3,8 @@
     <!-- 页面标题 -->
     <div class="flex items-center justify-between mb-6">
       <div>
-        <h1 class="text-2xl font-bold text-gray-900">收藏夹监控</h1>
-        <p class="mt-1 text-sm text-gray-500">监控收藏夹中商品的库存状态</p>
+        <h1 class="text-2xl font-bold text-gray-900">收藏夹</h1>
+        <p class="mt-1 text-sm text-gray-500">查看收藏夹商品库存，点击商品进入详情页创建监控</p>
       </div>
       <UiButton
         :loading="isLoading"
@@ -86,18 +86,6 @@
             无货商品
             <UiBadge variant="danger" size="sm" class="ml-2">{{ allOutOfStockItems.length }}</UiBadge>
           </h2>
-          <UiButton
-            variant="outline"
-            size="sm"
-            :loading="isMonitoring"
-            :disabled="isMonitoring"
-            @click="handleMonitorAll"
-          >
-            <svg v-if="!isMonitoring" class="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-            </svg>
-            {{ isMonitoring ? '创建中...' : '监控到货提醒' }}
-          </UiButton>
         </div>
         <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
           <StockProductCard
@@ -111,12 +99,7 @@
             :in-stock="item.inStock"
             :message="item.message"
             :sales="item.salesOf7"
-            :show-monitor-button="true"
-            :is-monitoring="monitoringItems.has(item.collectId)"
-            show-price-monitor-button
             @click="handleProductClick(item.productNo)"
-            @monitor="handleMonitorSingle(item)"
-            @price-monitor="openPriceMonitor(item)"
           />
         </div>
       </div>
@@ -139,9 +122,7 @@
             :price="item.price"
             :in-stock="item.inStock"
             :sales="item.salesOf7"
-            show-price-monitor-button
             @click="handleProductClick(item.productNo)"
-            @price-monitor="openPriceMonitor(item)"
           />
         </div>
       </div>
@@ -192,7 +173,7 @@
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
           </svg>
         </div>
-        <h3 class="text-lg font-medium text-gray-900 mb-2">开始监控</h3>
+        <h3 class="text-lg font-medium text-gray-900 mb-2">加载收藏夹</h3>
         <p class="text-gray-500 mb-4">
           点击刷新按钮开始加载收藏夹商品
         </p>
@@ -201,19 +182,13 @@
         </UiButton>
       </div>
     </div>
-
-    <!-- 价格监控弹窗（一个任务只监控一个商品） -->
-    <PriceMonitorDialog
-      v-model:open="showPriceDialog"
-      :product="priceMonitorProduct"
-    />
   </div>
 </template>
 
 <script setup lang="ts">
 // 页面元信息
 definePageMeta({
-  title: '收藏夹监控',
+  title: '收藏夹',
 })
 
 // 使用收藏夹 composable
@@ -230,16 +205,6 @@ const {
   goToProductDetail,
 } = useCollection()
 
-// 使用监控 composable
-const {
-  isLoading: isMonitoring,
-  createMonitorTask,
-  monitorAllOutOfStock,
-} = useMonitor()
-
-// 单个商品监控状态（记录正在监控的商品 collectId）
-const monitoringItems = ref<Set<string>>(new Set())
-
 // 刷新处理
 const handleRefresh = () => {
   refresh()
@@ -253,65 +218,6 @@ const handleLoadMore = () => {
 // 点击商品卡片
 const handleProductClick = (productNo: string) => {
   goToProductDetail(productNo)
-}
-
-// 监控单个商品
-const handleMonitorSingle = async (item: {
-  productId: string
-  productName: string
-  productImage: string
-  collectId: string
-}) => {
-  // 添加到监控状态
-  monitoringItems.value.add(item.collectId)
-
-  try {
-    await createMonitorTask({
-      productId: item.productId,
-      productName: item.productName,
-      productImage: item.productImage,
-    })
-  } finally {
-    // 移除监控状态
-    monitoringItems.value.delete(item.collectId)
-  }
-}
-
-// 监控所有无货商品
-const handleMonitorAll = async () => {
-  const products = allOutOfStockItems.value.map(item => ({
-    productId: item.productId,
-    productName: item.productName,
-    productImage: item.productImage,
-  }))
-
-  await monitorAllOutOfStock(products)
-}
-
-// 价格监控弹窗（一个任务只监控一个商品）
-const showPriceDialog = ref(false)
-const priceMonitorProduct = ref<{
-  productId: string
-  productName?: string
-  productImage?: string
-} | null>(null)
-
-// 打开价格监控弹窗（列表卡片上的「价格监控」按钮）
-const openPriceMonitor = (item: {
-  productId: string
-  productName?: string
-  productImage?: string
-}) => {
-  if (!item?.productId) {
-    return
-  }
-
-  priceMonitorProduct.value = {
-    productId: item.productId,
-    productName: item.productName,
-    productImage: item.productImage,
-  }
-  showPriceDialog.value = true
 }
 
 // 页面加载时自动获取数据

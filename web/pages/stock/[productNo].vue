@@ -191,6 +191,7 @@ const priceMonitorProduct = ref<{
   productId: string
   productName?: string
   productImage?: string
+  productNo?: string
 } | null>(null)
 
 // 打开到货监控配置弹窗
@@ -226,6 +227,7 @@ const openPriceMonitor = () => {
     productId: skuResult.value.productId,
     productName: skuResult.value.productName,
     productImage: skuResult.value.productImage,
+    productNo: skuResult.value.productNo,
   }
   showPriceDialog.value = true
 }

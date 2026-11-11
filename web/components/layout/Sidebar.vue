@@ -191,7 +191,7 @@ const menuItems = [
   },
   {
     path: '/collection',
-    label: '收藏夹监控',
+    label: '收藏夹',
     icon: HeartIcon,
   },
   {

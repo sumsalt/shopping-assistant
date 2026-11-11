@@ -248,11 +248,11 @@
         </div>
         <h3 class="text-lg font-medium text-gray-900 mb-2">暂无监控任务</h3>
         <p class="text-gray-500 mb-4">
-          您还没有创建任何监控任务
+          到货监控任务请在商品详情页创建：从库存查询或收藏夹进入商品，点击「到货监控」即可
         </p>
-        <NuxtLink to="/collection">
+        <NuxtLink to="/stock/check">
           <UiButton>
-            去收藏夹创建
+            去库存查询
           </UiButton>
         </NuxtLink>
       </div>

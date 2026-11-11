@@ -5,7 +5,7 @@
       <div>
         <h1 class="text-2xl font-bold text-gray-900">价格监控</h1>
         <p class="mt-1 text-sm text-gray-500">
-          监控登录态下的商品拿货价，价格变动时发送邮件提醒
+          监控登录态下的商品拿货价，价格变动时发送邮件提醒；任务在商品详情页创建
         </p>
       </div>
       <div class="flex items-center gap-2 flex-shrink-0">
@@ -17,14 +17,6 @@
           @click="handleRefresh"
         >
           刷新
-        </UiButton>
-        <UiButton
-          size="sm"
-          class="whitespace-nowrap"
-          :disabled="isLoading"
-          @click="showCreateDialog = true"
-        >
-          添加商品
         </UiButton>
       </div>
     </div>
@@ -302,20 +294,15 @@
         </div>
         <h3 class="text-lg font-medium text-gray-900 mb-2">还没有价格监控任务</h3>
         <p class="text-gray-500 max-w-sm mb-4">
-          添加商品后，系统会按设定的间隔检测拿货价变化，并在变动时发送邮件提醒
+          价格监控任务请在商品详情页创建：从库存查询或收藏夹进入商品，点击「价格监控」后设置参数即可
         </p>
-        <UiButton class="whitespace-nowrap" @click="showCreateDialog = true">
-          添加商品
-        </UiButton>
+        <NuxtLink to="/stock/check">
+          <UiButton variant="outline">
+            去库存查询
+          </UiButton>
+        </NuxtLink>
       </div>
     </div>
-
-    <!-- 创建弹窗 -->
-    <PriceMonitorDialog
-      v-model:open="showCreateDialog"
-      :product="pendingProduct"
-      @created="handleCreated"
-    />
 
     <!-- 使用说明 -->
     <div class="mt-6 p-4 bg-blue-50 rounded-lg">
@@ -332,8 +319,6 @@
 </template>
 
 <script setup lang="ts">
-import type { PriceMonitorProduct } from '~/composables/usePriceMonitor'
-
 definePageMeta({
   title: '价格监控',
 })
@@ -356,17 +341,6 @@ const {
   formatAmount,
   formatExpire,
 } = usePriceMonitorTasks()
-
-// 创建弹窗（页面入口不指定商品，弹窗内先查询再设置参数）
-const showCreateDialog = ref(false)
-const pendingProduct = ref<PriceMonitorProduct | null>(null)
-
-/**
- * 创建成功
- */
-const handleCreated = async () => {
-  await fetchTasks()
-}
 
 /**
  * 刷新

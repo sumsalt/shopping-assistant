@@ -4,28 +4,8 @@
     title="价格监控"
     @update:open="handleOpenChange"
   >
-    <!-- 第一步：输入商品 -->
-    <div v-if="isSearchStep" class="space-y-4">
-      <form @submit.prevent="handleSearchProduct">
-        <UiInput
-          v-model="searchInput"
-          label="商品 ID / 货号 / 商品链接"
-          placeholder="例如 333816379"
-          size="lg"
-          clearable
-          :disabled="isSearching"
-          :error="searchError"
-          hint="输入后先查询商品，再设置监控参数"
-        />
-      </form>
-
-      <div class="p-3 bg-blue-50 rounded-lg text-sm text-blue-700">
-        价格监控只对比登录态下的拿货价，需先在账号管理中选择带登录态的账号。
-      </div>
-    </div>
-
-    <!-- 第二步：设置参数 -->
-    <div v-else class="space-y-5">
+    <!-- 设置参数 -->
+    <div class="space-y-5">
       <!-- 商品摘要（一个任务只监控一个商品） -->
       <div v-if="displayProduct" class="flex items-center gap-3 p-2 bg-gray-50 rounded-lg">
         <div class="w-10 h-10 flex-shrink-0 rounded overflow-hidden bg-gray-100">
@@ -309,64 +289,31 @@
     <template #footer>
       <div class="flex gap-2">
         <UiButton
-          v-if="isSearchStep"
           variant="outline"
           class="flex-1 whitespace-nowrap"
-          :disabled="isSearching"
+          :disabled="isLoading"
           @click="handleClose"
         >
           取消
         </UiButton>
-
-        <template v-else>
-          <UiButton
-            v-if="isSearchMode"
-            variant="outline"
-            class="flex-1 whitespace-nowrap"
-            :disabled="isLoading"
-            @click="backToSearch"
-          >
-            重新输入
-          </UiButton>
-          <UiButton
-            v-else
-            variant="outline"
-            class="flex-1 whitespace-nowrap"
-            :disabled="isLoading"
-            @click="handleClose"
-          >
-            取消
-          </UiButton>
-          <UiButton
-            v-if="autoOrderEnabled && hasCredential"
-            variant="outline"
-            class="flex-1 whitespace-nowrap"
-            :loading="isChecking"
-            :disabled="isLoading || isChecking || !productNo"
-            @click="handlePrecheck"
-          >
-            预检
-          </UiButton>
-          <UiButton
-            variant="primary"
-            class="flex-1 whitespace-nowrap"
-            :loading="isLoading"
-            :disabled="isLoading || !hasCredential || (autoOrderEnabled && !productNo)"
-            @click="handleSubmit"
-          >
-            {{ isLoading ? '创建中' : '开始监控' }}
-          </UiButton>
-        </template>
-
         <UiButton
-          v-if="isSearchStep"
+          v-if="autoOrderEnabled && hasCredential"
+          variant="outline"
+          class="flex-1 whitespace-nowrap"
+          :loading="isChecking"
+          :disabled="isLoading || isChecking || !productNo"
+          @click="handlePrecheck"
+        >
+          预检
+        </UiButton>
+        <UiButton
           variant="primary"
           class="flex-1 whitespace-nowrap"
-          :loading="isSearching"
-          :disabled="isSearching || !searchInput.trim()"
-          @click="handleSearchProduct"
+          :loading="isLoading"
+          :disabled="isLoading || !hasCredential || (autoOrderEnabled && !productNo)"
+          @click="handleSubmit"
         >
-          {{ isSearching ? '查询中' : '查询商品' }}
+          {{ isLoading ? '创建中' : '开始监控' }}
         </UiButton>
       </div>
     </template>
@@ -416,7 +363,7 @@ interface SkuOption {
 // 组件属性
 interface Props {
   open: boolean
-  /** 已确定的商品；为空时弹窗进入“先查询商品”模式 */
+  /** 要监控的商品，只能从商品详情页打开 */
   product?: PriceMonitorProduct | null
 }
 
@@ -434,19 +381,6 @@ const configStore = useConfigStore()
 const toast = useToast()
 const { createPriceMonitorTask, isLoading } = usePriceMonitor()
 const { checkStock } = useStock()
-
-// 是否为“先查询商品”模式
-const isSearchMode = computed(() => !props.product)
-
-// 当前步骤
-const step = ref<'search' | 'config'>('search')
-const isSearchStep = computed(() => step.value === 'search')
-
-// 查询商品
-const searchInput = ref('')
-const searchError = ref('')
-const isSearching = ref(false)
-const searchedProduct = ref<PriceMonitorProduct | null>(null)
 
 // 检测间隔
 const intervalInput = ref(String(MIN_PRICE_MONITOR_INTERVAL))
@@ -633,7 +567,7 @@ const notifyOptions: Array<{ value: PriceNotifyOn; label: string }> = [
 ]
 
 // 实际要监控的商品（一个任务只监控一个商品）
-const displayProduct = computed(() => props.product ?? searchedProduct.value)
+const displayProduct = computed(() => props.product)
 
 // 是否已配置登录态（当前账号的抓包快照里带 uid + token）
 const hasCredential = computed(() => Boolean(configStore.activeAccount?.hasCredential))
@@ -643,67 +577,6 @@ const cycleText = computed(() => {
   const interval = Number(intervalInput.value) || DEFAULT_PRICE_MONITOR_INTERVAL
   return `约 ${interval} 秒/次`
 })
-
-// 从输入中解析商品 ID（兼容商品链接）
-const parseProductId = (input: string): string => {
-  const value = input.trim()
-
-  const linkMatch = value.match(/goods\/(\d+)/)
-  if (linkMatch?.[1]) {
-    return linkMatch[1]
-  }
-
-  const idMatch = value.match(/(?:goods_id|goodsId|id)=(\d+)/)
-  if (idMatch?.[1]) {
-    return idMatch[1]
-  }
-
-  return value
-}
-
-/**
- * 查询商品，成功后进入参数设置
- */
-const handleSearchProduct = async () => {
-  const productId = parseProductId(searchInput.value)
-
-  if (!productId) {
-    searchError.value = '请输入商品 ID、货号或商品链接'
-    return
-  }
-
-  isSearching.value = true
-  searchError.value = ''
-
-  try {
-    const result = await checkStock(productId)
-
-    if (!result) {
-      searchError.value = '未查询到商品，请检查 ID 是否正确'
-      return
-    }
-
-    searchedProduct.value = {
-      productId: result.productId,
-      productName: result.productName,
-      productImage: result.productImage,
-      productNo: result.productNo,
-    }
-    productNo.value = result.productNo || ''
-    step.value = 'config'
-  } finally {
-    isSearching.value = false
-  }
-}
-
-/**
- * 返回上一步重新输入
- */
-const backToSearch = () => {
-  step.value = 'search'
-  searchedProduct.value = null
-  searchError.value = ''
-}
 
 // 关闭弹窗
 const handleClose = () => {
@@ -726,8 +599,7 @@ const handleSubmit = async () => {
   }
 
   if (!displayProduct.value) {
-    searchError.value = '请先选择要监控的商品'
-    step.value = 'search'
+    toast.warning('缺少商品信息，请从商品详情页重新打开')
     return
   }
 
@@ -788,10 +660,6 @@ watch(
       return
     }
 
-    step.value = props.product ? 'config' : 'search'
-    searchInput.value = ''
-    searchError.value = ''
-    searchedProduct.value = null
     intervalInput.value = String(MIN_PRICE_MONITOR_INTERVAL)
     duration.value = DEFAULT_PRICE_MONITOR_DURATION
     notifyOn.value = 'any'
