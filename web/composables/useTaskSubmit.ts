@@ -17,8 +17,6 @@ export interface SubmitOptions {
   successMessage?: string
   /** 失败时的兜底文案 */
   failureMessage?: string
-  /** 静默提交：批量创建时不逐条弹提示 */
-  silent?: boolean
 }
 
 export const useTaskSubmit = () => {
@@ -39,7 +37,7 @@ export const useTaskSubmit = () => {
       const response = await $fetch<ApiResponse<T>>(url, { method: 'POST', body })
 
       if (response.success && response.data) {
-        if (options.successMessage && !options.silent) {
+        if (options.successMessage) {
           toast.success(options.successMessage)
         }
         return response.data
@@ -47,14 +45,14 @@ export const useTaskSubmit = () => {
 
       const message = response.error?.message || options.failureMessage || '操作失败'
       error.value = message
-      if (!options.silent) toast.error(message)
+      toast.error(message)
       return null
     } catch (err) {
       // Nuxt $fetch 的错误会把服务端响应体挂在 data 上，优先用它给出更准确的文案
       const responseMessage = (err as { data?: { message?: string } })?.data?.message
       const message = responseMessage || (err instanceof Error ? err.message : '网络请求失败')
       error.value = message
-      if (!options.silent) toast.error(message)
+      toast.error(message)
       return null
     } finally {
       isLoading.value = false

@@ -4,16 +4,6 @@ import { useTaskSubmit } from './useTaskSubmit'
 /** 库存监控的最小检测间隔（秒），与后端 MIN_STOCK_MONITOR_INTERVAL 保持一致 */
 export const MIN_STOCK_MONITOR_INTERVAL = 2
 
-// 监控任务类型
-interface MonitorTask {
-  request: {
-    platform: string
-    productId: string
-  }
-  recipient: string
-  subject?: string
-}
-
 // 自动下单配置
 export interface AutoOrderSettings {
   enabled: boolean
@@ -66,21 +56,11 @@ interface TaskStatusResponse {
   }
 }
 
-// API 响应类型
-interface ApiResponse<T> {
-  success: boolean
-  data?: T
-  error?: {
-    code: string
-    message: string
-  }
-}
-
 /**
  * 监控任务管理组合式函数
  */
 export const useMonitor = () => {
-  const { user, isLoggedIn, checkAuth } = useAuth()
+  const { user, checkAuth } = useAuth()
   const toast = useToast()
   const { isLoading, error, submit, fetchStatus } = useTaskSubmit()
 
@@ -89,8 +69,7 @@ export const useMonitor = () => {
    */
   const createMonitorTask = async (
     product: { productId: string; productName: string; productImage?: string },
-    config?: MonitorConfig,
-    options: { silent?: boolean } = {}
+    config?: MonitorConfig
   ): Promise<string | null> => {
     // 确保用户已登录
     await checkAuth()
@@ -116,7 +95,6 @@ export const useMonitor = () => {
           ? '已创建到货监控任务（有货自动下单）'
           : '已创建到货监控任务（仅邮件提醒）',
         failureMessage: '创建任务失败',
-        silent: options.silent,
       }
     )
 

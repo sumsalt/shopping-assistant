@@ -62,7 +62,7 @@
         <p class="text-sm text-gray-500">输入商品 ID 或货号，快速查询库存状态</p>
       </NuxtLink>
 
-      <!-- 收藏夹监控 -->
+      <!-- 收藏夹 -->
       <NuxtLink
         to="/collection"
         class="block p-6 bg-white rounded-lg border border-gray-200 hover:shadow-md hover:border-green-300 transition-all group"
@@ -74,8 +74,8 @@
             </svg>
           </div>
         </div>
-        <h3 class="text-lg font-semibold text-gray-900 mb-1">收藏夹监控</h3>
-        <p class="text-sm text-gray-500">一键监控收藏夹中所有商品的库存状态</p>
+        <h3 class="text-lg font-semibold text-gray-900 mb-1">收藏夹</h3>
+        <p class="text-sm text-gray-500">查看收藏商品库存，进详情页创建监控</p>
       </NuxtLink>
 
       <!-- 凑单计算器 -->
@@ -208,9 +208,9 @@
             3
           </div>
           <div class="ml-4">
-            <h4 class="text-sm font-medium text-gray-900">监控收藏夹</h4>
+            <h4 class="text-sm font-medium text-gray-900">查看收藏夹</h4>
             <p class="text-sm text-gray-500 mt-1">
-              在"收藏夹监控"页面可以一键查看所有收藏商品的库存状态，有货商品会优先展示，方便及时下单。
+              在「收藏夹」页面可以查看所有收藏商品的库存状态，点击商品进入详情页创建到货或价格监控。
             </p>
           </div>
         </div>
