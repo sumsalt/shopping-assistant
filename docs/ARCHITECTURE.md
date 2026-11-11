@@ -160,21 +160,32 @@ interface RequestProfile {
 
 ### 请求闸门（分桶）
 
-后台任务的出网请求统一在 `src/utils/http.ts` 排队，分桶键是 `accountKey`：
+后台任务的出网请求统一在 `src/utils/http.ts` 排队。**桶由本次请求实际带的凭证决定**，
+不由任务自己声明（`YishouClient` 在请求级传 `accountKey`）：
 
-| `accountKey` | 桶 | 默认间隔 | 谁在用 |
-|---|---|---|---|
-| 有值（账号 uid） | `auth:<uid>` | 15s | 价格监控（登录态） |
-| 空 | `anon`（全局单桶） | 1s | 到货检测、Tab 监控 |
+| 这次请求带什么 | 桶 | 默认间隔 |
+|---|---|---|
+| `uid` + `token` | `auth:<uid>` | 15s |
+| 其余（含只有 uid 没有 token） | `anon`（全局单桶） | 1s |
 
-`accountKey` 是「按谁的身份限流」的标识，不是凭证本身：同一 uid 的多个任务共享
-15 秒配额，避免同一账号被并发打爆；不传则进全局匿名桶，所有匿名任务共享
-1 秒一个槽位，按 `taskId` 轮转。用户手动操作不经过闸门（没有任务上下文）。
+同一 uid 的多个任务共享 15 秒配额，避免同一账号被并发打爆；匿名桶是全局单桶，
+所有匿名任务共享 1 秒一个槽位，按 `taskId` 轮转，任务多了实际检测周期会拉长。
 
-**到货检测是双重匿名**：`createStockGateContext` 不传 `accountKey`（排匿名桶），
-`toAnonymousAdapterConfig` 同时剔除顶层和快照里的 `uid/token`（请求本身也不带身份）。
-凭证只交给 `YishouOrderApi`，那条链路 `skipGate`（抢库存不排队）、超时 20 秒。
-代价是检测价格回退 `alone_price`，邮件带「游客参考价」标注。
+**用户手动操作不经过闸门**：没有任务上下文（`getGateContext()` 为空）就直接放行，
+所以页面上的查询、SKU 详情、下单预检都不受限；闸门只约束后台轮询。
+
+三种任务的落点因此是自然结果，不需要额外配置：
+
+| 任务 | 请求身份 | 桶 |
+|---|---|---|
+| 到货检测 | 匿名（`toAnonymousAdapterConfig` 剔除凭证） | 1s |
+| 到货下单 | 登录态，但 `skipGate` | 不排队 |
+| Tab 监控 | 匿名（配置本身无凭证） | 1s |
+| 价格监控 | 登录态（强制） | 15s |
+
+到货检测的代价是价格回退 `alone_price`，邮件带「游客参考价」标注；有货判定
+（`is_stockout` / `is_on_sale` / `goods_status`）与下单所需的 `goods_no`、`color/size`
+实测匿名与登录态完全一致。
 
 ### 抓包存什么
 

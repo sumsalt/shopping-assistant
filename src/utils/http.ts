@@ -27,6 +27,13 @@ export interface HttpRequestOptions {
    * 因此这些请求显式跳过限流；它们只在检测到有货时触发，不会持续空转。
    */
   skipGate?: boolean;
+  /**
+   * 本次请求的限流身份
+   *
+   * 决定进哪个桶：有值进 `auth:<accountKey>`，空串进全局匿名桶。
+   * 适配器按「这次请求到底带没带 uid/token」传入，避免任务上下文与请求身份对不上。
+   */
+  accountKey?: string;
 }
 
 /**
@@ -89,8 +96,14 @@ export const httpRequest = async <T>(
   // 用户手动触发的请求（无上下文）直接放行，不受任何限制。
   const gateContext = getGateContext();
   if (gateContext && !skipGate) {
+    // 分桶跟着「本次请求实际带的凭证」走：请求级声明优先于任务上下文，
+    // 否则会出现「匿名请求排 15 秒桶」或「登录请求排 1 秒桶」的错配。
+    const scopedContext =
+      options.accountKey === undefined
+        ? gateContext
+        : { ...gateContext, accountKey: options.accountKey };
     try {
-      await acquireRequestSlot(gateContext);
+      await acquireRequestSlot(scopedContext);
     } catch (error) {
       if (error instanceof GateTimeoutError) {
         throw new StockCheckError(

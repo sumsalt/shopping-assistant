@@ -346,7 +346,6 @@ export const createCancellablePriceMonitor = (
     {
       taskId: config.taskId || 'price-monitor',
       kind: 'price',
-      accountKey: config.adapterConfig?.uid,
     },
     async (): Promise<PriceMonitorResult> => {
       const {

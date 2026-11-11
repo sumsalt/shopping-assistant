@@ -233,7 +233,7 @@ export const createCancellableMonitor = (
   const { signal } = controller;
 
   // 打上任务上下文：循环内所有 HTTP 请求都会经过全局请求闸门（用户手动操作无上下文，不受限）
-  // 注意：这里刻意不传 accountKey，检测一律走匿名桶；下单请求自带 skipGate，不受此限制
+  // 桶由每次请求实际带的凭证决定：检测用匿名配置 → 匿名桶；下单 skipGate，不排队
   const promise = runWithGateContext(
     createStockGateContext(config),
     async (): Promise<MonitorResult> => {

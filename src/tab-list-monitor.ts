@@ -411,7 +411,6 @@ export const createCancellableTabMonitor = (
     {
       taskId: config.taskId || 'tab-monitor',
       kind: 'tab',
-      accountKey: config.adapterConfig?.uid,
     },
     async (): Promise<TabMonitorResult> => {
     const {

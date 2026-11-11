@@ -104,6 +104,9 @@ export class YishouClient {
         : {}),
       ...(this.options.skipGate ? { skipGate: true } : {}),
       ...(this.options.timeout ? { timeout: this.options.timeout } : {}),
+      // 限流身份由这次请求实际带的凭证决定：带 uid+token 进账号桶（15s），
+      // 不带进匿名桶（1s）。任务层不再自己声明，避免两处口径不一致。
+      accountKey: this.profile.hasAuth ? this.profile.uid : '',
     });
   }
 
