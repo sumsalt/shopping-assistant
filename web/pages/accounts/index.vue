@@ -573,7 +573,7 @@ const filterHint = (option: FilterOption): string =>
 const hasAnyTag = (item: AccountItem): boolean =>
   item.isVerified || item.isNewUser || item.hasOrdered || item.hasToken || item.hasPassword
 
-/** UiSwitch 回传的是 '1' / '0'，统一转成布尔再落到表单 */
+/** 兼容旧版 UiSwitch 回传的 '1' / '0'（现在统一回传布尔） */
 const toBoolean = (value: boolean | '1' | '0'): boolean => value === true || value === '1'
 
 const hasActiveFilters = computed(

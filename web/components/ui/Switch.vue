@@ -30,8 +30,8 @@ interface Props {
 }
 
 interface Emits {
-  /** 更新值 */
-  (e: 'update:modelValue', value: boolean | '1' | '0'): void
+  /** 更新值（统一回传布尔，避免 v-model 收到 '0' 被当成真值） */
+  (e: 'update:modelValue', value: boolean): void
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -43,7 +43,7 @@ const emit = defineEmits<Emits>()
 
 const enabled = computed({
   get: () => props.modelValue === true || props.modelValue === '1',
-  set: (value: boolean) => emit('update:modelValue', value ? '1' : '0')
+  set: (value: boolean) => emit('update:modelValue', value)
 })
 
 const toggle = () => {
