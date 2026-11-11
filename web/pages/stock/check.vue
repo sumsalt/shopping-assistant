@@ -129,6 +129,7 @@
               :name="item.productName"
               :image-url="item.productImage"
               :price="item.price"
+              :price-note="item.priceNote"
               :in-stock="item.inStock"
               :message="item.message"
               :show-monitor-button="!item.inStock"
@@ -174,6 +175,7 @@
           :name="stockResult.productName"
           :image-url="stockResult.productImage"
           :price="stockResult.price"
+          :price-note="stockResult.priceNote"
           :in-stock="stockResult.inStock"
           :message="stockResult.message"
           :show-monitor-button="!stockResult.inStock"
@@ -196,7 +198,12 @@
             </div>
             <div class="flex justify-between">
               <dt class="text-sm text-gray-500">价格</dt>
-              <dd class="text-sm font-medium text-red-600">¥{{ stockResult.price.toFixed(2) }}</dd>
+              <dd class="text-sm font-medium text-red-600">
+                ¥{{ stockResult.price.toFixed(2) }}
+                <span v-if="stockResult.priceNote" class="ml-1 text-xs font-normal text-gray-400">
+                  {{ stockResult.priceNote }}
+                </span>
+              </dd>
             </div>
             <div class="flex justify-between items-center">
               <dt class="text-sm text-gray-500">库存状态</dt>

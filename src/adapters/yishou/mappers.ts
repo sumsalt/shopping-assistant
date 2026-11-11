@@ -30,6 +30,25 @@ export const toOptionalNumber = (value?: string | number): number | undefined =>
   return Number.isFinite(parsed) ? parsed : undefined;
 };
 
+/**
+ * 商品详情价格
+ *
+ * 匿名请求时一手不会报错，而是把 `shop_price` 静默降级成 `"??.??"`（会员字段一并清空），
+ * 但 `alone_price`（单独购买价）仍然是真实可售价格，实测与登录态拿货价同值。
+ * 因此按 `shop_price → alone_price` 顺序取值，并标记来源，避免把游客价当成拿货价比价。
+ */
+export const resolveGoodsPrice = (
+  data: Pick<YishouGoodsData, 'shop_price' | 'alone_price'>
+): { price: number; guest: boolean } => {
+  const shopPrice = toOptionalNumber(data.shop_price);
+  if (shopPrice !== undefined && shopPrice > 0) return { price: shopPrice, guest: false };
+
+  const alonePrice = toOptionalNumber(data.alone_price);
+  if (alonePrice !== undefined && alonePrice > 0) return { price: alonePrice, guest: true };
+
+  return { price: 0, guest: false };
+};
+
 /** 一手地址原始字段（snake_case） */
 export interface YishouAddressRaw {
   address_id?: string | number;
@@ -112,6 +131,7 @@ export const mapToStockResult = (data: YishouGoodsData): StockCheckResult => {
     data.color || data.size
       ? [data.color, data.size].filter(Boolean).join(' / ')
       : undefined;
+  const { price, guest } = resolveGoodsPrice(data);
 
   return {
     platform: 'yishou',
@@ -120,7 +140,8 @@ export const mapToStockResult = (data: YishouGoodsData): StockCheckResult => {
     productNo: data.goods_no,
     sku,
     inStock,
-    price: Number.parseFloat(data.shop_price) || 0,
+    price,
+    ...(guest ? { priceNote: '游客参考价' } : {}),
     productUrl: goodsUrl(data.goods_id),
     productImage: data.goods_thumb,
     message: getStockMessage(data, inStock),

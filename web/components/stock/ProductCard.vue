@@ -55,6 +55,9 @@
       <div class="flex items-center justify-between">
         <span class="text-lg font-bold text-red-600">
           ¥{{ formatPrice(price) }}
+          <span v-if="priceNote" class="ml-1 text-[10px] font-normal text-gray-400 align-middle">
+            {{ priceNote }}
+          </span>
         </span>
 
         <!-- 销量 -->
@@ -111,6 +114,8 @@ interface Props {
   name: string
   imageUrl?: string
   price: number
+  /** 价格口径说明，如「游客参考价」 */
+  priceNote?: string
   inStock: boolean
   message?: string
   sales?: number
@@ -128,6 +133,7 @@ const props = withDefaults(defineProps<Props>(), {
   productId: '',
   productNo: '',
   imageUrl: '',
+  priceNote: '',
   message: '',
   sales: undefined,
   clickable: true,

@@ -386,7 +386,12 @@ export const createCancellableMonitor = (
               const emailResult = await sendEmail({
                 to: task.recipient,
                 subject: task.subject || `🎉 ${checkResult.productName} 已到货`,
-                html: createBackInStockTemplate(checkResult.productName, checkResult.price, task.productImage),
+                html: createBackInStockTemplate(
+                  checkResult.productName,
+                  checkResult.price,
+                  task.productImage,
+                  checkResult.priceNote
+                ),
               });
 
               result.emailSent = emailResult.success;

@@ -51,6 +51,8 @@ export interface StockCheckResult {
   inStock: boolean;
   /** 价格 */
   price: number;
+  /** 价格口径说明（如匿名查询降级后为「游客参考价」） */
+  priceNote?: string;
   /** 商品链接 */
   productUrl: string;
   /** 商品主图 */

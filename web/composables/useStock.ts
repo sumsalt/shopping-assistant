@@ -9,6 +9,8 @@ interface StockCheckResult {
   productNo: string
   inStock: boolean
   price: number
+  /** 价格口径说明，如匿名查询降级后的「游客参考价」 */
+  priceNote?: string
   productUrl: string
   productImage: string
   message: string

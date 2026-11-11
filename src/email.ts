@@ -336,12 +336,14 @@ export async function verifyEmailConfig(): Promise<boolean> {
  * @param productName 商品名称
  * @param price 价格
  * @param productImage 商品图片 URL（可选）
+ * @param priceNote 价格口径说明，如匿名查询时的「游客参考价」（可选）
  * @returns HTML 邮件内容
  */
 export function createBackInStockTemplate(
   productName: string,
   price: number,
-  productImage?: string
+  productImage?: string,
+  priceNote?: string
 ): string {
   return `
     <!DOCTYPE html>
@@ -428,7 +430,7 @@ export function createBackInStockTemplate(
           </table>
           ` : ''}
           <div class="product-name">${productName}</div>
-          <div class="price">¥${price.toFixed(2)}</div>
+          <div class="price">¥${price.toFixed(2)}${priceNote ? `<span style="font-size:12px;color:#999;font-weight:normal;">（${priceNote}）</span>` : ''}</div>
         </div>
         <div class="footer">
           <p>这是一封自动发送的邮件，请勿直接回复。</p>

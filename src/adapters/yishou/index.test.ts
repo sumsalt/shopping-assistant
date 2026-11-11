@@ -117,6 +117,20 @@ describe('mapToStockResult - 数据转换', () => {
     expect(result.price).toBe(0);
   });
 
+  it('匿名查询 shop_price 降级为 ??.?? 时，应回退单独购买价并标注游客参考价', () => {
+    const data = createMockGoodsData({ shop_price: '??.??', alone_price: '108.99' });
+    const result = mapToStockResult(data);
+    expect(result.price).toBe(108.99);
+    expect(result.priceNote).toBe('游客参考价');
+  });
+
+  it('登录态 shop_price 有效时不回退，且不标注游客参考价', () => {
+    const data = createMockGoodsData({ shop_price: '108.99', alone_price: '128.00' });
+    const result = mapToStockResult(data);
+    expect(result.price).toBe(108.99);
+    expect(result.priceNote).toBeUndefined();
+  });
+
   it('当商品无货时，inStock 应为 false', () => {
     const data = createMockGoodsData({ is_stockout: '1' });
     const result = mapToStockResult(data);
