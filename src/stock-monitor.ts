@@ -2,7 +2,7 @@
  * 库存监控 - 循环检查库存并发送邮件通知
  */
 
-import { checkStock } from './stock-check';
+import { checkStock, getProductSkus } from './stock-check';
 import { getOrderAdapter } from './adapters';
 import { placeAutoOrder } from './auto-order';
 import type { AutoOrderConfig, AutoOrderStage, StockCheckRequest, StockCheckResult } from './types';
@@ -65,6 +65,13 @@ export interface StockMonitorConfig {
   /** 任务 ID（用于全局请求闸门的公平调度） */
   taskId?: string;
   /**
+   * 只监控这些规格（skuId）
+   *
+   * 为空表示监控全部规格：只要有任意规格有货就算到货。
+   * 指定后，商品整体有货但所选规格都没货时不算到货，也不会触发下单。
+   */
+  skus?: string[];
+  /**
    * 有货自动下单配置
    *
    * 启用后，检测到有货时不再只发邮件，而是直接加购 + 结算 + 建单（锁住库存），
@@ -97,6 +104,12 @@ export interface MonitorResult {
   productName: string;
   /** 是否检测到有货 */
   detected: boolean;
+  /** 命中的规格（配置了监控规格时） */
+  matchedSkus?: string[];
+  /** 命中规格的展示文案：蓝色 / L、黑色 / M */
+  matchedSkuLabel?: string;
+  /** 商品整体有货，但所选规格都没货（等待所选规格补货） */
+  skuWaiting?: boolean;
   /** 发送邮件是否成功 */
   emailSent?: boolean;
   /** 错误信息 */
@@ -276,10 +289,19 @@ export const createCancellableMonitor = (
       // 没有登录态时不可能下单，直接降级为普通到货提醒（避免任务一启动就失败退出）
       const autoOrderEnabled = Boolean(autoOrder?.enabled && adapterConfig.uid && adapterConfig.token);
       const orderAdapter = autoOrderEnabled ? getOrderAdapter('yishou', adapterConfig) : null;
+      const hasCredential = Boolean(adapterConfig.uid && adapterConfig.token);
 
-      // 检测始终匿名：排的是匿名桶，请求里也不带 uid/token（两者口径一致）。
-      // 凭证只交给下单链路，检测拿到的价格会回退到 alone_price，邮件里带「游客参考价」标注。
-      const detectionConfig = toAnonymousAdapterConfig(adapterConfig);
+      // 只监控指定规格时，商品级有货还要再看这些规格是否真的有货
+      const monitorSkus = (config.skus || []).filter(Boolean);
+      const needSkuDetail = monitorSkus.length > 0;
+
+      if (needSkuDetail && !hasCredential) {
+        throw new Error('按规格监控需要一手登录态，请先在账号管理中选择带登录态的账号');
+      }
+
+      // 不选规格时检测保持匿名（匿名桶 1 秒一槽，价格回退游客参考价）；
+      // 选了规格就必须查 SKU 明细，而该接口拒绝匿名，所以检测也要带凭证，进账号桶（15 秒一槽）。
+      const detectionConfig = needSkuDetail ? adapterConfig : toAnonymousAdapterConfig(adapterConfig);
 
       const startTime = Date.now();
 
@@ -312,7 +334,37 @@ export const createCancellableMonitor = (
           result.productName = checkResult.productName;
           result.checkCount++;
 
-          if (checkResult.inStock) {
+          // 每轮重置，避免上一轮命中结果残留到本轮
+          result.matchedSkus = undefined;
+          result.matchedSkuLabel = undefined;
+
+          let inStock = checkResult.inStock;
+
+          if (inStock && monitorSkus.length > 0) {
+            // SKU 查询走同一份匿名配置：检测链路不带登录态，排的是匿名桶
+            const skuDetail = await getProductSkus(
+              { platform: task.request.platform, productNo: checkResult.productNo },
+              { adapterConfig: detectionConfig }
+            );
+            const hits = skuDetail.skuList.filter(
+              item => monitorSkus.includes(item.skuId) && item.saleStock > 0
+            );
+
+            inStock = hits.length > 0;
+            // 商品有货但所选规格没货：不算到货，前端提示「等待所选规格」
+            result.skuWaiting = !inStock;
+
+            if (hits.length > 0) {
+              result.matchedSkus = hits.map(item => item.skuId);
+              result.matchedSkuLabel = hits
+                .map(item => [item.color, item.size].filter(Boolean).join(' / ') || item.skuId)
+                .join('、');
+            }
+          } else {
+            result.skuWaiting = undefined;
+          }
+
+          if (inStock) {
             if (autoOrderEnabled && orderAdapter && Date.now() < orderCooldownUntil) {
               // 上次建单失败触发了服务端锁单，冷却期内继续检测但不再建单，避免撞锁
               const waitSeconds = Math.ceil((orderCooldownUntil - Date.now()) / 1000);
@@ -323,6 +375,7 @@ export const createCancellableMonitor = (
                 goodsId: checkResult.productId,
                 goodsNo: checkResult.productNo,
                 config: autoOrder || { enabled: true },
+                skus: monitorSkus,
               });
 
               result.orderAttempts = (result.orderAttempts || 0) + 1;
@@ -401,7 +454,8 @@ export const createCancellableMonitor = (
                   checkResult.productName,
                   checkResult.price,
                   task.productImage,
-                  checkResult.priceNote
+                  checkResult.priceNote,
+                  result.matchedSkuLabel
                 ),
               });
 

@@ -70,6 +70,12 @@ export interface PlaceOrderParams {
   goodsNo: string;
   /** 自动下单配置 */
   config: AutoOrderConfig;
+  /**
+   * 只在这些规格中挑选（skuId 列表，优先于 config.sku）
+   *
+   * 传入后只会在这些规格里找有货的那个下单，不会回退到未选中的规格。
+   */
+  skus?: string[];
 }
 
 /** 预检结果（只加购 + 结算，不建单） */
@@ -224,10 +230,12 @@ const prepareOrder = async (
   adapter: AutoOrderAdapter,
   params: PlaceOrderParams
 ): Promise<PrepareOutcome> => {
-  const { goodsId, goodsNo, config } = params;
+  const { goodsId, goodsNo, config, skus } = params;
   const requestedNum = normalizeNum(config.num);
   /** 本次实际尝试的件数：选规格后会按可售库存削减，失败信息里也用它 */
   let num = requestedNum;
+  /** 只在这些规格里挑（多选优先于旧的单选字段） */
+  const wantedSkus = (skus || []).filter(Boolean);
 
   let recId: string | null = null;
   let stage: AutoOrderStage = 'address';
@@ -253,15 +261,22 @@ const prepareOrder = async (
     // ② 规格：指定了 SKU 就用它，否则取第一个可售规格
     stage = 'sku';
     const skuResult = await adapter.getProductSkus(goodsNo);
-    const candidates = config.sku
-      ? skuResult.skuList.filter(item => item.skuId === config.sku)
-      : skuResult.skuList;
+    const candidates = wantedSkus.length
+      ? skuResult.skuList.filter(item => wantedSkus.includes(item.skuId))
+      : config.sku
+        ? skuResult.skuList.filter(item => item.skuId === config.sku)
+        : skuResult.skuList;
     const pick = candidates.find(item => item.saleStock > 0);
 
     if (!pick) {
+      const hasFilter = wantedSkus.length > 0 || Boolean(config.sku);
       return {
         ok: false,
-        result: failure('sku', '该商品当前没有可售规格', { retryable: true, num: requestedNum }),
+        result: failure(
+          'sku',
+          hasFilter ? '所选规格当前都没有货' : '该商品当前没有可售规格',
+          { retryable: true, num: requestedNum }
+        ),
       };
     }
 

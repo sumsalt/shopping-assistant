@@ -29,6 +29,8 @@ export interface AutoOrderSettings {
 interface MonitorConfig {
   interval?: number
   duration?: number
+  /** 只监控这些规格（skuId）；不传表示全部规格 */
+  skus?: string[]
   /** 有货自动下单（需要登录态） */
   autoOrder?: AutoOrderSettings
 }
@@ -102,6 +104,7 @@ export const useMonitor = () => {
     const monitorConfig: MonitorConfig = {
       interval: config?.interval || MIN_STOCK_MONITOR_INTERVAL,
       duration: config?.duration || DEFAULT_STOCK_MONITOR_DURATION,
+      ...(config?.skus?.length ? { skus: config.skus } : {}),
       ...(config?.autoOrder ? { autoOrder: config.autoOrder } : {}),
     }
 

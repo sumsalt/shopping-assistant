@@ -28,11 +28,15 @@ export interface StockMonitorFormValues {
   num: number
   payTool: '1' | '4'
   addressId?: string
+  /** 只监控这些规格（skuId）；空表示全部规格 */
+  skus?: string[]
 }
 
 /** 提交给 useMonitor / 创建接口的配置 */
 export interface StockMonitorPayload {
   duration: number
+  /** 只监控这些规格（skuId）；不传表示全部规格 */
+  skus?: string[]
   autoOrder?: {
     enabled: true
     num: number
@@ -54,6 +58,12 @@ export const buildStockMonitorConfig = (
       Number.isFinite(values.duration) && values.duration > 0
         ? values.duration
         : DEFAULT_STOCK_MONITOR_DURATION,
+  }
+
+  // 不选规格表示监控全部；选了就只在这些规格里判断到货与下单
+  const skus = [...new Set((values.skus || []).map(item => item.trim()).filter(Boolean))]
+  if (skus.length > 0) {
+    config.skus = skus
   }
 
   if (values.autoOrderEnabled) {

@@ -71,6 +71,12 @@
               >
                 自动下单 × {{ task.autoOrder.num || 1 }}
               </span>
+              <span
+                v-if="task.skus?.length"
+                class="text-xs px-2 py-0.5 rounded border bg-purple-50 text-purple-600 border-purple-100"
+              >
+                限定 {{ task.skus.length }} 个规格
+              </span>
             </div>
 
             <!-- 右侧：配置信息 -->
@@ -178,6 +184,18 @@
               <p class="text-sm font-medium text-green-800">
                 ✓ 已检测到商品到货
                 <span v-if="task.result.emailSent" class="text-xs text-green-600">（已发送邮件）</span>
+              </p>
+            </div>
+          </div>
+
+          <!-- 商品整体有货，但所选规格都还没货 -->
+          <div v-else-if="task.result?.skuWaiting" class="mt-4">
+            <div class="bg-amber-50 rounded-lg p-3 border border-amber-100">
+              <p class="text-sm font-medium text-amber-800">
+                商品已补货，但所选规格还没货，继续等待
+              </p>
+              <p class="mt-1 text-xs text-amber-700">
+                该任务只监控你选择的规格，其他规格有货不会提醒
               </p>
             </div>
           </div>

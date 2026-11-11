@@ -64,6 +64,18 @@ const assertNoRunningForProduct = (userId: string, productId: string, excludeId?
   }
 }
 
+/** 单个任务最多监控多少个规格（防止误传超长数组） */
+const MAX_MONITOR_SKUS = 50
+
+/** 解析监控规格：去重、去空、限长 */
+const readSkuFilter = (raw: unknown): string[] => {
+  if (!Array.isArray(raw)) return []
+  const unique = [
+    ...new Set(raw.map(item => String(item ?? '').trim()).filter(Boolean)),
+  ]
+  return unique.slice(0, MAX_MONITOR_SKUS)
+}
+
 /** 校验并归一化自动下单配置 */
 const readAutoOrder = (
   raw: any,
@@ -97,8 +109,10 @@ const readAutoOrder = (
 export const stockDefinition: TaskDefinition<StockTaskRecord> = {
   kind: 'stock',
   label: '到货监控',
-  // 自动下单要拿库存的真实状态并下单，必须带登录态；纯到货提醒走匿名桶
-  needsAuth: body => Boolean(body?.config?.autoOrder?.enabled),
+  // 自动下单要拿库存的真实状态并下单，必须带登录态；
+  // 按规格监控要查 SKU 明细（该接口拒绝匿名），同样需要登录态；纯商品级提醒走匿名桶
+  needsAuth: body =>
+    Boolean(body?.config?.autoOrder?.enabled || body?.config?.skus?.length),
 
   create({ body, user }) {
     const product = body?.product as StockProductInfo | undefined
@@ -125,11 +139,13 @@ export const stockDefinition: TaskDefinition<StockTaskRecord> = {
     const adapterConfig = body?.config?.adapterConfig || {}
     assertNoRunningForProduct(user.username, product.productId)
     const autoOrder = readAutoOrder(body?.config?.autoOrder, adapterConfig)
+    const skus = readSkuFilter(body?.config?.skus)
 
     const config: StockMonitorConfig = {
       interval,
       duration: body?.config?.duration || DEFAULT_DURATION,
       adapterConfig,
+      ...(skus.length ? { skus } : {}),
       ...(autoOrder ? { autoOrder } : {}),
     }
 
@@ -208,6 +224,7 @@ export const stockDefinition: TaskDefinition<StockTaskRecord> = {
       status: task.status,
       interval: task.config.interval,
       duration: task.config.duration,
+      skus: task.config.skus ?? null,
       autoOrder: task.config.autoOrder ?? null,
       createdAt: task.createdAt,
       result: task.result,

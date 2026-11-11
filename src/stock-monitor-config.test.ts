@@ -76,6 +76,30 @@ describe('buildStockMonitorConfig', () => {
     expect(zero.autoOrder?.num).toBe(1)
   })
 
+  it('不选规格时不写 skus，默认监控全部规格', () => {
+    const config = buildStockMonitorConfig({ ...baseValues })
+    expect('skus' in config).toBe(false)
+
+    const empty = buildStockMonitorConfig({ ...baseValues, skus: [] })
+    expect('skus' in empty).toBe(false)
+  })
+
+  it('选了规格时去重、去空后带上 skus，纯提醒与自动下单都生效', () => {
+    const plain = buildStockMonitorConfig({
+      ...baseValues,
+      skus: ['850001', ' 850001 ', '', '850002'],
+    })
+    expect(plain.skus).toEqual(['850001', '850002'])
+
+    const withOrder = buildStockMonitorConfig({
+      ...baseValues,
+      autoOrderEnabled: true,
+      skus: ['850001'],
+    })
+    expect(withOrder.skus).toEqual(['850001'])
+    expect(withOrder.autoOrder?.enabled).toBe(true)
+  })
+
   it('时长非法时回落到 24 小时默认值', () => {
     expect(buildStockMonitorConfig({ ...baseValues, duration: 0 }).duration).toBe(
       DEFAULT_STOCK_MONITOR_DURATION

@@ -38,6 +38,73 @@
         <p class="mt-1 text-xs text-gray-400">到时间自动停止；检测到有货会立即结束</p>
       </div>
 
+      <!-- 监控规格：不选表示任意规格有货都算 -->
+      <div>
+        <div class="flex items-center justify-between mb-1">
+          <label class="block text-sm font-medium text-gray-700">
+            监控规格
+            <span class="ml-1 text-xs font-normal text-gray-400">不选则监控全部规格</span>
+          </label>
+          <div class="flex items-center gap-2 text-xs">
+            <button
+              type="button"
+              class="text-blue-600 hover:underline disabled:text-gray-300"
+              :disabled="isLoadingSkus || skus.length === 0"
+              @click="selectAllSkus"
+            >
+              全选
+            </button>
+            <button
+              type="button"
+              class="text-gray-500 hover:underline disabled:text-gray-300"
+              :disabled="selectedSkus.length === 0"
+              @click="selectedSkus = []"
+            >
+              清空
+            </button>
+          </div>
+        </div>
+
+        <div v-if="!hasCredential" class="py-2 text-xs text-amber-600">
+          选择具体规格需要一手登录态（查 SKU 明细的接口不支持匿名）。不选则监控全部规格，走匿名检测更快。
+        </div>
+        <div v-else-if="isLoadingSkus" class="py-2 text-xs text-gray-500">加载规格中…</div>
+        <div v-else-if="skuError" class="py-2 text-xs text-amber-600">
+          {{ skuError }}（将监控全部规格）
+        </div>
+        <div v-else-if="skus.length === 0" class="py-2 text-xs text-gray-500">
+          {{ product?.productNo ? '暂未读取到规格，将监控全部规格' : '缺少货号，无法选择规格，将监控全部规格' }}
+        </div>
+        <div
+          v-else
+          class="max-h-40 overflow-y-auto rounded-lg border border-gray-200 divide-y divide-gray-100"
+        >
+          <label
+            v-for="sku in skus"
+            :key="sku.skuId"
+            class="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer hover:bg-gray-50"
+          >
+            <input
+              v-model="selectedSkus"
+              type="checkbox"
+              :value="sku.skuId"
+              class="rounded border-gray-300"
+            >
+            <span class="text-gray-800">{{ sku.label }}</span>
+            <span
+              class="ml-auto text-xs"
+              :class="sku.saleStock > 0 ? 'text-green-600' : 'text-gray-400'"
+            >
+              {{ sku.saleStock > 0 ? `有货 ${sku.saleStock}` : '无货' }}
+            </span>
+          </label>
+        </div>
+
+        <p v-if="selectedSkus.length > 0" class="mt-1 text-xs text-blue-600">
+          只在选中的 {{ selectedSkus.length }} 个规格有货时提醒 / 下单；选规格会使用登录态检测（15 秒一轮），比匿名检测慢
+        </p>
+      </div>
+
       <!-- 自动下单只是到货监控的一个可选配置 -->
       <div
         class="rounded-lg border p-3 transition-colors"
@@ -236,6 +303,12 @@ interface PrecheckResult {
   stage?: string
 }
 
+interface SkuOption {
+  skuId: string
+  label: string
+  saleStock: number
+}
+
 const props = withDefaults(defineProps<{ open: boolean; product?: StockMonitorProduct | null }>(), {
   product: null,
 })
@@ -260,6 +333,10 @@ const isLoadingAddress = ref(false)
 const addressError = ref('')
 const isChecking = ref(false)
 const precheck = ref<PrecheckResult | null>(null)
+const skus = ref<SkuOption[]>([])
+const selectedSkus = ref<string[]>([])
+const isLoadingSkus = ref(false)
+const skuError = ref('')
 
 const hasCredential = computed(() => Boolean(configStore.activeAccount?.hasCredential))
 
@@ -285,6 +362,51 @@ const stageText = (stage: string): string => {
 
 const maskMobile = (mobile: string): string =>
   mobile ? mobile.replace(/^(\d{3})\d{4}(\d{4})$/, '$1****$2') : ''
+
+/**
+ * 读取规格列表
+ *
+ * 规格查询走服务端的匿名快照即可（与到货检测同一口径），
+ * 所以纯邮件提醒的用户也能选规格；有登录态时接口会自动带上凭证。
+ */
+const loadSkus = async () => {
+  const productNo = props.product?.productNo
+  // 规格明细接口拒绝匿名：没有登录态就不发请求，直接按「全部规格」处理
+  if (!productNo || !hasCredential.value || isLoadingSkus.value) {
+    return
+  }
+
+  isLoadingSkus.value = true
+  skuError.value = ''
+
+  try {
+    const response = await $fetch<{
+      success: boolean
+      data?: {
+        skuList?: Array<{ skuId: string; color?: string; size?: string; saleStock?: number }>
+      }
+      error?: { message: string }
+    }>(`/api/stock/skus/${productNo}`)
+
+    if (response.success && response.data?.skuList) {
+      skus.value = response.data.skuList.map(item => ({
+        skuId: item.skuId,
+        label: [item.color, item.size].filter(Boolean).join(' / ') || item.skuId,
+        saleStock: item.saleStock ?? 0,
+      }))
+    } else {
+      skuError.value = response.error?.message || '读取规格失败'
+    }
+  } catch (error) {
+    skuError.value = error instanceof Error ? error.message : '读取规格失败'
+  } finally {
+    isLoadingSkus.value = false
+  }
+}
+
+const selectAllSkus = () => {
+  selectedSkus.value = skus.value.map(item => item.skuId)
+}
 
 const loadAddresses = async () => {
   if (!hasCredential.value) {
@@ -342,6 +464,7 @@ const handlePrecheck = async () => {
         goodsNo: props.product.productNo,
         num: num.value,
         addressId: addressId.value || undefined,
+        skus: selectedSkus.value,
       },
     })
 
@@ -371,6 +494,7 @@ const handleSubmit = async () => {
     num: num.value,
     payTool: payTool.value,
     addressId: addressId.value || undefined,
+    skus: selectedSkus.value,
   })
 
   const taskId = await createMonitorTask(
@@ -396,13 +520,17 @@ const handleOpenChange = (value: boolean) => {
   emit('update:open', value)
 }
 
-// 每次打开回到安全的默认：只发提醒、不自动下单
+// 每次打开回到安全的默认：只发提醒、不自动下单，规格回到「全部」
 watch(
   () => props.open,
   (open) => {
     if (open) {
       autoOrderEnabled.value = false
       precheck.value = null
+      selectedSkus.value = []
+      skus.value = []
+      skuError.value = ''
+      loadSkus()
     }
   }
 )
@@ -415,10 +543,29 @@ watch(autoOrderEnabled, (enabled) => {
   }
 })
 
+// 登录态没了就没法选规格：清掉已选，避免提交一个必然失败的任务
+watch(hasCredential, (value) => {
+  if (!value) {
+    selectedSkus.value = []
+    skus.value = []
+    skuError.value = ''
+    return
+  }
+  if (props.open) {
+    loadSkus()
+  }
+})
+
 watch(
   () => props.product?.productId,
   () => {
     precheck.value = null
+    selectedSkus.value = []
+    skus.value = []
+    skuError.value = ''
+    if (props.open) {
+      loadSkus()
+    }
   }
 )
 </script>

@@ -342,6 +342,38 @@ describe('placeAutoOrder', () => {
     expect(adapter.createOrder).toHaveBeenCalled()
   })
 
+  it('指定多个规格时只在其中挑选有货的', async () => {
+    const adapter = createAdapter({
+      getProductSkus: vi.fn().mockResolvedValue(skuResult([0, 0, 2])),
+    })
+
+    const result = await placeAutoOrder(adapter, {
+      ...params,
+      skus: ['850001', '850002'],
+    })
+
+    expect(result.success).toBe(true)
+    expect(result.sku).toBe('850002')
+    expect(adapter.addToCart).toHaveBeenCalledWith('338956151', '850002', 1)
+  })
+
+  it('指定规格都没货时不做回退，标记为可重试', async () => {
+    const adapter = createAdapter({
+      getProductSkus: vi.fn().mockResolvedValue(skuResult([2, 0])),
+    })
+
+    const result = await placeAutoOrder(adapter, {
+      ...params,
+      skus: ['850001'],
+    })
+
+    expect(result.success).toBe(false)
+    expect(result.stage).toBe('sku')
+    expect(result.retryable).toBe(true)
+    expect(result.message).toContain('所选规格')
+    expect(adapter.addToCart).not.toHaveBeenCalled()
+  })
+
   it('购物车有残留导致结算件数变多时清空并重试，避免多买', async () => {
     const adapter = createAdapter({
       getProductSkus: vi.fn().mockResolvedValue(skuResult([0, 3])),

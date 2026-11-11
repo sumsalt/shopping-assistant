@@ -23,13 +23,17 @@ export default defineEventHandler(async (event) => {
       return createErrorResponse(ErrorCode.INVALID_PARAMS, '商品货号不能为空')
     }
 
-    // SKU 详情需要登录态：服务端按当前账号取快照
+    // 规格明细接口拒绝匿名（实测返回「请先登录」），必须用登录态快照。
+    // 纯到货提醒的用户如果没选账号，前端不会调用这个接口，按「全部规格」处理。
     const { config: adapterConfig, hasCredential } = resolveAdapterConfigForUser(
       currentUser.username,
       true
     )
     if (!hasCredential) {
-      return createErrorResponse(ErrorCode.AUTH_REQUIRED, '当前账号没有登录态，请先在账号管理选择账号')
+      return createErrorResponse(
+        ErrorCode.AUTH_REQUIRED,
+        '查询规格需要一手登录态，请先在账号管理中选择带登录态的账号'
+      )
     }
 
     // 构建请求参数

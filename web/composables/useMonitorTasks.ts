@@ -23,6 +23,8 @@ export interface MonitorTaskItem {
   status: 'running' | 'stopped' | 'completed'
   interval: number
   duration: number
+  /** 只监控这些规格；空表示全部规格 */
+  skus?: string[] | null
   /** 自动下单配置：非空表示这是一条自动下单任务 */
   autoOrder?: {
     enabled: boolean
@@ -49,6 +51,8 @@ export interface MonitorTaskItem {
     orderSkuLabel?: string
     /** 实际下单件数 */
     orderNum?: number
+    /** 商品有货但所选规格没货 */
+    skuWaiting?: boolean
     /** 下单失败原因 */
     orderError?: string
     /** 失败阶段 */

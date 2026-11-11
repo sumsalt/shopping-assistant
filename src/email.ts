@@ -343,7 +343,8 @@ export function createBackInStockTemplate(
   productName: string,
   price: number,
   productImage?: string,
-  priceNote?: string
+  priceNote?: string,
+  skuLabel?: string
 ): string {
   return `
     <!DOCTYPE html>
@@ -430,6 +431,7 @@ export function createBackInStockTemplate(
           </table>
           ` : ''}
           <div class="product-name">${productName}</div>
+          ${skuLabel ? `<p style="margin:0 0 8px;color:#666;font-size:14px;">可购规格：${skuLabel}</p>` : ''}
           <div class="price">¥${price.toFixed(2)}${priceNote ? `<span style="font-size:12px;color:#999;font-weight:normal;">（${priceNote}）</span>` : ''}</div>
         </div>
         <div class="footer">

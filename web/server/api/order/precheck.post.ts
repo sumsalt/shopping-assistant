@@ -60,6 +60,10 @@ export default defineEventHandler(async (event) => {
         num,
         ...(body?.addressId ? { addressId: String(body.addressId) } : {}),
       },
+      // 只预检选中的规格，与实际下单口径保持一致
+      skus: Array.isArray(body?.skus)
+        ? body.skus.map((item: unknown) => String(item ?? '').trim()).filter(Boolean).slice(0, 50)
+        : [],
     })
 
     return createSuccessResponse(result)
