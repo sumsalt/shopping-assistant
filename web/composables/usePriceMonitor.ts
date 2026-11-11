@@ -4,8 +4,6 @@
  * 只监控登录态（uid + token）下的 shop_price，创建前会强制校验登录态与邮箱
  */
 
-import type { UserConfig } from '@/types'
-import { buildAdapterConfig, hasLoginCredential } from '@/utils/adapterConfig'
 import { useTaskSubmit } from './useTaskSubmit'
 
 /** 检测间隔硬下限（秒） */
@@ -71,22 +69,14 @@ export const usePriceMonitor = () => {
   const { isLoading, error, submit } = useTaskSubmit()
 
   /**
-   * 检查配置是否有效（价格监控必须有登录态）
+   * 价格监控必须有登录态（服务端也会兜底）
    */
-  const checkConfig = (): UserConfig | null => {
-    const config = configStore.getConfigForApi()
-
-    if (!config) {
-      toast.warning('请先完成配置')
-      return null
-    }
-
-    if (!hasLoginCredential(config)) {
+  const checkConfig = (): boolean => {
+    if (!configStore.activeAccount?.hasCredential) {
       toast.warning('价格监控需要登录态，请先在账号管理中选择带登录态的账号')
-      return null
+      return false
     }
-
-    return config
+    return true
   }
 
   /**
@@ -107,8 +97,7 @@ export const usePriceMonitor = () => {
       return null
     }
 
-    const userConfig = checkConfig()
-    if (!userConfig) {
+    if (!checkConfig()) {
       return null
     }
 
@@ -138,8 +127,6 @@ export const usePriceMonitor = () => {
           duration: options.duration || DEFAULT_PRICE_MONITOR_DURATION,
           notifyOn: options.notifyOn || 'any',
           minPriceDelta: options.minPriceDelta ?? 0.01,
-          // 价格监控必须登录态，完整回放当前账号的抓包快照
-          adapterConfig: buildAdapterConfig(userConfig, true),
         },
       },
       { successMessage: '已创建价格监控任务', failureMessage: '创建价格监控失败' }

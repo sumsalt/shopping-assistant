@@ -19,6 +19,10 @@ export interface AccountItem {
   isVerified: boolean
   isNewUser: boolean
   hasOrdered: boolean
+  /** 是否为当前使用账号 */
+  isActive: boolean
+  /** 是否具备登录态（uid + token） */
+  hasCredential: boolean
   /** 是否保存了抓包请求快照 */
   hasRequestProfile: boolean
   /** 抓包通道 */
@@ -56,14 +60,6 @@ export interface AccountPayload {
 
 /** 可读取明文的字段 */
 export type RevealField = 'password' | 'token'
-
-/** 读取账号完整快照的响应 */
-export interface AccountProfileResponse {
-  id: string
-  phone: string
-  uin: string
-  requestProfile: RequestProfile | null
-}
 
 /** API 响应 */
 interface ApiResponse<T> {
@@ -249,29 +245,6 @@ export const useAccounts = () => {
     }
   }
 
-  /** 读取账号完整明文请求快照（「设为当前账号」时调用） */
-  const revealProfile = async (id: string): Promise<AccountProfileResponse | null> => {
-    try {
-      const response = await $fetch<ApiResponse<AccountProfileResponse>>(
-        '/api/accounts/profile',
-        {
-          method: 'POST',
-          body: { id },
-        }
-      )
-
-      if (!response.success || !response.data) {
-        toast.error(response.error?.message || '读取账号请求信息失败')
-        return null
-      }
-
-      return response.data
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : '读取账号请求信息失败')
-      return null
-    }
-  }
-
   /**
    * 校验账号登录态
    *
@@ -282,14 +255,9 @@ export const useAccounts = () => {
     verifyingId.value = id
 
     try {
-      const config = useConfigStore().getConfigForApi()
       const response = await $fetch<ApiResponse<AccountVerifyResult>>('/api/accounts/verify', {
         method: 'POST',
-        body: {
-          id,
-          proxyUrl: config?.proxyUrl,
-          proxyEnabled: config?.proxyEnabled || '0',
-        },
+        body: { id },
       })
 
       if (!response.success || !response.data) {
@@ -326,7 +294,6 @@ export const useAccounts = () => {
     updateAccount,
     deleteAccount,
     revealField,
-    revealProfile,
     verifyAccount,
   }
 }

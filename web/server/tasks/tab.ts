@@ -38,6 +38,8 @@ export const tabTasks = new TaskRegistry<TabTaskRecord>('tab')
 export const tabDefinition: TaskDefinition<TabTaskRecord> = {
   kind: 'tab',
   label: 'Tab 监控',
+  // Tab 列表接口匿名可用，走匿名桶限流更宽
+  needsAuth: () => false,
 
   create({ body, user }) {
     if (!body.tabId) throw new TaskApiError(ErrorCode.INVALID_PARAMS, 'Tab ID 不能为空')

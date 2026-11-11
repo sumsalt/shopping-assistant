@@ -1,20 +1,21 @@
-import type { UserConfig, ConfigValidation, RequestProfile, RequestChannel } from '@/types'
+import type { ActiveAccountSummary } from '@/types'
 
 /**
- * 配置管理组合式函数
+ * 系统配置组合式函数
  *
- * 设备 / 登录信息已迁到「账号管理」，这里只负责两件事：
- * 1. 从账号列表选一个账号作为「当前使用账号」（取回完整明文抓包快照并缓存）
- * 2. 编辑全局代理设置
+ * 当前账号与代理都保存在服务端：
+ *   - 选账号只提交账号 id，服务端标记 is_active，后续请求自动使用
+ *   - 代理写入服务端运行设置，影响的是服务器出网
+ * 前端不再持有或回传抓包参数。
  */
 
-/** 账号下拉项（列表接口返回的脱敏结构，只取需要的字段） */
+/** 账号下拉项（列表接口返回的脱敏结构） */
 interface AccountOption {
   id: string
   phone: string
   uin: string
   hasRequestProfile: boolean
-  requestChannel: RequestChannel | null
+  requestChannel: 'wx' | 'app' | null
   requestParamCount: number
 }
 
@@ -24,28 +25,20 @@ interface ApiResponse<T> {
   error?: { code: string; message: string }
 }
 
-interface ProfileResponse {
-  id: string
-  phone: string
-  uin: string
-  requestProfile: RequestProfile | null
-}
-
 export const useConfig = () => {
   const configStore = useConfigStore()
   const toast = useToast()
   const router = useRouter()
 
-  // 表单只保留代理设置
-  const formData = ref<Pick<UserConfig, 'proxyUrl' | 'proxyEnabled'>>({
+  const formData = ref<{ proxyUrl: string; proxyEnabled: boolean }>({
     proxyUrl: '',
-    proxyEnabled: '0',
+    proxyEnabled: false,
   })
 
   const formErrors = ref<Record<string, string>>({})
   const isSaving = ref(false)
+  const isResetting = ref(false)
 
-  // 当前账号选择
   const accountList = ref<AccountOption[]>([])
   const selectedAccountId = ref('')
   const isLoadingAccounts = ref(false)
@@ -53,14 +46,14 @@ export const useConfig = () => {
 
   const activeAccount = computed(() => configStore.activeAccount)
 
-  /** 初始化表单 */
+  /** 用服务端状态初始化表单 */
   const initFormData = () => {
     formData.value = {
-      proxyUrl: configStore.config.proxyUrl || '',
-      proxyEnabled: configStore.config.proxyEnabled || '0',
+      proxyUrl: configStore.proxyUrl || '',
+      proxyEnabled: Boolean(configStore.proxyEnabled),
     }
     formErrors.value = {}
-    selectedAccountId.value = configStore.activeAccount.id || ''
+    selectedAccountId.value = configStore.activeAccount?.id || ''
   }
 
   /** 拉取可选账号 */
@@ -83,95 +76,83 @@ export const useConfig = () => {
   /**
    * 把选中的账号设为当前账号
    *
-   * 列表接口只给脱敏副本，这里按 id 单独取回完整明文快照，缓存到 config store。
-   * 没有抓包快照的账号也可以选，只是发请求时会回退到默认匿名参数。
+   * 只提交 id；账号快照留在服务端，不再取回浏览器。
    */
   const selectAccount = async (): Promise<void> => {
     const id = selectedAccountId.value
-    if (!id) {
-      configStore.clearActiveAccount()
-      toast.success('已恢复匿名模式')
-      return
-    }
-
     isSwitchingAccount.value = true
     try {
-      const response = await $fetch<ApiResponse<ProfileResponse>>('/api/accounts/profile', {
-        method: 'POST',
-        body: { id },
-      })
-
-      if (!response.success || !response.data) {
-        toast.error(response.error?.message || '读取账号信息失败')
+      const ok = await configStore.setActiveAccount(id || null)
+      if (!ok) {
+        toast.error('切换当前账号失败')
         return
       }
 
-      const profile = response.data.requestProfile
-      configStore.setActiveAccount({
-        id: response.data.id,
-        phone: response.data.phone,
-        uin: response.data.uin,
-        channel: profile?.channel ?? null,
-        profile,
-      })
-
-      if (!profile) {
-        toast.warning('该账号还没有抓包信息，已设为当前账号，但请求仍走默认匿名参数')
-      } else {
-        toast.success('已切换当前账号')
+      if (!id) {
+        toast.success('已恢复匿名模式')
+        return
       }
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : '切换账号失败')
+
+      const current: ActiveAccountSummary | null = configStore.activeAccount
+      if (current && !current.hasRequestProfile) {
+        toast.warning('该账号还没有抓包信息，请求仍走默认匿名参数')
+      } else if (current && !current.hasCredential) {
+        toast.warning('该账号的抓包缺少 uid/token，只能用于库存查询与 Tab 监控')
+      } else {
+        toast.success(`已切换为「${current?.phone || id}」`)
+      }
     } finally {
       isSwitchingAccount.value = false
     }
   }
 
   /** 取消选择，回到匿名模式 */
-  const clearActiveAccount = () => {
+  const clearActiveAccount = async (): Promise<void> => {
     selectedAccountId.value = ''
-    configStore.clearActiveAccount()
-    toast.info('已恢复匿名模式')
-  }
-
-  /** 验证表单（当前没有必填项） */
-  const validateForm = (): boolean => {
-    const validation: ConfigValidation = configStore.validateConfig()
-    formErrors.value = validation.errors
-    return validation.isValid
-  }
-
-  /** 保存代理设置（不会覆盖已选账号） */
-  const saveConfig = async (): Promise<boolean> => {
-    if (!validateForm()) {
-      toast.error('请检查配置')
-      return false
+    const ok = await configStore.clearActiveAccount()
+    if (ok) {
+      toast.info('已恢复匿名模式')
+    } else {
+      toast.error('操作失败，请重试')
     }
+  }
 
+  /** 保存代理设置 */
+  const saveConfig = async (): Promise<boolean> => {
     isSaving.value = true
     try {
-      configStore.saveConfig(formData.value)
+      const ok = await configStore.saveSettings({
+        proxyUrl: formData.value.proxyUrl.trim(),
+        proxyEnabled: Boolean(formData.value.proxyEnabled),
+      })
+      if (!ok) {
+        toast.error('配置保存失败')
+        return false
+      }
       toast.success('配置保存成功')
       return true
-    } catch (error) {
-      toast.error('配置保存失败')
-      return false
     } finally {
       isSaving.value = false
     }
   }
 
-  /** 重置配置 */
-  const resetConfig = () => {
-    configStore.resetConfig()
-    initFormData()
-    toast.info('配置已重置')
+  /** 重置：清除代理与当前账号 */
+  const resetConfig = async (): Promise<void> => {
+    isResetting.value = true
+    try {
+      await configStore.saveSettings({ proxyUrl: '', proxyEnabled: false })
+      await configStore.clearActiveAccount()
+      initFormData()
+      toast.info('配置已重置')
+    } finally {
+      isResetting.value = false
+    }
   }
 
-  /** 检查配置是否完整（保留给其它页面调用） */
+  /** 检查是否已选择当前账号 */
   const ensureConfigured = (redirectPath?: string): boolean => {
     if (!configStore.isConfigured) {
-      toast.warning('请先完成配置')
+      toast.warning('请先选择当前账号')
       router.push({
         path: '/settings',
         query: redirectPath ? { redirect: redirectPath } : undefined,
@@ -181,12 +162,10 @@ export const useConfig = () => {
     return true
   }
 
-  // 表单初值统一在 onMounted 里同步：当前账号存在 localStorage，
-  // SSR 阶段读不到，若在这里就初始化会造成客户端水合不一致
+  // 挂载后再读服务端状态：SSR 阶段拿不到会话对应的账号
   if (import.meta.client) {
-    onMounted(() => {
-      // SSR 水合会用服务端空 state 覆盖 localStorage 值，这里显式补读一次
-      configStore.loadConfig()
+    onMounted(async () => {
+      await configStore.load()
       initFormData()
       fetchAccounts()
     })
@@ -196,6 +175,7 @@ export const useConfig = () => {
     formData,
     formErrors,
     isSaving,
+    isResetting,
     accountList,
     selectedAccountId,
     isLoadingAccounts,
@@ -206,7 +186,6 @@ export const useConfig = () => {
     fetchAccounts,
     selectAccount,
     clearActiveAccount,
-    validateForm,
     saveConfig,
     resetConfig,
     ensureConfigured,

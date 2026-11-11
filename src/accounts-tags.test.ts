@@ -83,6 +83,7 @@ describe('toAccountView - 标签与掩码', () => {
     isVerified: true,
     isNewUser: false,
     hasOrdered: true,
+    isActive: false,
     requestProfile: null,
     createdAt: new Date('2026-11-11T00:00:00.000Z'),
     updatedAt: new Date('2026-11-11T01:00:00.000Z'),

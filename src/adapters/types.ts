@@ -69,7 +69,7 @@ export interface AdapterConfig {
   plat_type?: string;
   /**
    * 抓包得到的完整公共参数快照（含 uid/token/udid/openid 等静态字段）。
-   * 存在时，请求体以它为基础，只覆盖动态 t_t；匿名请求由前端先剔除 uid/token。
+   * 存在时，请求体以它为基础，只覆盖动态 t_t；匿名请求由服务端先剔除 uid/token。
    */
   requestParams?: Record<string, string>;
   /** 抓包得到的关键请求头（User-Agent / Content-Type / equipmd5 等） */

@@ -46,6 +46,7 @@ const isSidebarOpen = ref(false)
 // 配置状态
 const isConfigured = computed(() => configStore.isConfigured)
 
+
 // 菜单切换处理
 const handleMenuToggle = () => {
   isSidebarOpen.value = !isSidebarOpen.value

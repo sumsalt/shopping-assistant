@@ -90,6 +90,8 @@ const readAutoOrder = (
 export const stockDefinition: TaskDefinition<StockTaskRecord> = {
   kind: 'stock',
   label: '到货监控',
+  // 自动下单要拿库存的真实状态并下单，必须带登录态；纯到货提醒走匿名桶
+  needsAuth: body => Boolean(body?.config?.autoOrder?.enabled),
 
   create({ body, user }) {
     const product = body?.product as StockProductInfo | undefined
@@ -200,11 +202,14 @@ export const stockDefinition: TaskDefinition<StockTaskRecord> = {
   },
 
   statusView(task) {
+    // config 里固化了 adapterConfig（含 uid/token），详情接口不需要也无法再使用，
+    // 前端早已不读它，这里剔除避免凭证随状态轮询反复下发
+    const { adapterConfig: _ignored, ...safeConfig } = task.config
     return {
       id: task.id,
       status: task.status,
       product: task.product,
-      config: task.config,
+      config: safeConfig,
       createdAt: task.createdAt,
       result: task.result,
     }

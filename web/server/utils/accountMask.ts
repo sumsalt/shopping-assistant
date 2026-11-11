@@ -27,6 +27,10 @@ export interface AccountView {
   isNewUser: boolean
   /** 标签：是否已下单 */
   hasOrdered: boolean
+  /** 是否为当前使用账号 */
+  isActive: boolean
+  /** 是否具备登录态（uid + token 同时存在），决定能否下单 / 价格监控 */
+  hasCredential: boolean
   /** 是否保存了抓包请求快照 */
   hasRequestProfile: boolean
   /** 抓包通道 */
@@ -69,6 +73,30 @@ const maskProfileParams = (params: Record<string, string>): Record<string, strin
   return masked
 }
 
+/** 从抓包参数里取值（大小写不敏感） */
+const pickParam = (params: Record<string, string>, key: string): string => {
+  const target = key.toLowerCase()
+  for (const [name, value] of Object.entries(params)) {
+    if (name.toLowerCase() === target) {
+      return value
+    }
+  }
+  return ''
+}
+
+/**
+ * 账号是否可用作登录态
+ *
+ * 以抓包快照里的 uid/token 为准（发请求时用的就是它们）；
+ * 没有快照时退回账号主字段，避免老数据无法判断。
+ */
+export const hasLoginCredential = (record: AccountRecord): boolean => {
+  const params = record.requestProfile?.params
+  const uid = params ? pickParam(params, 'uid') : record.uin
+  const token = params ? pickParam(params, 'token') : record.token
+  return Boolean(uid && token)
+}
+
 /** 记录转视图 */
 export const toAccountView = (record: AccountRecord): AccountView => {
   const profile = record.requestProfile
@@ -84,6 +112,8 @@ export const toAccountView = (record: AccountRecord): AccountView => {
     isVerified: record.isVerified,
     isNewUser: record.isNewUser,
     hasOrdered: record.hasOrdered,
+    isActive: record.isActive,
+    hasCredential: hasLoginCredential(record),
     hasRequestProfile: Boolean(profile),
     requestChannel: profile?.channel ?? null,
     ...(profile?.path ? { requestPath: profile.path } : {}),

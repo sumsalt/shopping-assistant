@@ -49,6 +49,8 @@ export interface AccountRecord {
   isNewUser: boolean
   /** 标签：是否已下单 */
   hasOrdered: boolean
+  /** 是否为当前使用账号（同一登录用户至多一条） */
+  isActive: boolean
   /** 抓包得到的完整请求快照；没有则为 null */
   requestProfile: AccountRequestProfile | null
   createdAt: Date
@@ -87,6 +89,7 @@ interface AccountRow {
   is_verified: number
   is_new_user: number
   has_ordered: number
+  is_active: number
   request_profile: string
   created_at: number
   updated_at: number
@@ -135,6 +138,7 @@ const toRecord = (row: AccountRow): AccountRecord => ({
   isVerified: Boolean(row.is_verified),
   isNewUser: Boolean(row.is_new_user),
   hasOrdered: Boolean(row.has_ordered),
+  isActive: Boolean(row.is_active),
   requestProfile: decodeRequestProfile(row.request_profile),
   createdAt: new Date(row.created_at),
   updatedAt: new Date(row.updated_at),
@@ -242,6 +246,7 @@ export const createAccount = (userId: string, input: AccountInput): AccountRecor
       isVerified,
       isNewUser,
       hasOrdered,
+      isActive: false,
       requestProfile,
       createdAt: new Date(now),
       updatedAt: new Date(now),
@@ -305,6 +310,71 @@ export const updateAccount = (id: string, input: AccountInput): AccountRecord | 
     console.error(`[AccountStore] 更新账号 ${id} 失败:`, error)
     return null
   }
+}
+
+/**
+ * 查询登录用户当前选用的账号
+ *
+ * 「当前账号」是服务端状态：前端不再回传 uid/token，所有需要账号的请求
+ * 都由服务端按登录用户取这一条。
+ */
+export const getActiveAccount = (userId: string): AccountRecord | null => {
+  const db = getDb()
+  if (!db) {
+    return null
+  }
+
+  try {
+    const row = db
+      .prepare('SELECT * FROM accounts WHERE user_id = ? AND is_active = 1 LIMIT 1')
+      .get(userId) as AccountRow | undefined
+    return row ? toRecord(row) : null
+  } catch (error) {
+    console.error('[AccountStore] 查询当前账号失败:', error)
+    return null
+  }
+}
+
+/**
+ * 设置 / 清除当前账号
+ *
+ * @param userId 登录用户名
+ * @param id 账号 ID；传 null 表示回到匿名模式
+ * @returns 设置后的账号；清除或失败时返回 null
+ */
+export const setActiveAccount = (userId: string, id: string | null): AccountRecord | null => {
+  const db = getDb()
+  if (!db) {
+    return null
+  }
+
+  // 只允许选自己名下的账号
+  if (id) {
+    const target = getAccount(id)
+    if (!target || target.userId !== userId) {
+      return null
+    }
+  }
+
+  try {
+    db.exec('BEGIN')
+    // 先清掉该用户所有标记，保证「至多一条 is_active=1」
+    db.prepare('UPDATE accounts SET is_active = 0 WHERE user_id = ? AND is_active = 1').run(userId)
+    if (id) {
+      db.prepare('UPDATE accounts SET is_active = 1 WHERE id = ? AND user_id = ?').run(id, userId)
+    }
+    db.exec('COMMIT')
+  } catch (error) {
+    try {
+      db.exec('ROLLBACK')
+    } catch {
+      // 忽略回滚异常
+    }
+    console.error('[AccountStore] 设置当前账号失败:', error)
+    return null
+  }
+
+  return id ? getAccount(id) : null
 }
 
 /**

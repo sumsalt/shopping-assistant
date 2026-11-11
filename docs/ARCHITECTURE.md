@@ -34,7 +34,7 @@
 
 - 路由不能成为模块。**任何状态、Map、启动函数都不允许写在 `api/` 里**，只能放在 `server/tasks` 或 `server/utils`。
 - `src/` 不感知 HTTP、Cookie、SQLite、Vue。
-- 页面不拼请求参数，统一走 composable + `buildAdapterConfig`。
+- 页面不拼请求参数，也不持有账号凭证：只传业务参数，账号快照由服务端按当前账号解析。
 
 ## 二、平台适配层（`src/adapters/yishou`）
 
@@ -75,7 +75,7 @@ return mapXxx(data);
 
 不要在适配器里重新拼公共参数或请求头——那正是这次重构消掉的重复。
 
-**匿名链路**：`buildAdapterConfig(config, false)` 会剔除 `uid`/`token`，`profile.hasAuth` 为 false。
+**匿名链路**：`buildAdapterConfigFromProfile(profile, false)` 会剔除 `uid`/`token`，`profile.hasAuth` 为 false。
 适配器不会补出 `uid=undefined`（`URLSearchParams` 会把它序列化成字符串，一手会判为无效凭证）。
 
 ### 一手请求契约（实测结论，改动前务必对照）
@@ -127,7 +127,7 @@ stock.ts / tab.ts / price.ts   只实现上面两个接口
 
 ## 四、账号与凭证
 
-一个账号 = 一次抓包的完整请求快照：
+一个账号 = 一次抓包的完整请求快照，存在服务端 `accounts.request_profile`：
 
 ```ts
 interface RequestProfile {
@@ -138,16 +138,44 @@ interface RequestProfile {
 }
 ```
 
-- 抓包解析：`web/utils/yishou-capture.ts`（wx / App 双通道，纯函数，有单测）。
-- 前端组装：`web/utils/adapterConfig.ts#buildAdapterConfig(config, needAuth)`，**唯一出口**。
-- 服务端归一化：`web/server/utils/adapterConfig.ts`，兼容旧散字段 URL；
-  `profileToAdapterConfig` 供服务端自己发请求时（如登录态自检）从库里读快照。
-- 登录态自检：`POST /api/accounts/verify` → `checkYishouAuth`，用 `/users/get_user_info` 探针，
-  只有 200 才说明这份抓包还能用。
-- 匿名检测（库存查询、到货监控、Tab 监控）传 `needAuth=false`；
-  需要登录态（SKU 详情、收藏夹、价格监控、下单）传 `true`。
+### 当前账号是服务端状态
 
-新增需要发请求的功能时，不要从 `configStore` 里翻 `uid/token`，一律走 `buildAdapterConfig`。
+- `accounts.is_active`：每个登录用户至多一条为 1；`POST /api/accounts/active` 设置 / 清除。
+- 前端只拿脱敏摘要（`GET /api/accounts/active`：手机号、uin、通道、`hasCredential`），
+  **不再持有 uid/token，也不再回传 adapterConfig**。
+- 所有业务接口统一走 `resolveAdapterConfigForUser(username, needAuth)`：
+  取当前账号快照 → `buildAdapterConfigFromProfile` 组装 → 叠加服务端代理。
+- 纯组装逻辑在 `src/adapter-config.ts`（有单测），服务端只负责读库。
+
+需要登录态的链路：
+
+| 场景 | needAuth | 说明 |
+|---|---|---|
+| 库存查询 / Tab 监控 | false | 剔除 uid/token，走匿名限流桶 |
+| 到货监控 | 看是否自动下单 | `needsAuth(body)` 由任务定义声明 |
+| SKU 详情 / 收藏夹 / 价格监控 / 下单 | true | 无凭证直接返回 `AUTH_REQUIRED`，不等一手 201 |
+
+**任务会固化创建时的快照**：之后切换账号不影响已创建任务；重启沿用原快照，
+要换账号请新建任务。
+
+### 抓包存什么
+
+不是整条请求全存，而是「跨接口稳定的公共参数 + 关键请求头」白名单
+（`web/utils/yishou-capture.ts`）：
+
+- **参数**：登录态（`uid` `token` `openid` `udid` `device_id`）、签名原料与网关门槛
+  （`model` `version` `version_name` `plat_type`）、版本冗余、设备信息、其余公共参数。
+- **丢弃**：`t_t` / `sign`（每次请求重新生成），以及全部业务参数
+  （`goods_id`、`rec_ids`、`selected`、`tabId`、`page` ...）。
+- **请求头**：只留 `User-Agent`、`Content-Type`、`Accept-Encoding`、`equipmd5`、
+  `Referer`、`X-Forwarded-For`；`Host` / `Content-Length` 由框架生成。
+
+为什么用白名单而不是「存全部、发请求时再挑」：不同接口的业务参数完全不同，
+白名单保证同一份快照能安全复用到任意接口；漏掉的公共参数只会少发一个字段，
+不会把 `goods_id` 之类的业务值带到别的接口上。参数个数在账号卡片里可见。
+
+登录态自检：`POST /api/accounts/verify` → `checkYishouAuth`，用 `/users/get_user_info`
+探针，只有 200 才说明这份抓包还能用。
 
 ## 五、前端
 
@@ -157,7 +185,9 @@ interface RequestProfile {
 
 ## 六、边界与已知取舍
 
-- 服务端不保存「当前使用账号」，它属于浏览器本地配置（与旧系统配置同安全边界）。
+- 当前账号与代理都是服务端状态，前端不再持有请求快照；旧版 localStorage 会在首次打开时
+  一次性迁移（账号 id + 代理），迁移后删键。
+- 代理是**全局**运行设置（影响服务器出网），不按登录用户隔离；多用户共用同一出口。
 - 抓包快照原样回放，只覆盖动态 `t_t`；不对 `udid` 是否必需做猜测。
 - `sign` 服务端当前不校验，但保留生成逻辑以兼容网关变化。
 - 任务状态接口会返回该任务的 `config.adapterConfig`（仅本人可读），包含登录态凭证。

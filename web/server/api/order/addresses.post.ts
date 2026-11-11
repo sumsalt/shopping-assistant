@@ -8,6 +8,7 @@
 import { getOrderAdapter } from '@core'
 import { createErrorResponse, createSuccessResponse, ErrorCode } from '../../utils/response'
 import { getCurrentUser } from '../../utils/session'
+import { resolveAdapterConfigForUser } from '../../utils/adapterConfig'
 
 export default defineEventHandler(async (event) => {
   try {
@@ -16,10 +17,13 @@ export default defineEventHandler(async (event) => {
       return createErrorResponse('UNAUTHORIZED', '请先登录')
     }
 
-    const body = await readBody(event)
-    const adapterConfig = body?.adapterConfig || {}
+    // 下单链路必须带一手登录态，账号快照由服务端按当前账号取
+    const { config: adapterConfig, hasCredential } = resolveAdapterConfigForUser(
+      currentUser.username,
+      true
+    )
 
-    if (!adapterConfig.uid || !adapterConfig.token) {
+    if (!hasCredential) {
       return createErrorResponse(
         ErrorCode.AUTH_REQUIRED,
         '查询收货地址需要一手登录态，请先在账号管理中选择带登录态的账号'

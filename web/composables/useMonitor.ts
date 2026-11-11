@@ -1,6 +1,4 @@
-import type { UserConfig } from '@/types'
 import { DEFAULT_STOCK_MONITOR_DURATION } from '@/utils/stockMonitorConfig'
-import { buildAdapterConfig } from '@/utils/adapterConfig'
 import { useTaskSubmit } from './useTaskSubmit'
 
 /** 库存监控的最小检测间隔（秒），与后端 MIN_STOCK_MONITOR_INTERVAL 保持一致 */
@@ -31,7 +29,6 @@ export interface AutoOrderSettings {
 interface MonitorConfig {
   interval?: number
   duration?: number
-  adapterConfig?: Record<string, any>
   /** 有货自动下单（需要登录态） */
   autoOrder?: AutoOrderSettings
 }
@@ -81,22 +78,9 @@ interface ApiResponse<T> {
  * 监控任务管理组合式函数
  */
 export const useMonitor = () => {
-  const configStore = useConfigStore()
   const { user, isLoggedIn, checkAuth } = useAuth()
   const toast = useToast()
   const { isLoading, error, submit, fetchStatus } = useTaskSubmit()
-
-  /**
-   * 检查配置是否有效
-   */
-  const checkConfig = (): UserConfig | null => {
-    const config = configStore.getConfigForApi()
-    if (!config) {
-      toast.warning('请先完成配置')
-      return null
-    }
-    return config
-  }
 
   /**
    * 创建监控任务（一个任务只监控一个商品）
@@ -106,11 +90,6 @@ export const useMonitor = () => {
     config?: MonitorConfig,
     options: { silent?: boolean } = {}
   ): Promise<string | null> => {
-    const userConfig = checkConfig()
-    if (!userConfig) {
-      return null
-    }
-
     // 确保用户已登录
     await checkAuth()
 
@@ -119,16 +98,10 @@ export const useMonitor = () => {
       return null
     }
 
-    // 自动下单必须带登录态，普通到货监控保持匿名（限流更宽）
-    const needAuth = Boolean(config?.autoOrder?.enabled)
-
-    // 构建监控配置
+    // 账号快照由服务端解析：自动下单取登录态，纯提醒取匿名快照（服务端按 needsAuth 判断）
     const monitorConfig: MonitorConfig = {
       interval: config?.interval || MIN_STOCK_MONITOR_INTERVAL,
       duration: config?.duration || DEFAULT_STOCK_MONITOR_DURATION,
-      // 自动下单带登录态；普通到货监控剔除 uid/token 走匿名桶。
-      // 两者都以当前账号的完整抓包快照为基础发请求
-      adapterConfig: buildAdapterConfig(userConfig, needAuth),
       ...(config?.autoOrder ? { autoOrder: config.autoOrder } : {}),
     }
 

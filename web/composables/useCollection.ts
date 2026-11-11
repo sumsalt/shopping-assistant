@@ -1,5 +1,3 @@
-import type { UserConfig } from '@/types'
-import { buildAdapterConfig, adapterConfigToQuery } from '@/utils/adapterConfig'
 
 // 收藏夹商品类型
 interface CollectionItem {
@@ -43,7 +41,6 @@ interface ApiResponse<T> {
  * 收藏夹管理组合式函数
  */
 export const useCollection = () => {
-  const configStore = useConfigStore()
   const toast = useToast()
   const router = useRouter()
 
@@ -62,40 +59,17 @@ export const useCollection = () => {
   const allOutOfStockItems = ref<CollectionItem[]>([])
 
   /**
-   * 检查配置是否有效
-   */
-  const checkConfig = (): UserConfig | null => {
-    const config = configStore.getConfigForApi()
-    if (!config) {
-      toast.warning('请先完成配置')
-      router.push('/settings?redirect=/collection')
-      return null
-    }
-    return config
-  }
-
-  /**
    * 查询收藏夹
    */
   const fetchCollection = async (page: number = 1, append: boolean = false): Promise<CollectionResult | null> => {
-    const config = checkConfig()
-    if (!config) {
-      return null
-    }
-
     isLoading.value = true
     error.value = null
 
     try {
-      // 收藏夹需要登录态；把当前账号的完整抓包快照放进单个查询参数
-      const query = adapterConfigToQuery(buildAdapterConfig(config, true), {
-        page: page.toString(),
-        pageSize: pageSize.value.toString(),
+      // 收藏夹需要登录态，账号快照由服务端按当前账号取
+      const response = await $fetch<ApiResponse<CollectionResult>>('/api/collection', {
+        query: { page: String(page), pageSize: String(pageSize.value) },
       })
-
-      const response = await $fetch<ApiResponse<CollectionResult>>(
-        `/api/collection?${query}`
-      )
 
       if (response.success && response.data) {
         collectionResult.value = response.data

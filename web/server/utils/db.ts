@@ -113,8 +113,18 @@ const createTables = (instance: SqliteDatabase): void => {
   `)
   instance.exec('CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions (expires_at)')
 
+  // 运行设置：服务端发请求用的全局配置（目前是代理）。
+  // 不再由前端逐次回传，避免请求方随意改变服务器出口。
+  instance.exec(`
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL DEFAULT ''
+    )
+  `)
+
   // 账号管理：一手账号的手机号 / 密码 / uid / token 等凭据
   // 只对登录用户可见，列表接口默认返回掩码，明文需单独取
+  // is_active：该登录用户当前选用的账号（每个 user_id 至多一条为 1，由 accountStore 维护）
   instance.exec(`
     CREATE TABLE IF NOT EXISTS accounts (
       id TEXT PRIMARY KEY,
@@ -127,6 +137,7 @@ const createTables = (instance: SqliteDatabase): void => {
       is_verified INTEGER NOT NULL DEFAULT 0,
       is_new_user INTEGER NOT NULL DEFAULT 0,
       has_ordered INTEGER NOT NULL DEFAULT 0,
+      is_active INTEGER NOT NULL DEFAULT 0,
       request_profile TEXT NOT NULL DEFAULT '',
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
@@ -141,6 +152,7 @@ const createTables = (instance: SqliteDatabase): void => {
     ['is_verified', 'INTEGER NOT NULL DEFAULT 0'],
     ['is_new_user', 'INTEGER NOT NULL DEFAULT 0'],
     ['has_ordered', 'INTEGER NOT NULL DEFAULT 0'],
+    ['is_active', 'INTEGER NOT NULL DEFAULT 0'],
     ['request_profile', "TEXT NOT NULL DEFAULT ''"],
   ]
   for (const [column, definition] of addedColumns) {

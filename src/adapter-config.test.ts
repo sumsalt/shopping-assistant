@@ -1,20 +1,20 @@
 /**
- * 统一适配器配置构造测试（纯函数）
+ * 账号快照 → 适配器配置（纯函数）
  *
  * 重点：匿名检测必须剔除 uid/token；未选账号回退默认参数；两种通道都能带完整快照。
+ * 账号快照存在服务端，这段逻辑在请求进入适配器前统一执行。
  */
 
 import { describe, expect, it } from 'vitest'
 import {
-  buildAdapterConfig,
+  buildAdapterConfigFromProfile,
   stripAuthParams,
-  hasLoginCredential,
-  summarizeProfile,
+  hasProfileCredential,
   DEFAULT_WX_ADAPTER_CONFIG,
-} from '../web/utils/adapterConfig'
-import type { UserConfig, RequestProfile } from '../web/types'
+} from './adapter-config'
+import type { StoredRequestProfile } from './adapter-config'
 
-const appProfile: RequestProfile = {
+const appProfile: StoredRequestProfile = {
   channel: 'app',
   params: {
     uid: '20536811',
@@ -27,11 +27,13 @@ const appProfile: RequestProfile = {
     version_name: '7.65.00',
     manufacturer: 'Xiaomi',
   },
-  headers: { 'User-Agent': 'okhttp/3.14.9', 'Content-Type': 'application/x-www-form-urlencoded' },
-  path: '/goods/get_goods_info_v2',
+  headers: {
+    'User-Agent': 'okhttp/3.14.9',
+    'Content-Type': 'application/x-www-form-urlencoded',
+  },
 }
 
-const wxProfile: RequestProfile = {
+const wxProfile: StoredRequestProfile = {
   channel: 'wx',
   params: {
     uid: '20478621',
@@ -46,110 +48,81 @@ const wxProfile: RequestProfile = {
   headers: { 'User-Agent': 'Mozilla/5.0 ... MicroMessenger/8.0.60' },
 }
 
-const configWith = (profile: RequestProfile | null): UserConfig => ({
-  activeAccountId: 'acc_1',
-  activeAccountProfile: profile,
-  proxyUrl: 'http://127.0.0.1:7890',
-  proxyEnabled: '1',
-})
-
-describe('buildAdapterConfig - 未选账号', () => {
-  it('回退默认 wx 匿名参数，且代理设置仍透传', () => {
-    const result = buildAdapterConfig({ proxyUrl: 'http://p', proxyEnabled: '1' }, false)
-    expect(result).toMatchObject({
-      ...DEFAULT_WX_ADAPTER_CONFIG,
-      proxyUrl: 'http://p',
-      proxyEnabled: '1',
-    })
+describe('buildAdapterConfigFromProfile - 未配置账号', () => {
+  it('回退默认 wx 匿名参数，不带登录态', () => {
+    const result = buildAdapterConfigFromProfile(null, true)
+    expect(result).toEqual({ ...DEFAULT_WX_ADAPTER_CONFIG })
     expect(result.uid).toBeUndefined()
     expect(result.token).toBeUndefined()
-    expect(result.requestParams).toBeUndefined()
-  })
-
-  it('config 为 null / undefined 也能安全构造', () => {
-    expect(buildAdapterConfig(null, true).plat_type).toBe('wx')
-    expect(buildAdapterConfig(undefined, false).uid).toBeUndefined()
-    expect(buildAdapterConfig(undefined, true).uid).toBeUndefined()
   })
 
   it('空 params 的快照视为未配置', () => {
-    const result = buildAdapterConfig(configWith({ channel: 'app', params: {}, headers: {} }), true)
-    expect(result.requestParams).toBeUndefined()
-    expect(result.plat_type).toBe('wx')
+    const result = buildAdapterConfigFromProfile({ channel: 'app', params: {}, headers: {} }, true)
+    expect(result).toEqual({ ...DEFAULT_WX_ADAPTER_CONFIG })
   })
 })
 
-describe('buildAdapterConfig - 匿名检测（needAuth=false）', () => {
+describe('buildAdapterConfigFromProfile - 匿名（needAuth=false）', () => {
   it('App 账号：requestParams 不含 uid/token，顶层也没有', () => {
-    const result = buildAdapterConfig(configWith(appProfile), false)
-
+    const result = buildAdapterConfigFromProfile(appProfile, false)
     expect(result.channel).toBe('app')
     expect(result.plat_type).toBe('Android')
+    expect(result.requestParams?.udid).toBe('be21db39a316aafd')
     expect(result.requestParams?.uid).toBeUndefined()
     expect(result.requestParams?.token).toBeUndefined()
-    expect(result.requestParams?.udid).toBe('be21db39a316aafd')
-    expect(result.requestParams?.plat_type).toBe('Android')
     expect(result.uid).toBeUndefined()
     expect(result.token).toBeUndefined()
   })
 
-  it('wx 账号：同样剔除 uid/token，但保留 openid', () => {
-    const result = buildAdapterConfig(configWith(wxProfile), false)
-    expect(result.requestParams?.uid).toBeUndefined()
-    expect(result.requestParams?.token).toBeUndefined()
+  it('wx 账号：openid 等公共参数保留，仅剔除登录态', () => {
+    const result = buildAdapterConfigFromProfile(wxProfile, false)
+    expect(result.channel).toBe('wx')
+    expect(result.openid).toBe('oXxx123')
     expect(result.requestParams?.openid).toBe('oXxx123')
-    expect(result.uid).toBeUndefined()
+    expect(result.requestParams?.uid).toBeUndefined()
+    expect(result.token).toBeUndefined()
+    expect(result.requestHeaders?.['User-Agent']).toContain('MicroMessenger')
   })
 
-  it('完整快照与请求头都带过去', () => {
-    const result = buildAdapterConfig(configWith(appProfile), false)
-    expect(result.requestHeaders?.['User-Agent']).toBe('okhttp/3.14.9')
-    expect(result.proxyEnabled).toBe('1')
+  it('不修改原始快照对象', () => {
+    const before = JSON.stringify(appProfile)
+    buildAdapterConfigFromProfile(appProfile, false)
+    expect(JSON.stringify(appProfile)).toBe(before)
   })
 })
 
-describe('buildAdapterConfig - 需要登录态（needAuth=true）', () => {
-  it('App 账号：顶层 uid/token 供后端校验，requestParams 完整', () => {
-    const result = buildAdapterConfig(configWith(appProfile), true)
+describe('buildAdapterConfigFromProfile - 需要登录态（needAuth=true）', () => {
+  it('完整保留 uid/token 与快照参数', () => {
+    const result = buildAdapterConfigFromProfile(appProfile, true)
     expect(result.uid).toBe('20536811')
     expect(result.token).toBe('53b3cb4ddc8cd0171cb9b6d6d1cb41ce')
     expect(result.requestParams?.uid).toBe('20536811')
     expect(result.requestParams?.token).toBe('53b3cb4ddc8cd0171cb9b6d6d1cb41ce')
-    expect(result.channel).toBe('app')
+    expect(result.requestHeaders?.['User-Agent']).toBe('okhttp/3.14.9')
+    expect(result.model).toBe('MI 8 UD')
   })
 
-  it('wx 账号也能带登录态', () => {
-    const result = buildAdapterConfig(configWith(wxProfile), true)
-    expect(result.uid).toBe('20478621')
-    expect(result.token).toBe('a878dabfb1eaf3d4acf19fa3f81f9cef')
-    expect(result.openid).toBe('oXxx123')
-  })
-
-  it('不修改原 profile（无副作用）', () => {
-    const config = configWith(appProfile)
-    buildAdapterConfig(config, false)
-    expect(config.activeAccountProfile?.params.uid).toBe('20536811')
+  it('wx 账号的版本字段一起带出', () => {
+    const result = buildAdapterConfigFromProfile(wxProfile, true)
+    expect(result.wx_version_name).toBe('3.5.34')
+    expect(result.version_name).toBe('4.9.0')
+    expect(result.plat_type).toBe('wx')
   })
 })
 
-describe('辅助函数', () => {
-  it('stripAuthParams 大小写不敏感地剔除 uid/token', () => {
+describe('stripAuthParams', () => {
+  it('大小写不敏感地剔除 uid/token', () => {
     expect(stripAuthParams({ uid: '1', TOKEN: '2', UDID: 'x', model: 'm' })).toEqual({
-      UDID: 'x', model: 'm',
+      UDID: 'x',
+      model: 'm',
     })
   })
+})
 
-  it('hasLoginCredential 需要 uid 和 token 同时存在', () => {
-    expect(hasLoginCredential(configWith(appProfile))).toBe(true)
-    expect(hasLoginCredential({ activeAccountProfile: { channel: 'app', params: { uid: '1' }, headers: {} } })).toBe(false)
-    expect(hasLoginCredential(null)).toBe(false)
-  })
-
-  it('summarizeProfile 给出摘要', () => {
-    expect(summarizeProfile(appProfile)).toEqual({
-      channel: 'app', paramCount: 9, uid: '20536811', model: 'MI 8 UD',
-      platType: 'Android', path: '/goods/get_goods_info_v2',
-    })
-    expect(summarizeProfile(null).channel).toBeNull()
+describe('hasProfileCredential', () => {
+  it('需要 uid 和 token 同时存在', () => {
+    expect(hasProfileCredential(appProfile)).toBe(true)
+    expect(hasProfileCredential({ channel: 'app', params: { uid: '1' }, headers: {} })).toBe(false)
+    expect(hasProfileCredential(null)).toBe(false)
   })
 })

@@ -9,6 +9,7 @@
 import { getOrderAdapter, MAX_AUTO_ORDER_NUM, precheckAutoOrder } from '@core'
 import { createErrorResponse, createSuccessResponse, ErrorCode } from '../../utils/response'
 import { getCurrentUser } from '../../utils/session'
+import { resolveAdapterConfigForUser } from '../../utils/adapterConfig'
 
 export default defineEventHandler(async (event) => {
   try {
@@ -17,13 +18,18 @@ export default defineEventHandler(async (event) => {
       return createErrorResponse('UNAUTHORIZED', '请先登录')
     }
 
+    // 下单链路必须带一手登录态，账号快照由服务端按当前账号取
+    const { config: adapterConfig, hasCredential } = resolveAdapterConfigForUser(
+      currentUser.username,
+      true
+    )
+
     const body = await readBody(event)
-    const adapterConfig = body?.adapterConfig || {}
     const goodsId = String(body?.goodsId || '')
     const goodsNo = String(body?.goodsNo || '')
     const num = Number(body?.num ?? 1)
 
-    if (!adapterConfig.uid || !adapterConfig.token) {
+    if (!hasCredential) {
       return createErrorResponse(
         ErrorCode.AUTH_REQUIRED,
         '下单预检需要一手登录态，请先在账号管理中选择带登录态的账号'

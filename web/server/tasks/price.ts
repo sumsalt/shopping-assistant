@@ -100,6 +100,8 @@ const rebuildSnapshot = (summary: PriceSnapshotSummary | undefined, image?: stri
 export const priceDefinition: TaskDefinition<PriceTaskRecord> = {
   kind: 'price',
   label: '价格监控',
+  // 比价必须用登录态拿货价，游客价（单独购买价）口径不同
+  needsAuth: () => true,
   removeOriginalOnRestart: true,
 
   async create({ body, user }) {

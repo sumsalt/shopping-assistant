@@ -6,15 +6,15 @@
  * 而可匿名接口又只把价格静默降级成 `??.??`。用户很难判断抓包是否还能用，
  * 所以这里用必须登录的 /users/get_user_info 做探针，把结论直接回给页面。
  *
- * 安全边界同 /api/accounts/profile：登录态 + 账号归属校验，只回结论不回凭证。
+ * 安全边界同 /api/accounts/reveal：登录态 + 账号归属校验，只回结论不回凭证。
  */
 
 import { readBody } from 'h3'
-import { checkYishouAuth } from '@core'
+import { buildAdapterConfigFromProfile, checkYishouAuth } from '@core'
 import { createSuccessResponse, createErrorResponse } from '../../utils/response'
 import { getCurrentUser } from '../../utils/session'
 import { getAccount } from '../../utils/accountStore'
-import { profileToAdapterConfig } from '../../utils/adapterConfig'
+import { getRuntimeSettings } from '../../utils/settingsStore'
 
 export default defineEventHandler(async (event) => {
   try {
@@ -37,11 +37,13 @@ export default defineEventHandler(async (event) => {
       return createErrorResponse('FORBIDDEN', '无权操作此账号')
     }
 
-    // 代理是全局设置，存在前端；这里只在显式传入时使用
-    const config = profileToAdapterConfig(account.requestProfile, {
-      proxyUrl: typeof body?.proxyUrl === 'string' ? body.proxyUrl : undefined,
-      proxyEnabled: body?.proxyEnabled === '1' ? '1' : '0',
-    })
+    // 代理是服务端全局设置，不再由前端传入
+    const settings = getRuntimeSettings()
+    const config = buildAdapterConfigFromProfile(account.requestProfile, true)
+    if (settings.proxyUrl) {
+      config.proxyUrl = settings.proxyUrl
+    }
+    config.proxyEnabled = settings.proxyEnabled ? '1' : '0'
 
     const result = await checkYishouAuth(config)
     return createSuccessResponse(result)

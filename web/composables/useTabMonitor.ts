@@ -2,8 +2,6 @@
  * Tab 监控任务管理组合式函数
  */
 
-import type { UserConfig } from '@/types'
-import { buildAdapterConfig } from '@/utils/adapterConfig'
 import { useTaskSubmit } from './useTaskSubmit'
 
 // Tab 监控配置类型
@@ -22,7 +20,6 @@ interface TabMonitorConfig {
   mode?: 'accumulate' | 'diff'
   /** 每日生效时段（可选） */
   activeWindow?: { start: string; end: string }
-  adapterConfig?: Record<string, any>
 }
 
 // 创建任务响应类型
@@ -64,22 +61,9 @@ interface ApiResponse<T> {
  * Tab 监控任务管理组合式函数
  */
 export const useTabMonitor = () => {
-  const configStore = useConfigStore()
   const { user, isLoggedIn, checkAuth } = useAuth()
   const toast = useToast()
   const { isLoading, error, submit, fetchStatus } = useTaskSubmit()
-
-  /**
-   * 检查配置是否有效
-   */
-  const checkConfig = (): UserConfig | null => {
-    const config = configStore.getConfigForApi()
-    if (!config) {
-      toast.warning('请先完成配置')
-      return null
-    }
-    return config
-  }
 
   /**
    * 创建 Tab 监控任务
@@ -87,11 +71,6 @@ export const useTabMonitor = () => {
   const createTabMonitorTask = async (
     config: TabMonitorConfig
   ): Promise<string | null> => {
-    const userConfig = checkConfig()
-    if (!userConfig) {
-      return null
-    }
-
     // 确保用户已登录
     await checkAuth()
 
@@ -114,8 +93,6 @@ export const useTabMonitor = () => {
       minChangeCount: config.minChangeCount || 10,
       mode: config.mode ?? 'accumulate',
       ...(config.activeWindow ? { activeWindow: config.activeWindow } : {}),
-      // Tab 列表检测始终保持匿名：剔除 uid/token，与改造前一致
-      adapterConfig: buildAdapterConfig(userConfig, false),
     }
 
     const data = await submit<CreateTabTaskResponse>(

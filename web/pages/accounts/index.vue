@@ -439,7 +439,6 @@ const {
   updateAccount,
   deleteAccount,
   revealField,
-  revealProfile,
   verifyAccount,
 } = useAccounts()
 
@@ -447,15 +446,24 @@ const configStore = useConfigStore()
 const { confirm: confirmDialog } = useConfirmDialog()
 const toast = useToast()
 
-// 当前账号存在 localStorage，SSR 阶段读不到；用 mounted 守卫避免水合不一致
+// 当前账号来自服务端；mounted 守卫避免 SSR 首屏与水合结果不一致
 const mounted = ref(false)
-onMounted(() => {
-  // SSR 水合会用服务端空 state 覆盖 localStorage 值，这里显式补读一次
-  configStore.loadConfig()
+onMounted(async () => {
+  await configStore.load()
   mounted.value = true
 })
 
-const activeAccount = computed(() => configStore.activeAccount)
+const EMPTY_ACTIVE_ACCOUNT = {
+  id: '',
+  phone: '',
+  uin: '',
+  channel: null,
+  hasCredential: false,
+  hasRequestProfile: false,
+  requestParamCount: 0,
+}
+
+const activeAccount = computed(() => configStore.activeAccount ?? EMPTY_ACTIVE_ACCOUNT)
 const isActive = (item: AccountItem): boolean => mounted.value && activeAccount.value.id === item.id
 
 /** 请求信息折叠状态，默认全部收起 */
@@ -693,26 +701,24 @@ const handleRefresh = () => {
   fetchAccounts()
 }
 
-/** 设为当前账号：取回完整明文快照并缓存 */
+/** 设为当前账号：只提交 id，快照留在服务端 */
 const switchingAccountId = ref('')
 const handleSetActive = async (item: AccountItem) => {
   switchingAccountId.value = item.id
   try {
-    const profile = await revealProfile(item.id)
-    if (!profile) {
+    const ok = await configStore.setActiveAccount(item.id)
+    if (!ok) {
+      toast.error('切换当前账号失败')
       return
     }
-    configStore.setActiveAccount({
-      id: profile.id,
-      phone: profile.phone,
-      uin: profile.uin,
-      channel: profile.requestProfile?.channel ?? null,
-      profile: profile.requestProfile,
-    })
-    if (!profile.requestProfile) {
+    await fetchAccounts()
+
+    if (!item.hasRequestProfile) {
       toast.warning('该账号还没有抓包信息，请求仍走默认匿名参数')
+    } else if (!item.hasCredential) {
+      toast.warning('该账号的抓包缺少 uid/token，只能用于库存查询与 Tab 监控')
     } else {
-      toast.success(`已切换为「${profile.phone}」`)
+      toast.success(`已切换为「${item.phone}」`)
     }
   } finally {
     switchingAccountId.value = ''
@@ -927,7 +933,7 @@ const handleDelete = async (item: AccountItem) => {
     delete verifyResults[item.id]
     // 如果删的是当前账号，回到匿名模式
     if (isActive(item)) {
-      configStore.clearActiveAccount()
+      await configStore.clearActiveAccount()
     }
   }
 }

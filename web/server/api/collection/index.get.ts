@@ -6,10 +6,16 @@
 import { checkCollectionStock } from '@core'
 import type { CollectionStockRequest, CollectionStockCheckResult, StockCheckError } from '@core'
 import { createSuccessResponse, createErrorResponse, ErrorCode } from '../../utils/response'
-import { readAdapterConfigFromQuery } from '../../utils/adapterConfig'
+import { getCurrentUser } from '../../utils/session'
+import { resolveAdapterConfigForUser } from '../../utils/adapterConfig'
 
 export default defineEventHandler(async (event) => {
   try {
+    const currentUser = getCurrentUser(event)
+    if (!currentUser) {
+      return createErrorResponse(ErrorCode.UNAUTHORIZED, '请先登录')
+    }
+
     // 获取查询参数
     const query = getQuery(event)
     const page = parseInt(query.page as string) || 1
@@ -31,8 +37,14 @@ export default defineEventHandler(async (event) => {
       pageSize,
     }
 
-    // 前端按当前账号组装好的完整快照（含登录态），原样透传给适配器
-    const adapterConfig = readAdapterConfigFromQuery(query as Record<string, unknown>)
+    // 收藏夹需要登录态：服务端按当前账号取快照
+    const { config: adapterConfig, hasCredential } = resolveAdapterConfigForUser(
+      currentUser.username,
+      true
+    )
+    if (!hasCredential) {
+      return createErrorResponse(ErrorCode.AUTH_REQUIRED, '当前账号没有登录态，请先在账号管理选择账号')
+    }
 
     // 调用核心库查询收藏夹
     const result: CollectionStockCheckResult = await checkCollectionStock(request, { adapterConfig })

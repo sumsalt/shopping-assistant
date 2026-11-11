@@ -19,23 +19,26 @@ export interface RequestProfile {
 }
 
 /**
- * 用户配置
+ * 当前使用账号（服务端返回的脱敏摘要）
  *
- * 设备 / 登录信息已迁移到「账号管理」：这里只记当前选用的账号，
- * 并把该账号的完整请求快照缓存下来（与旧版 uid/token 明文存 localStorage 同一安全边界）。
- * 代理是全局网络设置，仍保留在这里。
+ * 账号快照只存在服务端，前端拿不到 uid/token；
+ * 需要「是否能登录」时看 hasCredential。
  */
-export interface UserConfig {
-  /** 当前使用的账号 id；为空表示未选账号，走匿名默认参数 */
-  activeAccountId?: string
-  /** 当前账号摘要（仅用于界面展示，不参与发请求） */
-  activeAccountPhone?: string
-  activeAccountUin?: string
-  activeAccountChannel?: RequestChannel | null
-  /** 当前账号的完整请求快照（明文，选账号时从服务端取回缓存） */
-  activeAccountProfile?: RequestProfile | null
-  proxyUrl?: string
-  proxyEnabled?: '1' | '0'
+export interface ActiveAccountSummary {
+  id: string
+  phone: string
+  uin: string
+  channel: RequestChannel | null
+  hasCredential: boolean
+  hasRequestProfile: boolean
+  /** 抓包公共参数个数（仅展示） */
+  requestParamCount: number
+}
+
+/** 服务端运行设置（代理等，影响服务器出网） */
+export interface RuntimeSettings {
+  proxyUrl: string
+  proxyEnabled: boolean
 }
 
 // API 响应基础类型
@@ -103,25 +106,6 @@ export interface CollectionResult {
   page: number
   pageSize: number
   hasMore: boolean
-}
-
-// 库存查询参数
-export interface StockCheckParams {
-  productNo: string
-  config: UserConfig
-}
-
-// SKU 查询参数
-export interface SkuQueryParams {
-  productNo: string
-  config: UserConfig
-}
-
-// 收藏夹查询参数
-export interface CollectionQueryParams {
-  page: number
-  pageSize: number
-  config: UserConfig
 }
 
 // 分页参数

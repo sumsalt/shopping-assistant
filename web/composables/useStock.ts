@@ -1,5 +1,3 @@
-import type { UserConfig } from '@/types'
-import { buildAdapterConfig, hasLoginCredential, adapterConfigToQuery } from '@/utils/adapterConfig'
 
 // 库存查询结果类型
 interface StockCheckResult {
@@ -89,28 +87,13 @@ export const useStock = () => {
   const isLoadingSkus = ref(false)
   const skuError = ref<string | null>(null)
 
-  /**
-   * 检查配置是否有效
-   */
-  const checkConfig = (): UserConfig | null => {
-    const config = configStore.getConfigForApi()
-    if (!config) {
-      toast.warning('请先完成配置')
-      router.push('/settings?redirect=/stock/check')
-      return null
-    }
-    return config
-  }
+  /** 当前账号是否带登录态（服务端也会兜底校验） */
+  const hasCredential = computed(() => Boolean(configStore.activeAccount?.hasCredential))
 
   /**
    * 查询单品库存（匿名：剔除 uid/token）
    */
   const checkStock = async (productId: string): Promise<StockCheckResult | null> => {
-    const config = checkConfig()
-    if (!config) {
-      return null
-    }
-
     isCheckingStock.value = true
     stockError.value = null
     stockResult.value = null
@@ -119,10 +102,7 @@ export const useStock = () => {
     try {
       const response = await $fetch<ApiResponse<StockCheckResult>>('/api/stock/check', {
         method: 'POST',
-        body: {
-          productId,
-          adapterConfig: buildAdapterConfig(config, false),
-        },
+        body: { productId },
       })
 
       if (response.success && response.data) {
@@ -151,11 +131,6 @@ export const useStock = () => {
     productIds: string[],
     skus?: string[]
   ): Promise<BatchStockCheckResult | null> => {
-    const config = checkConfig()
-    if (!config) {
-      return null
-    }
-
     isCheckingStock.value = true
     stockError.value = null
     stockResult.value = null
@@ -166,8 +141,7 @@ export const useStock = () => {
         method: 'POST',
         body: {
           productId: productIds,
-          sku: skus,
-          adapterConfig: buildAdapterConfig(config, false),
+          ...(skus ? { sku: skus } : {}),
         },
       })
 
@@ -200,14 +174,9 @@ export const useStock = () => {
    * 获取商品 SKU 列表（需要登录态）
    */
   const getProductSkus = async (productNo: string): Promise<ProductSkuResult | null> => {
-    const config = checkConfig()
-    if (!config) {
-      return null
-    }
-
     // add_cart_goods_info 必须带登录态，缺凭证时一手直接返回「请登录」，
     // 这里提前拦下来给出可操作的提示，不用等接口失败
-    if (!hasLoginCredential(config)) {
+    if (!hasCredential.value) {
       const message = '查看 SKU 详情需要登录态，请先在账号管理中选择带登录态的账号'
       skuError.value = message
       toast.warning(message)
@@ -219,11 +188,8 @@ export const useStock = () => {
     skuResult.value = null
 
     try {
-      // 完整抓包快照放进单个查询参数，服务端原样透传给适配器
-      const query = adapterConfigToQuery(buildAdapterConfig(config, true))
-
       const response = await $fetch<ApiResponse<ProductSkuResult>>(
-        `/api/stock/skus/${productNo}?${query}`
+        `/api/stock/skus/${productNo}`
       )
 
       if (response.success && response.data) {

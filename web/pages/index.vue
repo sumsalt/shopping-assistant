@@ -12,9 +12,9 @@
           </svg>
         </div>
         <div class="ml-3 flex-1">
-          <h3 class="text-sm font-medium text-yellow-800">配置未完成</h3>
+          <h3 class="text-sm font-medium text-yellow-800">未选择当前账号</h3>
           <p class="mt-1 text-sm text-yellow-700">
-            请先完成平台认证信息配置，才能使用库存查询功能
+            库存查询与 Tab 监控可匿名使用；价格监控、SKU 详情、收藏夹、自动下单需要选择带登录态的账号
           </p>
           <div class="mt-3">
             <NuxtLink

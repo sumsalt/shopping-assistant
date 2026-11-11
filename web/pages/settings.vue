@@ -32,13 +32,14 @@
                   >
                     {{ activeAccount.channel === 'app' ? 'App' : '小程序' }}
                   </span>
-                  <span v-if="activeAccount.profile" class="text-xs text-gray-500">
-                    {{ Object.keys(activeAccount.profile.params).length }} 个请求参数
+                  <span v-if="activeAccount.hasRequestProfile" class="text-xs text-gray-500">
+                    {{ activeAccount.requestParamCount }} 个请求参数
                   </span>
                 </div>
                 <p class="mt-1 text-xs text-gray-500">
                   uin：{{ activeAccount.uin || '未填写' }}
-                  <span v-if="!activeAccount.profile" class="text-amber-600">· 该账号暂无抓包信息，请求将走默认匿名参数</span>
+                  <span v-if="!activeAccount.hasRequestProfile" class="text-amber-600">· 该账号暂无抓包信息，请求将走默认匿名参数</span>
+                  <span v-else-if="!activeAccount.hasCredential" class="text-amber-600">· 抓包缺少 uid/token，只能用于库存查询与 Tab 监控</span>
                 </p>
               </template>
               <template v-else>
@@ -169,15 +170,23 @@ const {
   initFormData,
 } = useConfig()
 
-// 当前账号存在 localStorage，SSR 阶段读不到；挂载后再展示，避免水合不一致
+// 当前账号来自服务端，SSR 阶段尚未拉取；挂载后再展示，避免水合不一致
 const mounted = ref(false)
 onMounted(() => {
   mounted.value = true
 })
+const EMPTY_ACTIVE_ACCOUNT = {
+  id: '',
+  phone: '',
+  uin: '',
+  channel: null as 'wx' | 'app' | null,
+  hasCredential: false,
+  hasRequestProfile: false,
+  requestParamCount: 0,
+}
+
 const activeAccount = computed(() =>
-  mounted.value
-    ? rawActiveAccount.value
-    : ({ id: '', phone: '', uin: '', channel: null, profile: null } as typeof rawActiveAccount.value)
+  mounted.value && rawActiveAccount.value ? rawActiveAccount.value : EMPTY_ACTIVE_ACCOUNT
 )
 
 const router = useRouter()
@@ -193,9 +202,9 @@ const handleSubmit = async () => {
   }
 }
 
-const handleReset = () => {
+const handleReset = async () => {
   if (confirm('确定要重置所有配置吗？当前账号选择也会被清除。')) {
-    resetConfig()
+    await resetConfig()
   }
 }
 

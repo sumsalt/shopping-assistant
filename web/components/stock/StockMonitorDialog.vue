@@ -202,11 +202,6 @@ import {
   STOCK_MONITOR_DURATION_OPTIONS,
   buildStockMonitorConfig,
 } from '@/utils/stockMonitorConfig'
-import {
-  buildAdapterConfig as buildAccountAdapterConfig,
-  hasLoginCredential,
-} from '@/utils/adapterConfig'
-
 interface StockMonitorProduct {
   productId: string
   productName?: string
@@ -260,7 +255,7 @@ const addressError = ref('')
 const isChecking = ref(false)
 const precheck = ref<PrecheckResult | null>(null)
 
-const hasCredential = computed(() => hasLoginCredential(configStore.getConfigForApi()))
+const hasCredential = computed(() => Boolean(configStore.activeAccount?.hasCredential))
 
 /** 普通监控不要求登录态与货号；开启自动下单则两者都必须具备 */
 const canSubmit = computed(
@@ -285,12 +280,8 @@ const stageText = (stage: string): string => {
 const maskMobile = (mobile: string): string =>
   mobile ? mobile.replace(/^(\d{3})\d{4}(\d{4})$/, '$1****$2') : ''
 
-/** 取当前账号的完整抓包快照（下单链路需要登录态），统一透传给服务端 */
-const buildAdapterConfig = () => buildAccountAdapterConfig(configStore.getConfigForApi(), true)
-
 const loadAddresses = async () => {
-  const adapterConfig = buildAdapterConfig()
-  if (!adapterConfig?.uid || !adapterConfig.token) {
+  if (!hasCredential.value) {
     return
   }
 
@@ -302,7 +293,7 @@ const loadAddresses = async () => {
       success: boolean
       data?: { addresses: AddressItem[] }
       error?: { message: string }
-    }>('/api/order/addresses', { method: 'POST', body: { adapterConfig } })
+    }>('/api/order/addresses', { method: 'POST' })
 
     if (response.success && response.data) {
       addresses.value = response.data.addresses
@@ -325,8 +316,7 @@ const handlePrecheck = async () => {
     return
   }
 
-  const adapterConfig = buildAdapterConfig()
-  if (!adapterConfig.uid || !adapterConfig.token) {
+  if (!hasCredential.value) {
     toast.warning('请先在账号管理中选择带登录态的账号')
     return
   }
@@ -342,7 +332,6 @@ const handlePrecheck = async () => {
     }>('/api/order/precheck', {
       method: 'POST',
       body: {
-        adapterConfig,
         goodsId: props.product.productId,
         goodsNo: props.product.productNo,
         num: num.value,

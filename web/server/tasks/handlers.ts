@@ -9,6 +9,7 @@
 import { defineEventHandler, getQuery, readBody, type H3Event } from 'h3'
 import { createErrorResponse, createSuccessResponse, ErrorCode } from '../utils/response'
 import { getCurrentUser } from '../utils/session'
+import { resolveAdapterConfigForUser } from '../utils/adapterConfig'
 import { createTaskFromDefinition, restartTaskFromDefinition, type TaskRegistry } from './registry'
 import { TaskApiError, type TaskDefinition, type TaskRecord } from './types'
 
@@ -56,7 +57,26 @@ export const createTaskHandler = <R extends TaskRecord>(
     if (!user) return createErrorResponse(ErrorCode.UNAUTHORIZED, '请先登录')
 
     const body = await readBody(event)
-    const record = await createTaskFromDefinition(def, registry, { body, user })
+
+    // 账号参数由服务端按当前账号解析后注入，不再信任请求体里的 adapterConfig。
+    // 任务创建时把这份配置固化进 payload：之后切换账号不影响已创建的任务。
+    const needAuth = def.needsAuth ? def.needsAuth(body) : false
+    const resolved = resolveAdapterConfigForUser(user.username, needAuth)
+    if (needAuth && !resolved.hasCredential) {
+      throw new TaskApiError(
+        ErrorCode.AUTH_REQUIRED,
+        '当前账号没有登录态（uid/token 不完整），请先在账号管理选择有效账号'
+      )
+    }
+    const payload = {
+      ...(body && typeof body === 'object' && !Array.isArray(body) ? body : {}),
+      config: {
+        ...(body?.config && typeof body.config === 'object' ? body.config : {}),
+        adapterConfig: resolved.config,
+      },
+    }
+
+    const record = await createTaskFromDefinition(def, registry, { body: payload, user })
 
     return createSuccessResponse(def.createdView(record, 'created'))
   })

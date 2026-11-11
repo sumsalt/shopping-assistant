@@ -42,6 +42,14 @@ export interface TaskDefinition<R extends TaskRecord> {
   /** 日志与提示用的中文名 */
   label: string
 
+  /**
+   * 创建任务时是否需要登录态
+   *
+   * 服务端据此决定用当前账号的「完整快照」还是「剔除 uid/token 的匿名快照」，
+   * 并把结果注入 body.config.adapterConfig 后固化进任务。
+   */
+  needsAuth?(body: any): boolean
+
   /** 校验请求体并构造记录内容（不含 id / 所属用户 / 状态 / 创建时间） */
   create(input: { body: any; user: TaskUser }): Promise<Partial<R>> | Partial<R>
 

@@ -15,6 +15,13 @@ export {
   YishouAdapter,
   checkYishouAuth,
 } from './adapters';
+export {
+  buildAdapterConfigFromProfile,
+  stripAuthParams,
+  hasProfileCredential,
+  DEFAULT_WX_ADAPTER_CONFIG,
+} from './adapter-config';
+export type { StoredRequestProfile } from './adapter-config';
 export { placeAutoOrder, precheckAutoOrder, DEFAULT_AUTO_ORDER_PAY_TOOL, MAX_AUTO_ORDER_NUM } from './auto-order';
 export type { AutoOrderAdapter, PlaceOrderParams, PrecheckOrderResult } from './auto-order';
 export type { PlatformAdapter, AdapterConfig, AuthCheckResult } from './adapters';

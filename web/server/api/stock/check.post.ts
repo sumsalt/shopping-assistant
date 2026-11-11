@@ -7,20 +7,22 @@
 import { checkStock, checkStockBatch } from '@core'
 import type { StockCheckRequest, StockCheckResult, StockCheckError } from '@core'
 import { createSuccessResponse, createErrorResponse, ErrorCode } from '../../utils/response'
-import { readAdapterConfigFromBody } from '../../utils/adapterConfig'
+import { getCurrentUser } from '../../utils/session'
+import { resolveAdapterConfigForUser } from '../../utils/adapterConfig'
 
 // 请求体类型
 interface CheckStockBody {
   productId?: string | string[]
   sku?: string | string[]
-  /** 账号快照组装好的完整适配器配置（匿名，不含 uid/token） */
-  adapterConfig?: unknown
-  /** 旧形态：摊平的用户配置，保留兼容 */
-  config?: Record<string, unknown>
 }
 
 export default defineEventHandler(async (event) => {
   try {
+    const currentUser = getCurrentUser(event)
+    if (!currentUser) {
+      return createErrorResponse(ErrorCode.UNAUTHORIZED, '请先登录')
+    }
+
     // 读取请求体
     const body = await readBody<CheckStockBody>(event)
 
@@ -29,9 +31,8 @@ export default defineEventHandler(async (event) => {
       return createErrorResponse(ErrorCode.INVALID_PARAMS, '商品 ID 不能为空')
     }
 
-    // 前端已按当前账号组装好完整快照（匿名链路剔除 uid/token），这里原样透传；
-    // 没有账号时适配器自己回退到旧的默认 wx 匿名参数，行为与改造前一致
-    const adapterConfig = readAdapterConfigFromBody(body)
+    // 库存查询是匿名链路：服务端按当前账号取快照后剔除 uid/token（走匿名限流桶）
+    const { config: adapterConfig } = resolveAdapterConfigForUser(currentUser.username, false)
 
     // 判断是单个查询还是批量查询
     if (Array.isArray(body.productId)) {

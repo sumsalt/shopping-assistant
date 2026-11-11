@@ -192,7 +192,6 @@ import {
   type PriceMonitorProduct,
   type PriceNotifyOn,
 } from '~/composables/usePriceMonitor'
-import { hasLoginCredential } from '@/utils/adapterConfig'
 
 // 组件属性
 interface Props {
@@ -249,7 +248,7 @@ const notifyOptions: Array<{ value: PriceNotifyOn; label: string }> = [
 const displayProduct = computed(() => props.product ?? searchedProduct.value)
 
 // 是否已配置登录态（当前账号的抓包快照里带 uid + token）
-const hasCredential = computed(() => hasLoginCredential(configStore.getConfigForApi()))
+const hasCredential = computed(() => Boolean(configStore.activeAccount?.hasCredential))
 
 // 预计检测周期
 const cycleText = computed(() => {
