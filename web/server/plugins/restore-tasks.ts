@@ -1,48 +1,28 @@
 /**
  * 服务启动时恢复监控任务
  *
- * 进程重启（PM2 restart / 服务器重启）后，从 SQLite 中取出仍处于 running 的任务：
+ * 进程重启（PM2 restart / 服务器重启）后，从 SQLite 取出仍处于 running 的任务：
  * 1. 剩余时长按「原始创建时间 + 配置时长」重新计算，已到期的直接标记完成
- * 2. 未到期的重新挂回内存并继续监控，进度沿用重启前的数据
+ * 2. 未到期的交回各类任务的 definition 续跑，进度沿用重启前的数据
+ *
+ * 这里只负责通用的「剩余时长」与遍历，具体怎么续跑由 definition.restore 决定。
  */
 
-import {
-  activeSecondsBetween,
-  MIN_STOCK_MONITOR_INTERVAL,
-  normalizeActiveWindow,
-  type ActiveWindow,
-  type MonitorTask,
-  type PriceMonitorTask,
-  type PriceSnapshot,
-  type TabMonitorTask,
-} from '@core'
-import { monitorTasks, startMonitorTask, type MonitorTaskRecord } from '../api/monitor/create.post'
-import {
-  priceMonitorTasks,
-  startPriceMonitorTask,
-  type PriceMonitorTaskRecord,
-} from '../api/price-monitor/create.post'
-import {
-  tabMonitorTasks,
-  startTabMonitorTask,
-  type TabMonitorTaskRecord,
-} from '../api/tab-monitor/create.post'
-import { closeTaskStore, listRunningTasks, persistTask } from '../utils/taskStore'
-import { listBlacklistedSupplyIds } from '../utils/shopBlacklistStore'
+import { activeSecondsBetween, normalizeActiveWindow, type ActiveWindow } from '@core'
+import { priceDefinition, priceTasks } from '../tasks/price'
+import { stockDefinition, stockTasks } from '../tasks/stock'
+import { tabDefinition, tabTasks } from '../tasks/tab'
+import type { TaskRegistry } from '../tasks/registry'
+import type { TaskDefinition } from '../tasks/types'
+import { closeTaskStore, listRunningTasks, persistTask, type StoredTaskBase } from '../utils/taskStore'
 
 /** 避免开发环境热更新时重复执行 */
 let restored = false
 
-/**
- * 计算剩余监控时长（秒）
- *
- * @returns 剩余秒数；配置为无限时长时返回 Infinity
- */
-const getRemainingSeconds = (task: {
-  createdAt: Date
-  config: { duration?: number; activeWindow?: ActiveWindow }
-}): number => {
-  const duration = task.config?.duration
+/** 计算剩余监控时长（秒），无限时长返回 Infinity */
+const getRemainingSeconds = (task: StoredTaskBase): number => {
+  const config = (task as { config?: { duration?: number; activeWindow?: unknown } }).config
+  const duration = config?.duration
 
   if (!duration || !Number.isFinite(duration)) {
     return Number.POSITIVE_INFINITY
@@ -52,7 +32,7 @@ const getRemainingSeconds = (task: {
   const now = new Date()
 
   // 配了生效时段的任务，休眠时间不消耗时长，按「时段内累计秒数」计算已运行时间
-  const window = normalizeActiveWindow(task.config?.activeWindow)
+  const window = normalizeActiveWindow(config?.activeWindow as ActiveWindow | null | undefined)
   const elapsed = window
     ? activeSecondsBetween(createdAt, now, window)
     : (now.getTime() - createdAt.getTime()) / 1000
@@ -60,229 +40,43 @@ const getRemainingSeconds = (task: {
   return Math.max(0, duration - elapsed)
 }
 
-/** 恢复库存到货监控任务 */
-const restoreStockTasks = (): number => {
-  const tasks = listRunningTasks<MonitorTaskRecord>('stock')
+const resumeKind = <R extends StoredTaskBase>(
+  definition: TaskDefinition<R>,
+  registry: TaskRegistry<R>
+): number => {
   let resumed = 0
 
-  for (const task of tasks) {
+  for (const task of listRunningTasks<R>(definition.kind)) {
     try {
-      // 已经下过单 / 下单结果未知的任务不能续跑：重启后重新跑一遍会再下一单
-      if (task.result?.orderSn || task.result?.orderUncertain) {
-        task.status = 'completed'
-        persistTask('stock', task)
-        continue
-      }
-
-      const remaining = getRemainingSeconds(task)
-
-      if (remaining !== Number.POSITIVE_INFINITY && remaining <= 0) {
-        task.status = 'completed'
-        persistTask('stock', task)
-        continue
-      }
-
-      // 历史任务的间隔可能低于新的下限（1 秒），续跑时统一抬到最小间隔
-      if (task.config.interval !== undefined && task.config.interval < MIN_STOCK_MONITOR_INTERVAL) {
-        task.config.interval = MIN_STOCK_MONITOR_INTERVAL
-        persistTask('stock', task)
-      }
-
-      task.status = 'running'
-      task.controller = undefined
-
-      monitorTasks.set(task.id, task)
-
-      // 重建监控请求（一个任务只监控一个商品）
-      const product = task.product
-      const request: MonitorTask = {
-        request: {
-          platform: 'yishou',
-          productId: product.productId,
-        },
-        recipient: task.userEmail,
-        subject: `🔔 ${product.productName} 已到货`,
-        productImage: product.productImage,
-      }
-
-      startMonitorTask(task.id, request, {
-        ...task.config,
-        taskId: task.id,
-        // 续跑时接着之前的统计继续累加
-        initialCheckCount: task.result?.checkCount ?? 0,
-        initialErrorCount: task.result?.errorCount ?? 0,
-        duration: remaining === Number.POSITIVE_INFINITY ? undefined : Math.floor(remaining),
-      })
-
-      resumed++
+      const ok = definition.restore?.(task, getRemainingSeconds(task)) ?? false
+      if (ok) resumed++
     } catch (error) {
-      console.error(`[Restore] 恢复到货监控任务 ${task.id} 失败:`, error)
+      console.error(`[Restore] 恢复${definition.label}任务 ${task.id} 失败:`, error)
       task.status = 'stopped'
-      persistTask('stock', task)
+      persistTask(definition.kind, task)
     }
   }
 
   return resumed
 }
 
-/** 恢复价格监控任务 */
-const restorePriceTasks = (): number => {
-  const tasks = listRunningTasks<PriceMonitorTaskRecord>('price')
-  let resumed = 0
-
-  for (const task of tasks) {
-    try {
-      const remaining = getRemainingSeconds(task)
-
-      if (remaining !== Number.POSITIVE_INFINITY && remaining <= 0) {
-        task.status = 'completed'
-        persistTask('price', task)
-        continue
-      }
-
-      task.status = 'running'
-      task.controller = undefined
-      task.changes = Array.isArray(task.changes) ? task.changes : []
-      task.couponChanges = Array.isArray(task.couponChanges) ? task.couponChanges : []
-
-      priceMonitorTasks.set(task.id, task)
-
-      // 重建监控请求（一个任务只监控一个商品）
-      const product = task.product
-      const snapshot = task.snapshot
-
-      // 续跑用最后一次落盘的快照做基线：config.initialSnapshot 还是创建时的价格，
-      // 拿它比对会把重启前已经发生过的变化再提醒一次
-      const restoredSnapshot: PriceSnapshot | undefined = snapshot
-        ? {
-            platform: 'yishou',
-            productId: String(snapshot.productId),
-            productName: snapshot.productName,
-            productNo: '',
-            productImage: product.productImage || '',
-            productUrl: '',
-            shopPrice: snapshot.shopPrice,
-            authState: 'logged_in',
-            coupons: snapshot.coupons ?? [],
-            couponsNew: snapshot.couponsNew ?? [],
-            capturedAt: snapshot.checkedAt,
-          }
-        : undefined
-
-      const request: PriceMonitorTask = {
-        request: {
-          platform: 'yishou',
-          productId: String(product.productId),
-        },
-        recipient: task.userEmail,
-        productName: product.productName || snapshot?.productName,
-        productImage: product.productImage || undefined,
-      }
-
-      startPriceMonitorTask(task.id, request, {
-        ...task.config,
-        taskId: task.id,
-        initialSnapshot: restoredSnapshot ?? task.config.initialSnapshot,
-        initialCheckCount: task.checkCount ?? 0,
-        initialDetectedCount: task.detectedCount ?? 0,
-        duration: remaining === Number.POSITIVE_INFINITY ? undefined : Math.floor(remaining),
-      })
-
-      resumed++
-    } catch (error) {
-      console.error(`[Restore] 恢复价格监控任务 ${task.id} 失败:`, error)
-      task.status = 'stopped'
-      persistTask('price', task)
-    }
-  }
-
-  return resumed
-}
-
-/** 恢复 Tab 商品列表监控任务 */
-const restoreTabTasks = (): number => {
-  const tasks = listRunningTasks<TabMonitorTaskRecord>('tab')
-  let resumed = 0
-
-  for (const task of tasks) {
-    try {
-      const remaining = getRemainingSeconds(task)
-
-      if (remaining !== Number.POSITIVE_INFINITY && remaining <= 0) {
-        task.status = 'completed'
-        persistTask('tab', task)
-        continue
-      }
-
-      // 老任务只存了商品 ID，补上详情与首次发现时间，保证「查看累计商品」有内容
-      if (!task.seenProducts?.length && task.seenProductIds?.length) {
-        const firstSeenAt = new Date(task.createdAt).toISOString()
-        task.seenProducts = task.seenProductIds.map(productId => ({
-          productId,
-          productName: '',
-          price: 0,
-          firstSeenAt,
-        }))
-        persistTask('tab', task)
-      }
-
-      task.status = 'running'
-      task.controller = undefined
-
-      tabMonitorTasks.set(task.id, task)
-
-      const request: TabMonitorTask = {
-        recipient: task.userEmail,
-        tabName: task.tabName,
-      }
-
-      startTabMonitorTask(
-        task.id,
-        request,
-        {
-          ...task.config,
-          taskId: task.id,
-          // 续跑不做全量翻页，否则每次重启都要重新翻一遍
-          fullInitialScan: false,
-          initialCheckCount: task.checkCount ?? 0,
-          initialDetectedCount: task.detectedCount ?? 0,
-          // 续跑时继续沿用已见商品集合：重启前见过的商品不会再被当成新商品
-          initialSeenProducts: task.seenProducts ?? [],
-          initialSeenProductIds: task.seenProductIds ?? [],
-          // 续跑时同样实时读取店铺黑名单
-          getBlacklistedSuppliers: () => listBlacklistedSupplyIds(task.userId),
-          duration: remaining === Number.POSITIVE_INFINITY ? undefined : Math.floor(remaining),
-        },
-        { preserveState: true }
-      )
-
-      resumed++
-    } catch (error) {
-      console.error(`[Restore] 恢复 Tab 监控任务 ${task.id} 失败:`, error)
-      task.status = 'stopped'
-      persistTask('tab', task)
-    }
-  }
-
-  return resumed
-}
-
-/** 执行恢复 */
 const restoreAllTasks = () => {
-  if (restored) {
-    return
-  }
+  if (restored) return
   restored = true
 
   try {
-    const stockCount = restoreStockTasks()
-    const priceCount = restorePriceTasks()
-    const tabCount = restoreTabTasks()
+    const counts = {
+      到货: resumeKind(stockDefinition, stockTasks),
+      Tab: resumeKind(tabDefinition, tabTasks),
+      价格: resumeKind(priceDefinition, priceTasks),
+    }
 
-    if (stockCount + priceCount + tabCount > 0) {
-      console.log(
-        `[Restore] 已续跑任务：到货 ${stockCount} 个 / 价格 ${priceCount} 个 / Tab ${tabCount} 个`
-      )
+    const total = Object.values(counts).reduce((sum, count) => sum + count, 0)
+    if (total > 0) {
+      const detail = Object.entries(counts)
+        .map(([label, count]) => `${label} ${count} 个`)
+        .join(' / ')
+      console.log(`[Restore] 已续跑任务：${detail}`)
     }
   } catch (error) {
     console.error('[Restore] 恢复任务失败:', error)

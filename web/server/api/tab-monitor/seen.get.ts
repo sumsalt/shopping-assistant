@@ -7,7 +7,7 @@
  */
 
 import type { TabSeenProduct } from '@core'
-import { tabMonitorTasks, type TabMonitorTaskRecord } from './create.post'
+import { tabTasks, type TabTaskRecord } from '../../tasks/tab'
 import { createSuccessResponse, createErrorResponse, ErrorCode } from '../../utils/response'
 import { getCurrentUser } from '../../utils/session'
 import { listTasks } from '../../utils/taskStore'
@@ -27,9 +27,9 @@ export default defineEventHandler(async (event) => {
     }
 
     // 优先取内存中的实时任务，进程重启后从数据库取
-    let task: TabMonitorTaskRecord | undefined = tabMonitorTasks.get(taskId)
+    let task: TabTaskRecord | undefined = tabTasks.getLive(taskId)
     if (!task || task.userId !== currentUser.username) {
-      task = listTasks<TabMonitorTaskRecord>('tab', currentUser.username).find(
+      task = listTasks<TabTaskRecord>('tab', currentUser.username).find(
         item => item.id === taskId
       )
     }

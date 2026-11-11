@@ -1,5 +1,5 @@
 /**
- * 一手适配器 - 按账号抓包快照发请求
+ * 请求档案解析 - 账号抓包快照 → 实际请求
  *
  * 重点验证：
  * - wx / App 两种通道都能原样回放快照参数与请求头，只覆盖动态 t_t
@@ -8,19 +8,18 @@
  * - 无快照时回退到改造前的默认 wx 匿名参数
  */
 
-import { describe, expect, it } from 'vitest'
-import { YishouAdapter } from './index'
+import { describe, expect, it, vi } from 'vitest'
 import type { AdapterConfig } from '../types'
 
-/** 私有方法只在测试里访问，用结构化类型避免 any 扩散 */
-type AdapterInternals = {
-  buildBaseRequestBody: (t_t: number) => Record<string, string>
-  buildHeaders: (sign: string) => Record<string, string>
-  generateSignature: () => { sign: string; t_t: number }
-}
+const mocks = vi.hoisted(() => ({ httpPost: vi.fn() }))
 
-const internals = (config: AdapterConfig): AdapterInternals =>
-  new YishouAdapter(config) as unknown as AdapterInternals
+vi.mock('../../utils/http', () => ({
+  httpPost: mocks.httpPost,
+  httpRequest: vi.fn(),
+}))
+
+import { resolveRequestProfile } from './profile'
+import { YishouClient } from './client'
 
 const WX_CONFIG: AdapterConfig = {
   channel: 'wx',
@@ -60,11 +59,14 @@ const APP_CONFIG: AdapterConfig = {
   },
 }
 
-describe('抓包快照回放 - 请求体', () => {
-  it('wx 快照原样回放，只覆盖动态 t_t', () => {
-    const body = internals(WX_CONFIG).buildBaseRequestBody(1_700_000_000_000)
+describe('请求档案 - 公共参数', () => {
+  it('wx 快照原样保留，动态字段 t_t / sign 被剔除', () => {
+    const profile = resolveRequestProfile({
+      ...WX_CONFIG,
+      requestParams: { ...WX_CONFIG.requestParams, t_t: '111', sign: 'stale' },
+    })
 
-    expect(body).toMatchObject({
+    expect(profile.params).toMatchObject({
       uid: 'u-wx',
       token: 'tk-wx',
       openid: 'open-wx',
@@ -73,141 +75,162 @@ describe('抓包快照回放 - 请求体', () => {
       plat_type: 'wx',
       equipmd5: 'equip-wx',
     })
-    expect(body.t_t).toBe('1700000000000')
-    expect(body.sign).toBeUndefined()
+    expect(profile.params.t_t).toBeUndefined()
+    expect(profile.params.sign).toBeUndefined()
+    expect(profile.captured).toBe(true)
   })
 
-  it('抓包里残留的 t_t / sign 会被动态值覆盖', () => {
-    const body = internals({
-      ...WX_CONFIG,
-      requestParams: { ...WX_CONFIG.requestParams, t_t: '111', sign: 'stale' },
-    }).buildBaseRequestBody(2_222)
+  it('App 快照保留 udid / plat_type=Android', () => {
+    const profile = resolveRequestProfile(APP_CONFIG)
 
-    expect(body.t_t).toBe('2222')
-    expect(body.sign).toBeUndefined()
-  })
-
-  it('App 快照原样回放，保留 udid / plat_type=Android', () => {
-    const body = internals(APP_CONFIG).buildBaseRequestBody(1_700_000_000)
-
-    expect(body).toMatchObject({
+    expect(profile.params).toMatchObject({
       uid: 'u-app',
       udid: 'udid-xyz',
       model: 'Pixel 7',
       plat_type: 'Android',
       network_type: 'wifi',
     })
-    expect(body.t_t).toBe('1700000000')
+    expect(profile.channel).toBe('app')
   })
 
-  it('匿名快照（已剔除 uid/token）不会发出无效凭证', () => {
+  it('匿名快照（已剔除 uid/token）不会补出无效凭证', () => {
     const anonymous = Object.fromEntries(
       Object.entries(WX_CONFIG.requestParams!).filter(
         ([key]) => key !== 'uid' && key !== 'token'
       )
     )
-    const body = internals({
+    const profile = resolveRequestProfile({
       channel: 'wx',
       requestParams: anonymous,
       requestHeaders: WX_CONFIG.requestHeaders,
-    }).buildBaseRequestBody(1_700_000_000_000)
+    })
 
-    expect(body.uid).toBeUndefined()
-    expect(body.token).toBeUndefined()
-    expect(Object.values(body)).not.toContain('undefined')
+    expect(profile.params.uid).toBeUndefined()
+    expect(profile.params.token).toBeUndefined()
+    expect(profile.hasAuth).toBe(false)
+    expect(Object.values(profile.params)).not.toContain('undefined')
     // 其它公共参数仍完整保留
-    expect(body.openid).toBe('open-wx')
-    expect(body.model).toBe('iPhone 14 Pro<iPhone15,2>')
+    expect(profile.params.openid).toBe('open-wx')
   })
 
   it('无快照时回退默认 wx 参数，且不带 uid/token', () => {
-    const body = internals({}).buildBaseRequestBody(1_700_000_000_000)
+    const profile = resolveRequestProfile({})
 
-    expect(body).toMatchObject({
+    expect(profile.params).toMatchObject({
       model: 'iPhone 14 Pro<iPhone15,2>',
       version: '8.0.60',
       version_name: '4.9.0',
       plat_type: 'wx',
-      t_t: '1700000000000',
     })
-    expect(body.uid).toBeUndefined()
-    expect(body.token).toBeUndefined()
-    expect(Object.values(body)).not.toContain('undefined')
+    expect(profile.params.uid).toBeUndefined()
+    expect(profile.params.token).toBeUndefined()
+    expect(Object.values(profile.params)).not.toContain('undefined')
+    expect(profile.captured).toBe(false)
   })
 
-  it('无快照但带登录态时，顶层凭证仍会写进请求体', () => {
-    const body = internals({ uid: 'legacy-uid', token: 'legacy-token' })
-      .buildBaseRequestBody(1_700_000_000_000)
+  it('无快照但带登录态时，凭证写进公共参数', () => {
+    const profile = resolveRequestProfile({ uid: 'legacy-uid', token: 'legacy-token' })
 
-    expect(body.uid).toBe('legacy-uid')
-    expect(body.token).toBe('legacy-token')
+    expect(profile.params.uid).toBe('legacy-uid')
+    expect(profile.params.token).toBe('legacy-token')
+    expect(profile.hasAuth).toBe(true)
   })
 })
 
-describe('抓包快照回放 - 请求头', () => {
-  it('wx 抓包头原样回放，只覆盖 sign', () => {
-    const headers = internals(WX_CONFIG).buildHeaders('sig-new')
+describe('请求档案 - 请求头', () => {
+  it('wx 抓包头原样回放，不额外补 Referer', () => {
+    const profile = resolveRequestProfile(WX_CONFIG)
 
-    expect(headers['User-Agent']).toBe('Mozilla/5.0 MicroMessenger/8.0.60')
-    expect(headers.equipmd5).toBe('equip-wx')
-    expect(headers.sign).toBe('sig-new')
+    expect(profile.headers['User-Agent']).toBe('Mozilla/5.0 MicroMessenger/8.0.60')
+    expect(profile.headers.equipmd5).toBe('equip-wx')
+    expect(profile.headers.Referer).toBeUndefined()
   })
 
   it('App 抓包头保留 okhttp UA', () => {
-    const headers = internals(APP_CONFIG).buildHeaders('sig-app')
+    const profile = resolveRequestProfile(APP_CONFIG)
 
-    expect(headers['User-Agent']).toBe('okhttp/3.14.9')
-    expect(headers['Accept-Encoding']).toBe('gzip')
-    expect(headers.sign).toBe('sig-app')
+    expect(profile.headers['User-Agent']).toBe('okhttp/3.14.9')
+    expect(profile.headers['Accept-Encoding']).toBe('gzip')
   })
 
   it('有抓包头但缺 UA 时按通道补默认 UA', () => {
-    const wx = internals({ channel: 'wx', requestHeaders: { equipmd5: 'x' } })
-      .buildHeaders('s')
-    const app = internals({ channel: 'app', requestHeaders: { equipmd5: 'x' } })
-      .buildHeaders('s')
+    const wx = resolveRequestProfile({ channel: 'wx', requestHeaders: { equipmd5: 'x' } })
+    const app = resolveRequestProfile({ channel: 'app', requestHeaders: { equipmd5: 'x' } })
 
-    expect(wx['User-Agent']).toContain('MicroMessenger')
-    expect(app['User-Agent']).toBe('okhttp/3.14.9')
+    expect(wx.headers['User-Agent']).toContain('MicroMessenger')
+    expect(app.headers['User-Agent']).toBe('okhttp/3.14.9')
   })
 
   it('无抓包头时回退微信 UA + Referer；App 通道不带微信 Referer', () => {
-    const wx = internals({}).buildHeaders('s')
-    const app = internals({ channel: 'app' }).buildHeaders('s')
+    const wx = resolveRequestProfile({})
+    const app = resolveRequestProfile({ channel: 'app' })
 
-    expect(wx['User-Agent']).toContain('MicroMessenger')
-    expect(wx['Referer']).toContain('servicewechat.com')
-    expect(app['User-Agent']).toBe('okhttp/3.14.9')
-    expect(app['Referer']).toBeUndefined()
+    expect(wx.headers['User-Agent']).toContain('MicroMessenger')
+    expect(wx.headers.Referer).toContain('servicewechat.com')
+    expect(app.headers['User-Agent']).toBe('okhttp/3.14.9')
+    expect(app.headers.Referer).toBeUndefined()
   })
 })
 
-describe('抓包快照回放 - 时间戳与签名', () => {
+describe('请求档案 - 时间戳与签名', () => {
   it('小程序 / H5 通道 t_t 为毫秒级 13 位', () => {
-    const { t_t, sign } = internals(WX_CONFIG).generateSignature()
+    const profile = resolveRequestProfile(WX_CONFIG)
+    const t_t = profile.timestamp()
 
     expect(String(t_t).length).toBe(13)
-    expect(sign).toMatch(/^[a-f0-9]{32}$/)
+    expect(profile.sign(t_t)).toMatch(/^[a-f0-9]{32}$/)
   })
 
   it('App 通道 t_t 为秒级 10 位且签名可正常生成', () => {
-    const { t_t, sign } = internals(APP_CONFIG).generateSignature()
+    const profile = resolveRequestProfile(APP_CONFIG)
+    const t_t = profile.timestamp()
 
     expect(String(t_t).length).toBe(10)
-    expect(sign).toMatch(/^[a-f0-9]{32}$/)
+    expect(profile.sign(t_t)).toMatch(/^[a-f0-9]{32}$/)
   })
 
-  it('显式 timestamp 优先，便于复现抓包时刻', () => {
-    const { t_t } = internals({ ...APP_CONFIG, timestamp: 1_700_000_000 })
-      .generateSignature()
+  it('显式 timestamp / sign 优先，便于复现抓包时刻', () => {
+    const profile = resolveRequestProfile({
+      ...APP_CONFIG,
+      timestamp: 1_700_000_000,
+      sign: 'captured-sign',
+    })
 
-    expect(t_t).toBe(1_700_000_000)
+    expect(profile.timestamp()).toBe(1_700_000_000)
+    expect(profile.sign(1_700_000_000)).toBe('captured-sign')
+  })
+})
+
+describe('请求客户端 - 实际发出的请求', () => {
+  it('业务参数覆盖公共参数，但 t_t 始终用本次生成值', async () => {
+    mocks.httpPost.mockResolvedValueOnce({ code: '200', msg: 'ok', data: { ok: true } })
+
+    const client = new YishouClient({ ...WX_CONFIG, timestamp: 1_700_000_000_000 })
+    await client.post('https://example.com/api', { goods_id: '1', model: 'override' })
+
+    const body = mocks.httpPost.mock.calls.at(-1)?.[1] as Record<string, string>
+    const headers = mocks.httpPost.mock.calls.at(-1)?.[2] as Record<string, string>
+
+    expect(body.goods_id).toBe('1')
+    expect(body.model).toBe('override')
+    expect(body.t_t).toBe('1700000000000')
+    expect(headers.sign).toMatch(/^[a-f0-9]{32}$/)
   })
 
-  it('显式 sign 优先，不再重新计算', () => {
-    const { sign } = internals({ ...WX_CONFIG, sign: 'captured-sign' })
-      .generateSignature()
+  it('code 非 200 时抛出业务错误，登录文案映射为 AUTH_REQUIRED', async () => {
+    mocks.httpPost.mockResolvedValueOnce({ code: '500', msg: '请先登录', data: null })
 
-    expect(sign).toBe('captured-sign')
+    const client = new YishouClient(WX_CONFIG)
+    await expect(client.post('https://example.com/api')).rejects.toMatchObject({
+      type: 'AUTH_REQUIRED',
+    })
+  })
+
+  it('没有登录态时 requireAuth 直接拦截，不发请求', async () => {
+    mocks.httpPost.mockClear()
+    const client = new YishouClient({ channel: 'wx', requestParams: { openid: 'o' } })
+
+    expect(() => client.requireAuth('需要登录')).toThrow('需要登录')
+    expect(mocks.httpPost).not.toHaveBeenCalled()
   })
 })
