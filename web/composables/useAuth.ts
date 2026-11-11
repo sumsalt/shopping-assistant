@@ -80,6 +80,8 @@ export const useAuth = () => {
       if (response.success && response.user) {
         user.value = response.user
         initialized.value = true
+        // 登录后重新拉当前账号 / 代理（登出时已清空）
+        void useConfigStore().load(true)
         return { success: true }
       }
 
@@ -105,6 +107,8 @@ export const useAuth = () => {
       })
 
       user.value = null
+      // 当前账号 / 代理是服务端状态，登出后清空，避免下一个用户看到上一个账号的摘要
+      useConfigStore().reset()
       return { success: true }
     } catch (error: any) {
       const errorMessage = error.data?.message || error.message || '登出失败'

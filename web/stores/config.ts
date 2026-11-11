@@ -184,6 +184,14 @@ export const useConfigStore = defineStore('config', () => {
 
   const clearActiveAccount = async (): Promise<boolean> => setActiveAccount(null)
 
+  /** 清空内存状态（登出时调用，避免下一个登录用户看到上一个账号的摘要） */
+  const reset = (): void => {
+    proxyUrl.value = ''
+    proxyEnabled.value = false
+    activeAccount.value = null
+    isInitialized.value = false
+  }
+
   /** 保存运行设置（代理） */
   const saveSettings = async (input: {
     proxyUrl: string
@@ -218,5 +226,6 @@ export const useConfigStore = defineStore('config', () => {
     setActiveAccount,
     clearActiveAccount,
     saveSettings,
+    reset,
   }
 })
