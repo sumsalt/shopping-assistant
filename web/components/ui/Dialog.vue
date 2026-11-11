@@ -49,8 +49,8 @@
               </button>
             </div>
 
-            <!-- 内容（小屏可滚动） -->
-            <div class="px-6 py-4 overflow-y-auto">
+            <!-- 内容（小屏可滚动）：min-h-0 + flex-1 保证 flex 容器限高时滚动生效 -->
+            <div class="px-6 py-4 overflow-y-auto flex-1 min-h-0">
               <slot />
             </div>
 

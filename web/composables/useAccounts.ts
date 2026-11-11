@@ -14,6 +14,10 @@ export interface AccountItem {
   hasToken: boolean
   passwordMask: string
   tokenMask: string
+  /** 账号标签 */
+  isVerified: boolean
+  isNewUser: boolean
+  hasOrdered: boolean
   createdAt: string
   updatedAt: string
 }
@@ -25,6 +29,9 @@ export interface AccountPayload {
   uin?: string
   token?: string
   remark?: string
+  isVerified?: boolean
+  isNewUser?: boolean
+  hasOrdered?: boolean
 }
 
 /** 可读取明文的字段 */

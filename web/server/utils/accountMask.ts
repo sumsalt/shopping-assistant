@@ -21,6 +21,12 @@ export interface AccountView {
   passwordMask: string
   /** token 掩码（保留首尾各 4 位，便于区分是哪个账号的） */
   tokenMask: string
+  /** 标签：是否认证 */
+  isVerified: boolean
+  /** 标签：是否是新用户 */
+  isNewUser: boolean
+  /** 标签：是否已下单 */
+  hasOrdered: boolean
   createdAt: string
   updatedAt: string
 }
@@ -49,6 +55,9 @@ export const toAccountView = (record: AccountRecord): AccountView => ({
   hasToken: Boolean(record.token),
   passwordMask: maskPassword(record.password),
   tokenMask: maskToken(record.token),
+  isVerified: record.isVerified,
+  isNewUser: record.isNewUser,
+  hasOrdered: record.hasOrdered,
   createdAt: record.createdAt.toISOString(),
   updatedAt: record.updatedAt.toISOString(),
 })

@@ -21,10 +21,31 @@ const readField = (raw: Record<string, unknown>, key: string): string =>
   typeof raw[key] === 'string' ? (raw[key] as string).trim() : ''
 
 /**
+ * 取可选布尔字段（账号标签）
+ *
+ * 兼容前端 Switch 的 '1' / '0' 与常规 true / false；
+ * 字段缺失或值非法时返回 undefined，让 store 层区分「没传」和「传了 false」。
+ */
+const readOptionalBoolean = (
+  raw: Record<string, unknown>,
+  key: string
+): boolean | undefined => {
+  const value = raw[key]
+  if (value === true || value === 1 || value === '1' || value === 'true') {
+    return true
+  }
+  if (value === false || value === 0 || value === '0' || value === 'false') {
+    return false
+  }
+  return undefined
+}
+
+/**
  * 校验并整理创建 / 更新入参
  *
  * 手机号为必填项（账号主标识），密码 / uin / token / 备注都可以留空。
  * 更新时密码和 token 传空表示保持原值，由 store 层处理。
+ * 三个账号标签为可选布尔，不传表示保持原值（新增时默认 false）。
  */
 export const parseAccountInput = (body: unknown): ParseAccountResult => {
   if (!body || typeof body !== 'object') {
@@ -62,5 +83,19 @@ export const parseAccountInput = (body: unknown): ParseAccountResult => {
     return { ok: false, error: `备注不能超过 ${REMARK_MAX} 个字符` }
   }
 
-  return { ok: true, value: { phone, password, uin, token, remark } }
+  const value: AccountInput = { phone, password, uin, token, remark }
+  const isVerified = readOptionalBoolean(raw, 'isVerified')
+  const isNewUser = readOptionalBoolean(raw, 'isNewUser')
+  const hasOrdered = readOptionalBoolean(raw, 'hasOrdered')
+  if (isVerified !== undefined) {
+    value.isVerified = isVerified
+  }
+  if (isNewUser !== undefined) {
+    value.isNewUser = isNewUser
+  }
+  if (hasOrdered !== undefined) {
+    value.hasOrdered = hasOrdered
+  }
+
+  return { ok: true, value }
 }

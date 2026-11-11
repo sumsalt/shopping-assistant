@@ -1,7 +1,7 @@
 /**
  * 账号凭据持久化存储（node:sqlite）
  *
- * 单表 accounts：一个账号一条记录，存手机号、密码、一手 uid（uin）、token 和备注。
+ * 单表 accounts：一个账号一条记录，存手机号、密码、一手 uid（uin）、token、备注和三个账号标签。
  * 数据按登录用户隔离（user_id），列表接口只返回掩码，明文由 reveal 接口单独取。
  *
  * 安全边界：凭据以明文落库（与项目现有 uid/token 配置一致），
@@ -25,6 +25,12 @@ export interface AccountRecord {
   token: string
   /** 备注 */
   remark: string
+  /** 标签：是否认证 */
+  isVerified: boolean
+  /** 标签：是否是新用户 */
+  isNewUser: boolean
+  /** 标签：是否已下单 */
+  hasOrdered: boolean
   createdAt: Date
   updatedAt: Date
 }
@@ -36,6 +42,10 @@ export interface AccountInput {
   uin?: string
   token?: string
   remark?: string
+  /** 三个标签：更新时未传表示保持原值 */
+  isVerified?: boolean
+  isNewUser?: boolean
+  hasOrdered?: boolean
 }
 
 /** 数据库行 */
@@ -47,6 +57,9 @@ interface AccountRow {
   uin: string
   token: string
   remark: string
+  is_verified: number
+  is_new_user: number
+  has_ordered: number
   created_at: number
   updated_at: number
 }
@@ -60,6 +73,9 @@ const toRecord = (row: AccountRow): AccountRecord => ({
   uin: row.uin ?? '',
   token: row.token ?? '',
   remark: row.remark ?? '',
+  isVerified: Boolean(row.is_verified),
+  isNewUser: Boolean(row.is_new_user),
+  hasOrdered: Boolean(row.has_ordered),
   createdAt: new Date(row.created_at),
   updatedAt: new Date(row.updated_at),
 })
@@ -137,12 +153,21 @@ export const createAccount = (userId: string, input: AccountInput): AccountRecor
   const uin = input.uin ?? ''
   const token = input.token ?? ''
   const remark = input.remark ?? ''
+  const isVerified = Boolean(input.isVerified)
+  const isNewUser = Boolean(input.isNewUser)
+  const hasOrdered = Boolean(input.hasOrdered)
 
   try {
     db.prepare(`
-      INSERT INTO accounts (id, user_id, phone, password, uin, token, remark, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(id, userId, input.phone, password, uin, token, remark, now, now)
+      INSERT INTO accounts (
+        id, user_id, phone, password, uin, token, remark,
+        is_verified, is_new_user, has_ordered, created_at, updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id, userId, input.phone, password, uin, token, remark,
+      isVerified ? 1 : 0, isNewUser ? 1 : 0, hasOrdered ? 1 : 0, now, now
+    )
 
     return {
       id,
@@ -152,6 +177,9 @@ export const createAccount = (userId: string, input: AccountInput): AccountRecor
       uin,
       token,
       remark,
+      isVerified,
+      isNewUser,
+      hasOrdered,
       createdAt: new Date(now),
       updatedAt: new Date(now),
     }
@@ -181,15 +209,23 @@ export const updateAccount = (id: string, input: AccountInput): AccountRecord | 
   const token = input.token ? input.token : existing.token
   const uin = input.uin !== undefined ? input.uin : existing.uin
   const remark = input.remark !== undefined ? input.remark : existing.remark
+  // 标签是显式布尔：不传保持原值，传 false 就真的取消勾选
+  const isVerified = input.isVerified !== undefined ? input.isVerified : existing.isVerified
+  const isNewUser = input.isNewUser !== undefined ? input.isNewUser : existing.isNewUser
+  const hasOrdered = input.hasOrdered !== undefined ? input.hasOrdered : existing.hasOrdered
 
   try {
     const result = db
       .prepare(`
         UPDATE accounts
-        SET phone = ?, password = ?, uin = ?, token = ?, remark = ?, updated_at = ?
+        SET phone = ?, password = ?, uin = ?, token = ?, remark = ?,
+            is_verified = ?, is_new_user = ?, has_ordered = ?, updated_at = ?
         WHERE id = ?
       `)
-      .run(input.phone, password, uin, token, remark, Date.now(), id) as { changes?: number }
+      .run(
+        input.phone, password, uin, token, remark,
+        isVerified ? 1 : 0, isNewUser ? 1 : 0, hasOrdered ? 1 : 0, Date.now(), id
+      ) as { changes?: number }
 
     if (typeof result?.changes === 'number' && result.changes === 0) {
       return null

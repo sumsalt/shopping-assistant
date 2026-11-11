@@ -27,7 +27,7 @@
       </div>
     </div>
 
-    <!-- 搜索 -->
+    <!-- 搜索与筛选 -->
     <div v-if="!error && (isLoading || total > 0)" class="bg-white rounded-lg border border-gray-200 p-4 mb-5">
       <UiInput
         v-model="searchKeyword"
@@ -42,8 +42,32 @@
           </svg>
         </template>
       </UiInput>
-      <p v-if="searchKeyword" class="mt-2 text-xs text-gray-500">
-        匹配到 {{ filteredAccounts.length }} 个账号
+
+      <!-- 三态筛选：不限 → 只看「是」 → 只看「否」 → 不限，多个条件取交集 -->
+      <div class="mt-3 flex flex-wrap items-center gap-2">
+        <span class="shrink-0 text-xs text-gray-400">筛选</span>
+        <button
+          v-for="option in filterOptions"
+          :key="option.key"
+          type="button"
+          :title="filterHint(option)"
+          class="inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium transition-colors"
+          :class="filterChipClass(filterStates[option.key])"
+          @click="cycleFilter(option.key)"
+        >
+          {{ filterLabel(option) }}
+        </button>
+        <button
+          v-if="hasActiveFilters"
+          type="button"
+          class="ml-auto text-xs text-gray-400 hover:text-gray-600"
+          @click="clearFilters"
+        >
+          清空筛选
+        </button>
+      </div>
+      <p v-if="hasActiveFilters" class="mt-2 text-xs text-gray-500">
+        匹配到 {{ filteredAccounts.length }} / {{ total }} 个账号
       </p>
     </div>
 
@@ -72,10 +96,12 @@
       @action="openCreate"
     />
 
-    <!-- 搜索无结果 -->
+    <!-- 搜索 / 筛选无结果 -->
     <div v-else-if="filteredAccounts.length === 0" class="bg-white rounded-lg border border-gray-200 p-10 text-center">
-      <p class="text-sm text-gray-500">没有匹配「{{ searchKeyword }}」的账号</p>
-      <UiButton variant="outline" size="sm" class="mt-3" @click="searchKeyword = ''">清空搜索</UiButton>
+      <p class="text-sm text-gray-500">
+        {{ searchKeyword ? '没有匹配「' + searchKeyword + '」的账号' : '没有符合当前筛选条件的账号' }}
+      </p>
+      <UiButton variant="outline" size="sm" class="mt-3" @click="clearFilters">清空筛选</UiButton>
     </div>
 
     <!-- 账号卡片 -->
@@ -85,26 +111,36 @@
         :key="item.id"
         class="bg-white rounded-lg border border-gray-200 p-4 sm:p-5 flex flex-col"
       >
-        <!-- 头部：手机号 + 备注 -->
-        <div class="flex items-start justify-between gap-3">
-          <div class="min-w-0">
-            <div class="flex items-center gap-2">
-              <span class="w-8 h-8 flex items-center justify-center rounded-full bg-blue-50 text-blue-600 shrink-0">
-                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-                </svg>
-              </span>
-              <p class="text-lg font-semibold text-gray-900 font-mono truncate">{{ item.phone }}</p>
-            </div>
-            <p v-if="item.remark" class="mt-2 text-xs text-gray-500 break-all">{{ item.remark }}</p>
-            <p v-else class="mt-2 text-xs text-gray-300">未填写备注</p>
+        <!-- 头部：手机号 + 备注 + 标签 -->
+        <div class="min-w-0">
+          <div class="flex items-center gap-2">
+            <span class="w-8 h-8 flex items-center justify-center rounded-full bg-blue-50 text-blue-600 shrink-0">
+              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+              </svg>
+            </span>
+            <p class="text-lg font-semibold text-gray-900 font-mono truncate">{{ item.phone }}</p>
           </div>
-          <span
-            v-if="item.hasToken"
-            class="shrink-0 inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700"
-          >
-            有 token
-          </span>
+          <p v-if="item.remark" class="mt-2 text-xs text-gray-500 break-all">{{ item.remark }}</p>
+          <p v-else class="mt-2 text-xs text-gray-300">未填写备注</p>
+
+          <div v-if="hasAnyTag(item)" class="mt-2.5 flex flex-wrap gap-1.5">
+            <span v-if="item.isVerified" class="inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-700">
+              已认证
+            </span>
+            <span v-if="item.isNewUser" class="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+              新用户
+            </span>
+            <span v-if="item.hasOrdered" class="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
+              已下单
+            </span>
+            <span v-if="item.hasToken" class="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-600">
+              有 token
+            </span>
+            <span v-if="item.hasPassword" class="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-600">
+              有密码
+            </span>
+          </div>
         </div>
 
         <!-- 字段 -->
@@ -242,6 +278,35 @@
           :max-length="500"
         />
 
+        <!-- 账号标签：手动标记的布尔属性，用于列表筛选（紧凑排列，避免对话框过高） -->
+        <div class="border-t border-gray-100 pt-4">
+          <p class="text-xs font-medium text-gray-500 mb-2">账号标签</p>
+          <div class="flex flex-wrap gap-2">
+            <div class="flex items-center gap-2 rounded-lg border border-gray-200 px-2.5 py-1.5">
+              <span class="text-xs text-gray-700 whitespace-nowrap" title="已完成实名或资质认证">是否认证</span>
+              <UiSwitch
+                :model-value="form.isVerified"
+                @update:model-value="(v) => (form.isVerified = toBoolean(v))"
+              />
+            </div>
+            <div class="flex items-center gap-2 rounded-lg border border-gray-200 px-2.5 py-1.5">
+              <span class="text-xs text-gray-700 whitespace-nowrap" title="尚未下过首单的新号">是否新用户</span>
+              <UiSwitch
+                :model-value="form.isNewUser"
+                @update:model-value="(v) => (form.isNewUser = toBoolean(v))"
+              />
+            </div>
+            <div class="flex items-center gap-2 rounded-lg border border-gray-200 px-2.5 py-1.5">
+              <span class="text-xs text-gray-700 whitespace-nowrap" title="已用该账号成功下过单">是否下单</span>
+              <UiSwitch
+                :model-value="form.hasOrdered"
+                @update:model-value="(v) => (form.hasOrdered = toBoolean(v))"
+              />
+            </div>
+          </div>
+          <p class="mt-2 text-xs text-gray-400">标记账号状态，可在列表上方按标签筛选</p>
+        </div>
+
         <p v-if="formError" class="text-sm text-red-600">{{ formError }}</p>
       </div>
 
@@ -285,6 +350,84 @@ const toast = useToast()
 
 /** 搜索关键词：手机号 / uin / 备注 */
 const searchKeyword = ref('')
+
+/**
+ * 筛选维度：三个账号标签 + 凭据是否填写。
+ * 每个维度三态循环：不限 → 只看「是」 → 只看「否」，多个维度同时生效（取交集）。
+ */
+type FilterKey = 'isVerified' | 'isNewUser' | 'hasOrdered' | 'hasPassword' | 'hasToken'
+type FilterState = 'any' | 'yes' | 'no'
+
+interface FilterOption {
+  key: FilterKey
+  label: string
+  negativeLabel: string
+}
+
+const filterOptions: FilterOption[] = [
+  { key: 'isVerified', label: '已认证', negativeLabel: '未认证' },
+  { key: 'isNewUser', label: '新用户', negativeLabel: '非新用户' },
+  { key: 'hasOrdered', label: '已下单', negativeLabel: '未下单' },
+  { key: 'hasPassword', label: '有密码', negativeLabel: '无密码' },
+  { key: 'hasToken', label: '有 token', negativeLabel: '无 token' },
+]
+
+const FILTER_CYCLE: FilterState[] = ['any', 'yes', 'no']
+const filterStates = reactive<Record<FilterKey, FilterState>>({
+  isVerified: 'any',
+  isNewUser: 'any',
+  hasOrdered: 'any',
+  hasPassword: 'any',
+  hasToken: 'any',
+})
+
+const cycleFilter = (key: FilterKey) => {
+  const next = FILTER_CYCLE[(FILTER_CYCLE.indexOf(filterStates[key]) + 1) % FILTER_CYCLE.length]
+  filterStates[key] = next
+}
+
+const filterLabel = (option: FilterOption): string => {
+  const state = filterStates[option.key]
+  if (state === 'yes') {
+    return `✓ ${option.label}`
+  }
+  if (state === 'no') {
+    return `✗ ${option.negativeLabel}`
+  }
+  return option.label
+}
+
+const filterChipClass = (state: FilterState): string => {
+  if (state === 'yes') {
+    return 'border-blue-300 bg-blue-50 text-blue-700'
+  }
+  if (state === 'no') {
+    return 'border-amber-300 bg-amber-50 text-amber-700'
+  }
+  return 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+}
+
+const filterHint = (option: FilterOption): string =>
+  `${option.label}：点击依次切换「不限 → 只看是 → 只看否」`
+
+const hasAnyTag = (item: AccountItem): boolean =>
+  item.isVerified || item.isNewUser || item.hasOrdered || item.hasToken || item.hasPassword
+
+/** UiSwitch 回传的是 '1' / '0'，统一转成布尔再落到表单 */
+const toBoolean = (value: boolean | '1' | '0'): boolean => value === true || value === '1'
+
+const hasActiveFilters = computed(
+  () =>
+    Boolean(searchKeyword.value.trim()) ||
+    filterOptions.some(option => filterStates[option.key] !== 'any')
+)
+
+const clearFilters = () => {
+  searchKeyword.value = ''
+  for (const option of filterOptions) {
+    filterStates[option.key] = 'any'
+  }
+}
 
 /** 已读取的明文，key 为 `${id}:${field}` */
 const revealedValues = reactive<Record<string, string>>({})
@@ -375,15 +518,28 @@ const handleCopy = async (item: AccountItem, field: RevealField) => {
   }
 }
 
-/** 搜索过滤 */
+/** 搜索 + 标签筛选 */
 const filteredAccounts = computed(() => {
   const keyword = searchKeyword.value.trim().toLowerCase()
-  if (!keyword) {
-    return accounts.value
-  }
-  return accounts.value.filter(item =>
-    [item.phone, item.uin, item.remark].some(field => (field || '').toLowerCase().includes(keyword))
-  )
+  return accounts.value.filter(item => {
+    if (
+      keyword &&
+      ![item.phone, item.uin, item.remark].some(field =>
+        (field || '').toLowerCase().includes(keyword)
+      )
+    ) {
+      return false
+    }
+
+    return filterOptions.every(option => {
+      const state = filterStates[option.key]
+      if (state === 'any') {
+        return true
+      }
+      const matched = Boolean(item[option.key])
+      return state === 'yes' ? matched : !matched
+    })
+  })
 })
 
 const handleRefresh = () => {
@@ -401,12 +557,24 @@ const form = ref({
   uin: '',
   token: '',
   remark: '',
+  isVerified: false,
+  isNewUser: false,
+  hasOrdered: false,
 })
 
 const resetForm = () => {
   formError.value = ''
   showFormPassword.value = false
-  form.value = { phone: '', password: '', uin: '', token: '', remark: '' }
+  form.value = {
+    phone: '',
+    password: '',
+    uin: '',
+    token: '',
+    remark: '',
+    isVerified: false,
+    isNewUser: false,
+    hasOrdered: false,
+  }
 }
 
 const openCreate = () => {
@@ -425,6 +593,9 @@ const openEdit = (item: AccountItem) => {
     uin: item.uin,
     token: '',
     remark: item.remark,
+    isVerified: item.isVerified,
+    isNewUser: item.isNewUser,
+    hasOrdered: item.hasOrdered,
   }
   showDialog.value = true
 }
@@ -443,6 +614,9 @@ const handleSubmit = async () => {
     uin: form.value.uin.trim(),
     token: form.value.token.trim(),
     remark: form.value.remark.trim(),
+    isVerified: form.value.isVerified,
+    isNewUser: form.value.isNewUser,
+    hasOrdered: form.value.hasOrdered,
   }
 
   const result = editingId.value
