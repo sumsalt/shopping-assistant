@@ -14,7 +14,7 @@ import {
 } from '../web/utils/stockMonitorConfig'
 
 const baseValues = {
-  duration: 86400,
+  duration: 10800,
   autoOrderEnabled: false,
   num: 1,
   payTool: '4' as const,
@@ -100,7 +100,7 @@ describe('buildStockMonitorConfig', () => {
     expect(withOrder.autoOrder?.enabled).toBe(true)
   })
 
-  it('时长非法时回落到 24 小时默认值', () => {
+  it('时长非法时回落到 3 小时默认值', () => {
     expect(buildStockMonitorConfig({ ...baseValues, duration: 0 }).duration).toBe(
       DEFAULT_STOCK_MONITOR_DURATION
     )
@@ -110,7 +110,7 @@ describe('buildStockMonitorConfig', () => {
   })
 
   it('默认时长与价格监控一致，且出现在可选列表里', () => {
-    expect(DEFAULT_STOCK_MONITOR_DURATION).toBe(86400)
+    expect(DEFAULT_STOCK_MONITOR_DURATION).toBe(10800)
     expect(STOCK_MONITOR_DURATION_OPTIONS.some(o => o.value === DEFAULT_STOCK_MONITOR_DURATION)).toBe(
       true
     )

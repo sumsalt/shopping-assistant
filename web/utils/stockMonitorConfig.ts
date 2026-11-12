@@ -6,13 +6,14 @@
  * - 开启：携带下单参数，服务端要求 uid + token 并走登录态
  */
 
-/** 默认监控时长（秒）：24 小时，与价格监控保持一致 */
-export const DEFAULT_STOCK_MONITOR_DURATION = 24 * 60 * 60
+/** 默认监控时长（秒）：3 小时，与价格监控保持一致 */
+export const DEFAULT_STOCK_MONITOR_DURATION = 3 * 60 * 60
 
 /** 可选的监控时长 */
 export const STOCK_MONITOR_DURATION_OPTIONS = [
   { value: 3600, label: '1 小时' },
   { value: 7200, label: '2 小时' },
+  { value: 10800, label: '3 小时' },
   { value: 21600, label: '6 小时' },
   { value: 43200, label: '12 小时' },
   { value: 86400, label: '24 小时' },

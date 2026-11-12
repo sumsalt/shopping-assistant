@@ -60,7 +60,7 @@ export const tabDefinition: TaskDefinition<TabTaskRecord> = {
       tabId: body.tabId,
       mode: body.config?.mode === 'diff' ? 'diff' : 'accumulate',
       interval: body.config?.interval || 300,
-      duration: body.config?.duration || 2 * 60 * 60,
+      duration: body.config?.duration || 3 * 60 * 60,
       page: body.config?.page || 1,
       pageSize: body.config?.pageSize || 20,
       sort: body.config?.sort || 1,

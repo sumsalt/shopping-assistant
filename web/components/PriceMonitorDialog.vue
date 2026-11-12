@@ -59,6 +59,7 @@
         >
           <option :value="3600">1 小时</option>
           <option :value="7200">2 小时</option>
+          <option :value="10800">3 小时</option>
           <option :value="21600">6 小时</option>
           <option :value="43200">12 小时</option>
           <option :value="86400">24 小时</option>
@@ -355,7 +356,7 @@ const { checkStock } = useStock()
 
 // 检测间隔
 const intervalInput = ref(String(MIN_PRICE_MONITOR_INTERVAL))
-// 监控时长（默认 24 小时）
+// 监控时长（默认 3 小时）
 const duration = ref(DEFAULT_PRICE_MONITOR_DURATION)
 // 通知条件
 const notifyOn = ref<PriceNotifyOn>('any')

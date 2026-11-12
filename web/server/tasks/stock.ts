@@ -34,8 +34,8 @@ export interface StockTaskRecord extends StoredTaskBase {
 
 export const stockTasks = new TaskRegistry<StockTaskRecord>('stock')
 
-/** 默认监控时长：24 小时（与前端选项一致） */
-const DEFAULT_DURATION = 24 * 60 * 60
+/** 默认监控时长：3 小时（与前端选项一致） */
+const DEFAULT_DURATION = 3 * 60 * 60
 
 /** 同一用户下是否已有同商品的运行中任务（重启时排除自身） */
 const findRunningForProduct = (userId: string, productId: string, excludeId?: string) =>

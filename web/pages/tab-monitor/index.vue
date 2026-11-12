@@ -341,7 +341,7 @@
                 v-model.number="formData.duration"
                 type="number"
                 min="60"
-                placeholder="默认 86400 秒（24 小时）"
+                placeholder="默认 10800 秒（3 小时）"
                 class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
               />
               <p class="mt-1 text-xs text-gray-500">
@@ -959,7 +959,7 @@ const formData = ref({
   tabId: '',
   tabName: '',
   interval: 60,
-  duration: 86400,
+  duration: 10800,
   sort: 1,
   mode: 'accumulate' as 'accumulate' | 'diff',
   minChangeCount: 10,
@@ -973,7 +973,7 @@ const defaultFormData = () => ({
   tabId: '',
   tabName: '',
   interval: 60,
-  duration: 86400,
+  duration: 10800,
   sort: 1,
   mode: 'accumulate' as 'accumulate' | 'diff',
   minChangeCount: 10,

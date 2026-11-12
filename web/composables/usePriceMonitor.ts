@@ -12,8 +12,8 @@ export const MIN_PRICE_MONITOR_INTERVAL = 60
 /** 默认检测间隔（秒） */
 export const DEFAULT_PRICE_MONITOR_INTERVAL = 60
 
-/** 默认监控时长（秒），24 小时 */
-export const DEFAULT_PRICE_MONITOR_DURATION = 24 * 60 * 60
+/** 默认监控时长（秒），3 小时 */
+export const DEFAULT_PRICE_MONITOR_DURATION = 3 * 60 * 60
 
 /** 通知条件 */
 export type PriceNotifyOn = 'any' | 'drop' | 'rise'
