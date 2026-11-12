@@ -586,6 +586,7 @@ const handleSubmit = async () => {
     }
 
     autoOrder = {
+      enabled: true,
       targetPrice,
       num: Math.max(1, Math.floor(Number(num.value) || 1)),
       payTool: payTool.value,

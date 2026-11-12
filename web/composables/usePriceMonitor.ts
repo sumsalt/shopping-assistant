@@ -29,6 +29,8 @@ export interface PriceMonitorProduct {
 
 /** 价格到点自动下单 */
 export interface PriceAutoOrderOptions {
+  /** 是否启用自动下单（开关打开时必为 true，服务端据此落库配置） */
+  enabled: boolean
   /** 拿货价低于或等于该价格时自动下单 */
   targetPrice: number
   /** 购买件数 */
