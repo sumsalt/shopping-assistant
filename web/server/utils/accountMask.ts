@@ -11,6 +11,8 @@ import type { AccountRecord, RequestChannel } from './accountStore'
 export interface AccountView {
   id: string
   phone: string
+  /** 显示标题；为空时前端回退显示手机号 */
+  title: string
   uin: string
   remark: string
   /** 是否已保存密码 */
@@ -103,6 +105,7 @@ export const toAccountView = (record: AccountRecord): AccountView => {
   return {
     id: record.id,
     phone: record.phone,
+    title: record.title,
     uin: record.uin,
     remark: record.remark,
     hasPassword: Boolean(record.password),

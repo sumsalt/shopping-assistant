@@ -29,7 +29,7 @@
       class="mb-5 flex flex-col sm:flex-row sm:items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm"
     >
       <span class="text-blue-800">
-        当前使用：<strong class="font-mono">{{ activeAccount.phone }}</strong>
+        当前使用：<strong class="font-mono">{{ accountDisplayName(activeAccount) }}</strong>
         <span v-if="activeAccount.channel" class="ml-1 text-blue-600">
           （{{ activeAccount.channel === 'app' ? 'App' : '小程序' }}）
         </span>
@@ -44,7 +44,7 @@
       <UiInput
         v-model="searchKeyword"
         size="sm"
-        placeholder="搜索手机号、uin 或备注"
+        placeholder="搜索标题、手机号、uin 或备注"
         clearable
         aria-label="搜索账号"
       >
@@ -132,7 +132,7 @@
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
               </svg>
             </span>
-            <p class="text-lg font-semibold text-gray-900 font-mono truncate">{{ item.phone }}</p>
+            <p class="text-lg font-semibold truncate" :class="item.title ? '' : 'font-mono'">{{ accountDisplayName(item) }}</p>
             <span v-if="isActive(item)" class="inline-flex items-center rounded-full bg-blue-600 px-2 py-0.5 text-[11px] font-medium text-white shrink-0">
               当前使用
             </span>
@@ -144,6 +144,7 @@
               {{ item.requestChannel === 'app' ? 'App 抓包' : '小程序抓包' }}
             </span>
           </div>
+          <p v-if="item.title" class="mt-0.5 text-xs text-gray-400 font-mono">{{ item.phone }}</p>
           <p v-if="item.remark" class="mt-2 text-xs text-gray-500 break-all">{{ item.remark }}</p>
           <p v-else class="mt-2 text-xs text-gray-300">未填写备注</p>
 
@@ -331,6 +332,12 @@
     <!-- 新增 / 编辑对话框 -->
     <UiDialog v-model:open="showDialog" :title="editingId ? '编辑账号' : '新增账号'" size="md">
       <div class="space-y-4">
+        <UiInput
+          v-model="form.title"
+          label="标题"
+          placeholder="例如：主号 / 客户 A；留空则显示手机号"
+          autocomplete="off"
+        />
         <UiInput v-model="form.phone" label="手机号" placeholder="请输入手机号" required autocomplete="off" />
         <UiInput
           v-model="form.password"
@@ -436,6 +443,7 @@ import {
   parseYishouCapture,
   PROFILE_PARAM_GROUPS,
 } from '@/utils/yishou-capture'
+import { accountDisplayName } from '@/utils/accountName'
 
 definePageMeta({
   title: '账号管理',
@@ -470,6 +478,7 @@ onMounted(async () => {
 const EMPTY_ACTIVE_ACCOUNT = {
   id: '',
   phone: '',
+  title: '',
   uin: '',
   channel: null,
   hasCredential: false,
@@ -693,7 +702,7 @@ const filteredAccounts = computed(() => {
   return accounts.value.filter(item => {
     if (
       keyword &&
-      ![item.phone, item.uin, item.remark].some(field =>
+      ![item.title, item.phone, item.uin, item.remark].some(field =>
         (field || '').toLowerCase().includes(keyword)
       )
     ) {
@@ -732,7 +741,7 @@ const handleSetActive = async (item: AccountItem) => {
     } else if (!item.hasCredential) {
       toast.warning('该账号的抓包缺少 uid/token，只能用于库存查询与 Tab 监控')
     } else {
-      toast.success(`已切换为「${item.phone}」`)
+      toast.success(`已切换为「${accountDisplayName(item)}」`)
     }
   } finally {
     switchingAccountId.value = ''
@@ -781,6 +790,7 @@ const formError = ref('')
 const showFormPassword = ref(false)
 
 interface AccountForm {
+  title: string
   phone: string
   password: string
   uin: string
@@ -794,6 +804,7 @@ interface AccountForm {
 }
 
 const form = ref<AccountForm>({
+  title: '',
   phone: '',
   password: '',
   uin: '',
@@ -853,6 +864,7 @@ const resetForm = () => {
   captureInfo.value = null
   existingProfile.value = null
   form.value = {
+    title: '',
     phone: '',
     password: '',
     uin: '',
@@ -876,6 +888,7 @@ const openEdit = (item: AccountItem) => {
   resetForm()
   // 密码 / token 不回填：留空即保持原值；抓包快照同样保持原值，除非本次重新识别或清除
   form.value = {
+    title: item.title,
     phone: item.phone,
     password: '',
     uin: item.uin,
@@ -946,6 +959,7 @@ const handleSubmit = async () => {
   formError.value = ''
   const payload: AccountPayload = {
     phone,
+    title: form.value.title.trim(),
     password: form.value.password,
     uin: form.value.uin.trim(),
     token: form.value.token.trim(),
@@ -973,7 +987,7 @@ const handleSubmit = async () => {
 const handleDelete = async (item: AccountItem) => {
   const confirmed = await confirmDialog({
     title: '删除账号',
-    message: `确定删除「${item.phone}」吗？删除后无法恢复。`,
+    message: `确定删除「${accountDisplayName(item)}」吗？删除后无法恢复。`,
     confirmText: '删除',
     type: 'danger',
   })

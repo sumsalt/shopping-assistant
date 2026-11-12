@@ -77,7 +77,7 @@ export default defineEventHandler(async (event) => {
       ...result,
       // 带上本次使用的账号摘要，供页面标明正在查看谁的订单
       account: resolved.account
-        ? { id: resolved.account.id, phone: resolved.account.phone }
+        ? { id: resolved.account.id, phone: resolved.account.phone, title: resolved.account.title }
         : null,
     })
   } catch (error: unknown) {

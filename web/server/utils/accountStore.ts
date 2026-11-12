@@ -35,6 +35,8 @@ export interface AccountRecord {
   userId: string
   /** 手机号（账号主标识） */
   phone: string
+  /** 显示标题；为空时前端回退显示手机号 */
+  title: string
   /** 密码 */
   password: string
   /** 一手 uid（文档/接口里叫 uid，这里按用户习惯叫 uin） */
@@ -60,6 +62,7 @@ export interface AccountRecord {
 /** 新增 / 更新入参 */
 export interface AccountInput {
   phone: string
+  title?: string
   password?: string
   uin?: string
   token?: string
@@ -82,6 +85,7 @@ interface AccountRow {
   id: string
   user_id: string
   phone: string
+  title: string
   password: string
   uin: string
   token: string
@@ -131,6 +135,7 @@ const toRecord = (row: AccountRow): AccountRecord => ({
   id: row.id,
   userId: row.user_id,
   phone: row.phone,
+  title: row.title ?? '',
   password: row.password ?? '',
   uin: row.uin ?? '',
   token: row.token ?? '',
@@ -213,6 +218,7 @@ export const createAccount = (userId: string, input: AccountInput): AccountRecor
 
   const id = generateId()
   const now = Date.now()
+  const title = input.title ?? ''
   const password = input.password ?? ''
   const uin = input.uin ?? ''
   const token = input.token ?? ''
@@ -225,12 +231,12 @@ export const createAccount = (userId: string, input: AccountInput): AccountRecor
   try {
     db.prepare(`
       INSERT INTO accounts (
-        id, user_id, phone, password, uin, token, remark,
+        id, user_id, phone, title, password, uin, token, remark,
         is_verified, is_new_user, has_ordered, request_profile, created_at, updated_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      id, userId, input.phone, password, uin, token, remark,
+      id, userId, input.phone, title, password, uin, token, remark,
       isVerified ? 1 : 0, isNewUser ? 1 : 0, hasOrdered ? 1 : 0,
       encodeRequestProfile(requestProfile), now, now
     )
@@ -239,6 +245,7 @@ export const createAccount = (userId: string, input: AccountInput): AccountRecor
       id,
       userId,
       phone: input.phone,
+      title,
       password,
       uin,
       token,
@@ -273,6 +280,7 @@ export const updateAccount = (id: string, input: AccountInput): AccountRecord | 
     return null
   }
 
+  const title = input.title !== undefined ? input.title : existing.title
   const password = input.password ? input.password : existing.password
   const token = input.token ? input.token : existing.token
   const uin = input.uin !== undefined ? input.uin : existing.uin
@@ -291,12 +299,12 @@ export const updateAccount = (id: string, input: AccountInput): AccountRecord | 
     const result = db
       .prepare(`
         UPDATE accounts
-        SET phone = ?, password = ?, uin = ?, token = ?, remark = ?,
+        SET phone = ?, title = ?, password = ?, uin = ?, token = ?, remark = ?,
             is_verified = ?, is_new_user = ?, has_ordered = ?, request_profile = ?, updated_at = ?
         WHERE id = ?
       `)
       .run(
-        input.phone, password, uin, token, remark,
+        input.phone, title, password, uin, token, remark,
         isVerified ? 1 : 0, isNewUser ? 1 : 0, hasOrdered ? 1 : 0,
         encodeRequestProfile(requestProfile), Date.now(), id
       ) as { changes?: number }

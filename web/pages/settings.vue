@@ -24,7 +24,11 @@
             >
               <template v-if="activeAccount.id">
                 <div class="flex items-center gap-2 flex-wrap">
-                  <span class="text-sm font-semibold text-gray-900 font-mono">{{ activeAccount.phone }}</span>
+                  <span
+                    class="text-sm font-semibold truncate"
+                    :class="activeAccount.title ? '' : 'font-mono'"
+                  >{{ accountDisplayName(activeAccount) }}</span>
+                  <span v-if="activeAccount.title" class="text-xs text-gray-400 font-mono">{{ activeAccount.phone }}</span>
                   <span
                     v-if="activeAccount.channel"
                     class="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium"
@@ -61,7 +65,7 @@
               >
                 <option value="">不使用账号（匿名模式）</option>
                 <option v-for="item in accountList" :key="item.id" :value="item.id">
-                  {{ item.phone }}{{ item.uin ? ' · ' + item.uin : '' }}{{ item.requestChannel ? ' · ' + (item.requestChannel === 'app' ? 'App' : '小程序') : '' }}{{ item.hasRequestProfile ? '' : ' · 无抓包信息' }}
+                  {{ accountDisplayName(item) }}{{ item.uin ? ' · ' + item.uin : '' }}{{ item.requestChannel ? ' · ' + (item.requestChannel === 'app' ? 'App' : '小程序') : '' }}{{ item.hasRequestProfile ? '' : ' · 无抓包信息' }}
                 </option>
               </select>
               <UiButton
@@ -153,6 +157,8 @@
 </template>
 
 <script setup lang="ts">
+import { accountDisplayName } from '@/utils/accountName'
+
 definePageMeta({
   title: '系统配置',
 })
@@ -183,6 +189,7 @@ onMounted(() => {
 const EMPTY_ACTIVE_ACCOUNT = {
   id: '',
   phone: '',
+  title: '',
   uin: '',
   channel: null as 'wx' | 'app' | null,
   hasCredential: false,

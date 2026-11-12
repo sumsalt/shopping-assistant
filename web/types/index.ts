@@ -27,6 +27,8 @@ export interface RequestProfile {
 export interface ActiveAccountSummary {
   id: string
   phone: string
+  /** 显示标题；为空时展示手机号 */
+  title: string
   uin: string
   channel: RequestChannel | null
   hasCredential: boolean

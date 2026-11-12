@@ -17,6 +17,7 @@ interface ActiveAccountPayload {
   account: {
     id: string
     phone: string
+    title: string
     uin: string
     requestChannel: 'wx' | 'app' | null
     hasRequestProfile: boolean
@@ -39,6 +40,7 @@ const toSummary = (payload: ActiveAccountPayload['account']): ActiveAccountSumma
     ? {
         id: payload.id,
         phone: payload.phone,
+        title: payload.title,
         uin: payload.uin,
         channel: payload.requestChannel,
         hasCredential: payload.hasCredential,

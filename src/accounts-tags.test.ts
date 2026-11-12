@@ -54,6 +54,21 @@ describe('parseAccountInput - 账号标签', () => {
     }
   })
 
+  it('标题会 trim 并透传，超长报错', () => {
+    const result = parseAccountInput({ phone: '13800138000', title: '  主号  ' })
+
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.value.title).toBe('主号')
+    }
+
+    const tooLong = parseAccountInput({ phone: '13800138000', title: 'a'.repeat(61) })
+    expect(tooLong.ok).toBe(false)
+    if (!tooLong.ok) {
+      expect(tooLong.error).toContain('标题')
+    }
+  })
+
   it('非法标签值忽略；手机号仍是必填；密码不做 trim', () => {
     const invalid = parseAccountInput({ phone: '13800138000', isNewUser: 'yes' })
     expect(invalid.ok).toBe(true)
@@ -76,6 +91,7 @@ describe('toAccountView - 标签与掩码', () => {
     id: 'acc_1',
     userId: 'tester',
     phone: '13800138000',
+    title: '主号',
     password: 'secret',
     uin: '20478621',
     token: 'a878dabfb1eaf3d4acf19fa3f81f9cef',
@@ -92,6 +108,7 @@ describe('toAccountView - 标签与掩码', () => {
   it('列表视图透出三个标签，且不含明文凭据', () => {
     const view = toAccountView(base)
 
+    expect(view.title).toBe('主号')
     expect(view.isVerified).toBe(true)
     expect(view.isNewUser).toBe(false)
     expect(view.hasOrdered).toBe(true)

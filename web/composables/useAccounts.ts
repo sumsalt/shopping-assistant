@@ -9,6 +9,8 @@ import type { ApiResponse, RequestProfile, RequestChannel } from '@/types'
 export interface AccountItem {
   id: string
   phone: string
+  /** 显示标题；为空时展示手机号 */
+  title: string
   uin: string
   remark: string
   hasPassword: boolean
@@ -42,6 +44,8 @@ export interface AccountItem {
 /** 新增 / 更新入参 */
 export interface AccountPayload {
   phone: string
+  /** 显示标题；留空则卡片标题回退显示手机号 */
+  title?: string
   password?: string
   uin?: string
   token?: string

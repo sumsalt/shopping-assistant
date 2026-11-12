@@ -6,6 +6,8 @@ import type { OrderListItem, OrderStatusTab } from '@core'
 export interface OrderAccount {
   id: string
   phone: string
+  /** 显示标题；为空时展示手机号 */
+  title: string
 }
 
 /** 服务端返回的订单分页数据 */

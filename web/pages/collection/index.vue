@@ -27,7 +27,7 @@
       <span class="text-blue-800">
         <template v-if="viewingAccount">
           正在查看
-          <strong class="font-mono">{{ viewingAccount.phone }}</strong>
+          <strong>{{ accountDisplayName(viewingAccount) }}</strong>
           的收藏夹（不改变当前使用账号）
         </template>
         <template v-else-if="isLoading">
@@ -210,6 +210,8 @@
 </template>
 
 <script setup lang="ts">
+import { accountDisplayName } from '@/utils/accountName'
+
 // 页面元信息
 definePageMeta({
   title: '收藏夹',

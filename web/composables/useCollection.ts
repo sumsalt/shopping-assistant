@@ -5,6 +5,8 @@ import type { ApiResponse } from '@/types'
 export interface CollectionAccount {
   id: string
   phone: string
+  /** 显示标题；为空时展示手机号 */
+  title: string
 }
 
 // 收藏夹商品类型

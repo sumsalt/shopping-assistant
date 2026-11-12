@@ -1,4 +1,5 @@
 import type { ApiResponse, ActiveAccountSummary } from '@/types'
+import { accountDisplayName } from '@/utils/accountName'
 
 /**
  * 系统配置组合式函数
@@ -93,7 +94,7 @@ export const useConfig = () => {
       } else if (current && !current.hasCredential) {
         toast.warning('该账号的抓包缺少 uid/token，只能用于库存查询与 Tab 监控')
       } else {
-        toast.success(`已切换为「${current?.phone || id}」`)
+        toast.success(`已切换为「${current ? accountDisplayName(current) : id}」`)
       }
     } finally {
       isSwitchingAccount.value = false

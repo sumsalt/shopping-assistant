@@ -81,7 +81,7 @@ export default defineEventHandler(async (event) => {
       pageSize,
       hasMore: result.total > page * pageSize,
       account: resolved.account
-        ? { id: resolved.account.id, phone: resolved.account.phone }
+        ? { id: resolved.account.id, phone: resolved.account.phone, title: resolved.account.title }
         : null,
     })
   } catch (error: unknown) {

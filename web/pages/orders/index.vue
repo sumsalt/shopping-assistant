@@ -27,7 +27,7 @@
       <span class="text-blue-800">
         <template v-if="viewingAccount">
           正在查看
-          <strong class="font-mono">{{ viewingAccount.phone }}</strong>
+          <strong>{{ accountDisplayName(viewingAccount) }}</strong>
           的订单（不改变当前使用账号）
         </template>
         <template v-else-if="isLoading">
@@ -202,6 +202,7 @@
 
 <script setup lang="ts">
 import type { OrderStatusTab } from '@core'
+import { accountDisplayName } from '@/utils/accountName'
 
 definePageMeta({
   title: '订单',

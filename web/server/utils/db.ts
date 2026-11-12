@@ -130,6 +130,7 @@ const createTables = (instance: SqliteDatabase): void => {
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL,
       phone TEXT NOT NULL,
+      title TEXT NOT NULL DEFAULT '',
       password TEXT NOT NULL DEFAULT '',
       uin TEXT NOT NULL DEFAULT '',
       token TEXT NOT NULL DEFAULT '',
@@ -149,6 +150,7 @@ const createTables = (instance: SqliteDatabase): void => {
   const accountColumns = instance.prepare('PRAGMA table_info(accounts)').all() as { name: string }[]
   const existing = new Set(accountColumns.map(column => column.name))
   const addedColumns: Array<[string, string]> = [
+    ['title', "TEXT NOT NULL DEFAULT ''"],
     ['is_verified', 'INTEGER NOT NULL DEFAULT 0'],
     ['is_new_user', 'INTEGER NOT NULL DEFAULT 0'],
     ['has_ordered', 'INTEGER NOT NULL DEFAULT 0'],
