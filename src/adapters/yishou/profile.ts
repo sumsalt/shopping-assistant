@@ -23,8 +23,11 @@ export type RequestChannel = 'wx' | 'app';
 export const WX_USER_AGENT =
   'Mozilla/5.0 (iPhone; CPU iPhone OS 16_5_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 MicroMessenger/8.0.60(0x18003c32) NetType/4G Language/zh_CN';
 
-/** 默认 App UA（抓包没带 UA 时兜底，网关靠 UA 与 plat_type 分流） */
+/** 默认 Android App UA（抓包没带 UA 时兜底，网关靠 UA 与 plat_type 分流） */
 export const APP_USER_AGENT = 'okhttp/3.14.9';
+
+/** 默认 iOS App UA：iOS 客户端的 UA 是 YiShou/x.y.z，不是 okhttp */
+export const IOS_USER_AGENT = 'YiShou/7.66.01 (iPhone; iOS 26.7.1; Scale/3.00)';
 
 /** 无快照时的默认公共参数（= 改造前的写死值，保证老任务行为不变） */
 export const DEFAULT_WX_PARAMS: Readonly<Record<string, string>> = {
@@ -99,16 +102,29 @@ const stripDynamicFields = (params: Record<string, string>): Record<string, stri
   return result;
 };
 
+/** iOS App 用抓包里的 version_name 拼 UA，缺版本时用常量兜底 */
+const buildIosUserAgent = (params: Record<string, string>): string => {
+  const versionName = readParam(params, 'version_name');
+  return versionName
+    ? `YiShou/${versionName} (iPhone; iOS 26.7.1; Scale/3.00)`
+    : IOS_USER_AGENT;
+};
+
 /** 补默认 UA；抓包已带 UA 时原样保留（UA 必须与 plat_type 匹配） */
 const resolveHeaders = (
   captured: Record<string, string> | undefined,
-  channel: RequestChannel
+  channel: RequestChannel,
+  params: Record<string, string>
 ): Record<string, string> => {
   const headers: Record<string, string> = { ...(captured ?? {}) };
   const hasUserAgent = Object.keys(headers).some(name => name.toLowerCase() === 'user-agent');
 
   if (!hasUserAgent) {
-    headers['User-Agent'] = channel === 'app' ? APP_USER_AGENT : WX_USER_AGENT;
+    // iOS 抓包不能用 Android 的 okhttp UA 兜底，否则 UA 与 plat_type=iOS 矛盾
+    const isIosApp = readParam(params, 'plat_type').toLowerCase() === 'ios';
+    headers['User-Agent'] = channel === 'app'
+      ? (isIosApp ? buildIosUserAgent(params) : APP_USER_AGENT)
+      : WX_USER_AGENT;
   }
 
   // 有抓包快照时不补 Referer：用户抓到的头就是服务端认的那一套，不做额外改动
@@ -178,7 +194,7 @@ export const resolveRequestProfile = (config: AdapterConfig = {}): RequestProfil
     if (token) params.token = token;
   }
 
-  const headers = resolveHeaders(config.requestHeaders, channel);
+  const headers = resolveHeaders(config.requestHeaders, channel, params);
   if (channel === 'app') {
     ensureAppFingerprint(headers, params);
   }

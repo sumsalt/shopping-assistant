@@ -299,3 +299,57 @@ describe('请求档案 - 签名编码与 App 设备指纹（对齐实测指南�
     expect(noEquip.headers.equipmd5).toBeUndefined()
   })
 })
+
+/** iOS App 抓包：UA 是 YiShou/x.y.z，plat_type=iOS，t_t 秒级 */
+const IOS_CONFIG: AdapterConfig = {
+  channel: 'app',
+  requestParams: {
+    uid: 'u-ios',
+    token: 'tk-ios',
+    udid: '43198096-8833-4F49-962F-DC330405010D',
+    model: 'iPhone 14 Pro',
+    version: '26.700001',
+    version_name: '7.66.01',
+    plat_type: 'iOS',
+  },
+  requestHeaders: {
+    'User-Agent': 'YiShou/7.66.01 (iPhone; iOS 26.7.1; Scale/3.00)',
+    'Content-Type': 'application/x-www-form-urlencoded',
+    'Accept-Encoding': 'gzip, deflate, br',
+    equipmd5: 'af923c1ee36a5254113ade612254ef11',
+  },
+}
+
+describe('请求档案 - iOS App 抓包', () => {
+  it('原样回放 YiShou UA 与 plat_type=iOS，t_t 为秒级', () => {
+    const profile = resolveRequestProfile(IOS_CONFIG)
+
+    expect(profile.channel).toBe('app')
+    expect(profile.headers['User-Agent']).toContain('YiShou/7.66.01')
+    expect(profile.headers['Accept-Encoding']).toBe('gzip, deflate, br')
+    expect(profile.headers.equipmd5).toBe('af923c1ee36a5254113ade612254ef11')
+    expect(profile.params.plat_type).toBe('iOS')
+    expect(String(profile.timestamp()).length).toBe(10)
+    expect(profile.sign(profile.timestamp())).toMatch(/^[a-f0-9]{32}$/)
+  })
+
+  it('iOS 抓包没带 UA 时补 YiShou UA，不能补 Android 的 okhttp', () => {
+    const profile = resolveRequestProfile({
+      channel: 'app',
+      requestParams: IOS_CONFIG.requestParams,
+    })
+
+    expect(profile.headers['User-Agent']).toContain('YiShou/7.66.01')
+    expect(profile.headers['User-Agent']).not.toContain('okhttp')
+    expect(profile.headers.equipmd5).toBe(md5('43198096-8833-4F49-962F-DC330405010D'))
+  })
+
+  it('Android 抓包没带 UA 时仍补 okhttp', () => {
+    const profile = resolveRequestProfile({
+      channel: 'app',
+      requestParams: { ...APP_CONFIG.requestParams },
+    })
+
+    expect(profile.headers['User-Agent']).toBe('okhttp/3.14.9')
+  })
+})

@@ -347,7 +347,7 @@
             <span v-if="profileStateText" class="text-[11px]" :class="profileStateClass">{{ profileStateText }}</span>
           </div>
           <p class="text-[11px] text-gray-400 mb-2">
-            支持完整 HTTP 请求或一行 form 参数；小程序与 App 抓包都可以。识别后只保存公共参数，业务参数与 t_t / sign 会自动忽略。
+            支持完整 HTTP 请求或一行 form 参数；小程序、Android App（okhttp）、iOS App（YiShou）抓包都可以。识别后只保存公共参数，业务参数与 t_t / sign 会自动忽略。
           </p>
           <UiTextarea
             v-model="captureRaw"
@@ -366,7 +366,7 @@
           <p v-if="captureError" class="mt-2 text-xs text-red-600">{{ captureError }}</p>
           <div v-if="captureInfo" class="mt-2 rounded-lg bg-green-50 border border-green-200 p-2.5 text-xs text-green-800 space-y-1">
             <p class="font-medium">
-              识别成功：{{ captureInfo.channel === 'app' ? 'App' : '小程序' }} 通道 · {{ captureInfo.matched }} 个公共参数
+              识别成功：{{ captureInfo.channelLabel }} 通道 · {{ captureInfo.matched }} 个公共参数
             </p>
             <p v-if="captureInfo.filled.length" class="text-green-700">已自动填入：{{ captureInfo.filled.join('、') }}</p>
             <p v-if="captureInfo.ignored" class="text-green-700 text-[11px] break-all">
@@ -790,6 +790,8 @@ const captureRaw = ref('')
 const captureError = ref('')
 const captureInfo = ref<{
   channel: 'wx' | 'app'
+  /** 更具体的通道文案，便于确认 iOS / Android 抓包识别正确 */
+  channelLabel: string
   matched: number
   ignored: string
   warnings: string[]
@@ -892,8 +894,13 @@ const handleParseCapture = () => {
   }
 
   form.value.requestProfile = result.profile
+  const platType = (result.profile.params.plat_type || '').toLowerCase()
   captureInfo.value = {
     channel: result.profile.channel,
+    channelLabel:
+      result.profile.channel === 'app'
+        ? (platType === 'ios' ? 'iOS App' : 'Android App')
+        : '小程序',
     matched: result.matched,
     ignored: result.ignored.length ? result.ignored.join('、') : '',
     warnings: result.warnings,

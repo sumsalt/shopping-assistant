@@ -177,6 +177,67 @@ uid=1&token=t&openid=o&model=iPhone%2014&version=8.0.60&version_name=4.9.0&plat_
   })
 })
 
+/** iOS App 抓包：UA 是 YiShou/x.y.z，plat_type=iOS，t_t 为秒级 */
+const IOS_CAPTURE = `POST /users/get_goods_collection_list HTTP/1.1
+Host: api.yishouapp.com
+Content-Type: application/x-www-form-urlencoded
+Accept-Encoding: gzip, deflate, br
+equipmd5: af923c1ee36a5254113ade612254ef11
+Cookie: HWWAFSESID=abc; HWWAFSESTIME=1794451453362
+Connection: keep-alive
+Accept: */*
+User-Agent: YiShou/7.66.01 (iPhone; iOS 26.7.1; Scale/3.00)
+sign: 68be256ccf0810d5f1859a1bdaec2718
+Accept-Language: zh-Hans-CN;q=1
+Content-Length: 239
+
+goods_sale_status=&market_id=&model=iPhone%2014%20Pro&pageindex=1&pagesize=10&plat_type=iOS&t_t=1794451470&token=test_token_ios&udid=43198096-8833-4F49-962F-DC330405010D&uid=19456111&version=26.700001&version_name=7.66.01`
+
+describe('parseYishouCapture - iOS App 通道', () => {
+  it('识别为 app，保留 YiShou UA 与 plat_type=iOS，不再误报「UA 必须是 okhttp」', () => {
+    const result = parseYishouCapture(IOS_CAPTURE)
+
+    expect(result.ok).toBe(true)
+    expect(result.profile?.channel).toBe('app')
+    expect(result.profile?.params.plat_type).toBe('iOS')
+    expect(result.profile?.params.version_name).toBe('7.66.01')
+    expect(result.profile?.headers['User-Agent']).toContain('YiShou/7.66.01')
+    expect(result.uid).toBe('19456111')
+    expect(result.token).toBe('test_token_ios')
+    expect(result.warnings).toEqual([])
+  })
+
+  it('保留关键请求头，丢弃 sign / 业务参数 / t_t', () => {
+    const { profile, ignored } = parseYishouCapture(IOS_CAPTURE)
+
+    expect(profile?.path).toBe('/users/get_goods_collection_list')
+    expect(profile?.headers.equipmd5).toBe('af923c1ee36a5254113ade612254ef11')
+    expect(profile?.headers['Accept-Encoding']).toBe('gzip, deflate, br')
+    expect(profile?.headers['Content-Type']).toBe('application/x-www-form-urlencoded')
+    expect(Object.keys(profile?.headers || {}).some(k => k.toLowerCase() === 'sign')).toBe(false)
+    expect(profile?.params.t_t).toBeUndefined()
+    expect(profile?.params.pageindex).toBeUndefined()
+    expect(ignored).toContain('pageindex')
+  })
+
+  it('只贴 iOS body（没有请求头）也识别为 app，且没有 okhttp 警告', () => {
+    const body = IOS_CAPTURE.split('\n\n')[1]
+    const result = parseYishouCapture(body)
+
+    expect(result.ok).toBe(true)
+    expect(result.profile?.channel).toBe('app')
+    expect(result.warnings.join(' ')).not.toContain('okhttp')
+    expect(result.warnings.join(' ')).toContain('User-Agent')
+  })
+
+  it('iOS App UA 配 plat_type=wx 时提示通道冲突', () => {
+    const mixed = IOS_CAPTURE.replace('plat_type=iOS', 'plat_type=wx')
+    const result = parseYishouCapture(mixed)
+
+    expect(result.warnings.join(' ')).toContain('必须匹配')
+  })
+})
+
 describe('辅助函数', () => {
   it('readParam 大小写不敏感', () => {
     expect(readParam({ UDID: 'be21db39a316aafd' }, 'udid')).toBe('be21db39a316aafd')

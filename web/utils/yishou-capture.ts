@@ -1,8 +1,9 @@
 /**
  * 一手抓包请求解析（纯函数，无 Nuxt / DOM 依赖，便于单测）
  *
- * 兼容两种抓包内容：
- * - App 通道：plat_type=Android、udid/device_id、User-Agent=okhttp/x.y.z、t_t 为秒级
+ * 兼容三种抓包内容：
+ * - Android App 通道：plat_type=Android、udid/device_id、User-Agent=okhttp/x.y.z、t_t 为秒级
+ * - iOS App 通道：plat_type=iOS、udid、User-Agent=YiShou/x.y.z (iPhone; iOS ...)、t_t 为秒级
  * - 小程序 / H5 通道：plat_type=wx、openid、微信 MicroMessenger UA、t_t 为毫秒级
  *
  * 输入可以是完整的 HTTP 请求文本（请求行 + 请求头 + 空行 + form body），
@@ -179,8 +180,12 @@ export const parseYishouCapture = (raw: string): CaptureParseResult => {
   const platType = (params.plat_type || '').toLowerCase()
   const hasUdid = Boolean(params.udid || params.device_id)
   const hasOpenid = Boolean(params.openid)
+  const uaIsOkhttp = /okhttp/i.test(ua)
+  // iOS 客户端 UA 形如 YiShou/7.66.01 (iPhone; iOS 26.7.1; Scale/3.00)，不是 okhttp
+  const uaIsIosApp = /YiShou\//i.test(ua)
+  const uaIsWechat = /micromessenger/i.test(ua)
   const channel: CaptureChannel =
-    platType === 'android' || platType === 'ios' || /okhttp/i.test(ua) || (hasUdid && !hasOpenid)
+    platType === 'android' || platType === 'ios' || uaIsOkhttp || uaIsIosApp || (hasUdid && !hasOpenid)
       ? 'app'
       : 'wx'
 
@@ -201,20 +206,19 @@ export const parseYishouCapture = (raw: string): CaptureParseResult => {
     warnings.push('没有识别到 User-Agent，将按通道默认 UA 发送')
   }
 
-  // UA 与 plat_type 必须匹配，否则网关 404（文档实测矩阵 E/F/G/J/P 行）
-  const uaIsWechat = /micromessenger/i.test(ua)
-  const uaIsOkhttp = /okhttp/i.test(ua)
-  const platIsAndroid = platType === 'android' || platType === 'ios'
+  // UA 与 plat_type 必须匹配，否则网关 404（文档实测矩阵 E/F/G/J/P 行）。
+  // App 通道有两种合法 UA：Android 的 okhttp/x.y.z 与 iOS 的 YiShou/x.y.z，不能只认前者。
+  const platIsApp = platType === 'android' || platType === 'ios'
 
-  if (channel === 'app' && ua && !uaIsOkhttp && !uaIsWechat) {
-    warnings.push('App 通道的 User-Agent 必须是 okhttp/x.y.z 格式，否则网关 404')
+  if (channel === 'app' && ua && !uaIsOkhttp && !uaIsIosApp && !uaIsWechat) {
+    warnings.push('App 通道的 User-Agent 建议是 okhttp/x.y.z（Android）或 YiShou/x.y.z（iOS），否则网关可能 404')
   }
   // 抓包工具偶尔会把两个通道的参数拼在一起，这种矛盾配置一定 404
-  if (uaIsWechat && platIsAndroid) {
-    warnings.push('User-Agent 是微信的，但 plat_type 是 Android，两者必须匹配，否则 404')
+  if (uaIsWechat && platIsApp) {
+    warnings.push('User-Agent 是微信的，但 plat_type 是 Android/iOS，两者必须匹配，否则 404')
   }
-  if (uaIsOkhttp && platType === 'wx') {
-    warnings.push('User-Agent 是 okhttp 的，但 plat_type 是 wx，两者必须匹配，否则 404')
+  if ((uaIsOkhttp || uaIsIosApp) && platType === 'wx') {
+    warnings.push('User-Agent 是 App 客户端的，但 plat_type 是 wx，两者必须匹配，否则 404')
   }
 
   return {
