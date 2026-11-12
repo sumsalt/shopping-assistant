@@ -10,7 +10,7 @@
  * 所以 hasMore 由「本页是否满页」决定。
  */
 
-import { getOrderList, ORDER_LIST_PAGE_SIZE } from '@core'
+import { getOrderList, normalizeOrderStatus, ORDER_LIST_PAGE_SIZE } from '@core'
 import type { OrderListResult, StockCheckError } from '@core'
 import { createSuccessResponse, createErrorResponse, ErrorCode } from '../../utils/response'
 import { getCurrentUser } from '../../utils/session'
@@ -37,6 +37,8 @@ export default defineEventHandler(async (event) => {
     )
     /** 指定账号 ID：临时查看该账号的订单，不改变「当前账号」 */
     const accountId = typeof query.accountId === 'string' ? query.accountId.trim() : ''
+    /** 状态 tab：非法值收敛成「全部」，避免把用户的手误变成空列表 */
+    const status = normalizeOrderStatus(typeof query.status === 'string' ? query.status : '')
 
     if (page < 1) {
       return createErrorResponse(ErrorCode.INVALID_PARAMS, '页码必须大于 0')
@@ -67,7 +69,7 @@ export default defineEventHandler(async (event) => {
     }
 
     const result: OrderListResult = await getOrderList(
-      { platform: 'yishou', page, pageSize },
+      { platform: 'yishou', page, pageSize, status },
       { adapterConfig: resolved.config }
     )
 

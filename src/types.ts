@@ -654,14 +654,24 @@ export interface OrderListItem {
   items: OrderGoodsItem[];
 }
 
+/**
+ * 订单列表 tab（一手 `order_status` 的 5 个合法值）
+ *
+ * 传空串或非法值不会报错，服务端会静默回退成 `all`，
+ * 因此调用方仍然要自己收敛一次，避免「以为筛了、其实没筛」。
+ */
+export type OrderStatusTab = 'all' | 'wait_pay' | 'wait_shipping' | 'wait_comfirm' | 'finish';
+
 /** 订单列表查询结果 */
 export interface OrderListResult {
   /** 订单（一手按时间倒序返回） */
   items: OrderListItem[];
-  /** 当前页码，从 1 开始 */
+  /** 当前页码，从 1 开始（一手接口是 0 起，适配器内部已换算） */
   page: number;
   /** 本次请求的每页条数（一手上限 10） */
   pageSize: number;
+  /** 本次筛选的 tab */
+  status: OrderStatusTab;
   /** 是否可能还有下一页：本页满页即认为有 */
   hasMore: boolean;
 }

@@ -2,7 +2,15 @@
  * 平台适配器 - 类型定义
  */
 
-import type { Platform, StockCheckResult, CollectionStockCheckResult, ProductSkuResult, PriceSnapshot, OrderListResult } from '../types';
+import type {
+  Platform,
+  StockCheckResult,
+  CollectionStockCheckResult,
+  ProductSkuResult,
+  PriceSnapshot,
+  OrderListResult,
+  OrderStatusTab,
+} from '../types';
 
 /**
  * 平台适配器接口
@@ -45,9 +53,13 @@ export interface PlatformAdapter {
   /**
    * 查询订单列表（必须携带登录态）
    *
+   * @param page 页码，从 1 开始
+   * @param pageSize 每页数量
+   * @param status 订单状态 tab，不传按「全部」
+   *
    * 不是所有平台都有订单能力：未实现时调用方应提示「当前平台不支持」。
    */
-  getOrderList?(page?: number, pageSize?: number): Promise<OrderListResult>;
+  getOrderList?(page?: number, pageSize?: number, status?: OrderStatusTab): Promise<OrderListResult>;
 }
 
 /**

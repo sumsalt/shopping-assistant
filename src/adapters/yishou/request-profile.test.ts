@@ -333,6 +333,24 @@ describe('请求档案 - iOS App 抓包', () => {
     expect(profile.sign(profile.timestamp())).toMatch(/^[a-f0-9]{32}$/)
   })
 
+  it('iOS 签名用未编码的 model，能复现抓包里的 sign', () => {
+    // 2026-11-12 真实抓包：t_t=1794454532 → sign=c4672a61666a07d51b6793d7dfd48e44
+    // 签名原料 = udid + 原始 model + version + version_name，model 不做 URL 编码
+    const profile = resolveRequestProfile(IOS_CONFIG)
+
+    expect(profile.sign(1794454532)).toBe('c4672a61666a07d51b6793d7dfd48e44')
+  })
+
+  it('Android 仍按 OkHttp 规则用编码后的 model 参与签名', () => {
+    const profile = resolveRequestProfile({
+      channel: 'app',
+      requestParams: { ...APP_CONFIG.requestParams, udid: 'udid-a', model: 'MI 8 UD' },
+    })
+    const t = 1_700_000_000
+
+    expect(profile.sign(t)).toBe(md5(md5(`udid-aMI%208%20UD${profile.params.version}${profile.params.version_name}`) + t))
+  })
+
   it('iOS 抓包没带 UA 时补 YiShou UA，不能补 Android 的 okhttp', () => {
     const profile = resolveRequestProfile({
       channel: 'app',

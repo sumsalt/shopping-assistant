@@ -1,6 +1,6 @@
 import type { Ref } from 'vue'
 import type { ApiResponse } from '@/types'
-import type { OrderListItem } from '@core'
+import type { OrderListItem, OrderStatusTab } from '@core'
 
 /** 本次查询使用的账号摘要（脱敏） */
 export interface OrderAccount {
@@ -13,10 +13,25 @@ interface OrderListPayload {
   items: OrderListItem[]
   page: number
   pageSize: number
+  status: OrderStatusTab
   hasMore: boolean
   /** 本次查询使用的账号；未选中账号时为 null */
   account?: OrderAccount | null
 }
+
+/**
+ * 订单状态 tab
+ *
+ * `wait_comfirm` 是一手接口里的拼写错误（不是 confirm），必须原样回传，
+ * 写成 wait_confirm 会被服务端静默当成「全部」。
+ */
+export const ORDER_STATUS_OPTIONS: ReadonlyArray<{ value: OrderStatusTab; label: string }> = [
+  { value: 'all', label: '全部' },
+  { value: 'wait_pay', label: '待付款' },
+  { value: 'wait_shipping', label: '待发货' },
+  { value: 'wait_comfirm', label: '待收货' },
+  { value: 'finish', label: '已完成' },
+]
 
 /**
  * 订单列表组合式函数
@@ -25,9 +40,14 @@ interface OrderListPayload {
  * 前端只负责累加，不做本地切片。
  *
  * @param accountId 指定账号 ID（通常来自路由 query）；为空时查看当前账号的订单
+ * @param status 状态 tab；切换时调用方负责重新拉取
  */
-export const useOrders = (accountId?: Ref<string | null>) => {
+export const useOrders = (
+  accountId?: Ref<string | null>,
+  status?: Ref<OrderStatusTab>
+) => {
   const requestedAccountId = computed(() => accountId?.value?.trim() || null)
+  const activeStatus = computed<OrderStatusTab>(() => status?.value ?? 'all')
   const toast = useToast()
 
   const orders = ref<OrderListItem[]>([])
@@ -49,6 +69,7 @@ export const useOrders = (accountId?: Ref<string | null>) => {
         query: {
           page: String(page),
           ...(requestedAccountId.value ? { accountId: requestedAccountId.value } : {}),
+          ...(activeStatus.value !== 'all' ? { status: activeStatus.value } : {}),
         },
       })
 

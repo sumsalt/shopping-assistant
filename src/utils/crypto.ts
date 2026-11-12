@@ -18,7 +18,10 @@ export type MD5Input = string | number;
 export const md5 = (...inputs: MD5Input[]): string => {
   const spark = new SparkMD5();
   for (const input of inputs) {
-    spark.append(input as string | ArrayBuffer);
+    // SparkMD5 只接受字符串 / ArrayBuffer，数字会被静默丢弃：
+    // 签名第二段是 md5(firstHash + t_t)，漏掉 t_t 就等于算了个错的签名，
+    // 所以这里统一转成字符串，不依赖底层库的容错行为。
+    spark.append(typeof input === 'number' ? String(input) : input);
   }
   return spark.end();
 };
@@ -51,7 +54,7 @@ export const generateYishouSign = (params: YishouSignParams): string => {
   // 第一次 MD5：对 openid + model + version + version_name 进行哈希
   const firstHash = md5(`${openid}${model}${version}${version_name}`);
   
-  // 第二次 MD5：对第一次哈希结果 + t_t 进行哈希（t_t 以数字形式传入）
+  // 第二次 MD5：对第一次哈希结果 + t_t 进行哈希
   const sign = md5(firstHash, t_t);
   
   return sign;

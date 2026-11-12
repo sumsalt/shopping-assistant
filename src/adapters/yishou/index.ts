@@ -12,6 +12,7 @@ import { StockCheckError, StockCheckErrorType } from '../../types';
 import type {
   CollectionStockCheckResult,
   CollectionStockResult,
+  OrderStatusTab,
   Platform,
   PriceSnapshot,
   ProductSkuResult,
@@ -174,8 +175,8 @@ export class YishouAdapter extends BaseAdapter {
   // ==================== 下单链路（委托给 YishouOrderApi） ====================
 
   /** 订单列表（登录态，每页最多 10 条） */
-  getOrderList(page?: number, pageSize?: number) {
-    return this.order.getOrderList(page, pageSize);
+  getOrderList(page?: number, pageSize?: number, status?: OrderStatusTab) {
+    return this.order.getOrderList(page, pageSize, status);
   }
 
   getAddresses() {

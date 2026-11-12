@@ -42,6 +42,22 @@
       </NuxtLink>
     </div>
 
+    <!-- 状态筛选：一手 5 个 tab，切换时整页重拉 -->
+    <div class="mb-4 flex flex-wrap gap-2">
+      <button
+        v-for="tab in ORDER_STATUS_OPTIONS"
+        :key="tab.value"
+        type="button"
+        class="px-3 py-1 text-xs font-medium rounded-full border transition-colors whitespace-nowrap"
+        :class="status === tab.value
+          ? 'bg-blue-600 text-white border-blue-600'
+          : 'bg-white text-gray-600 border-gray-200 hover:border-blue-300 hover:text-blue-600'"
+        @click="status = tab.value"
+      >
+        {{ tab.label }}
+      </button>
+    </div>
+
     <!-- 加载骨架 -->
     <div v-if="isLoading && orders.length === 0" class="space-y-4">
       <div v-for="i in 3" :key="i" class="bg-white rounded-lg border border-gray-200 p-4">
@@ -78,7 +94,7 @@
     <!-- 订单内容 -->
     <div v-else-if="orders.length > 0" class="space-y-4">
       <div class="flex items-center justify-between px-1 text-sm text-gray-500">
-        <span>已加载 {{ orders.length }} 笔订单</span>
+        <span>已加载 {{ orders.length }} 笔{{ activeStatusLabel === '全部' ? '' : activeStatusLabel }}订单</span>
         <span class="text-xs text-gray-400">一手按时间倒序返回，每页 10 笔</span>
       </div>
 
@@ -173,9 +189,11 @@
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
           </svg>
         </div>
-        <h3 class="text-lg font-medium text-gray-900 mb-2">还没有订单</h3>
+        <h3 class="text-lg font-medium text-gray-900 mb-2">
+          {{ status === 'all' ? '还没有订单' : `没有${activeStatusLabel}的订单` }}
+        </h3>
         <p class="text-gray-500">
-          {{ accountId ? '该账号在一手上还没有订单记录' : '当前账号在一手上还没有订单记录' }}
+          {{ accountId ? '该账号在一手上还没有此类订单' : '当前账号在一手上还没有此类订单' }}
         </p>
       </div>
     </div>
@@ -183,6 +201,8 @@
 </template>
 
 <script setup lang="ts">
+import type { OrderStatusTab } from '@core'
+
 definePageMeta({
   title: '订单',
 })
@@ -194,7 +214,14 @@ const accountId = computed<string | null>(() => {
   return typeof value === 'string' && value.trim() ? value.trim() : null
 })
 
-const { orders, isLoading, error, hasMore, account, refresh, loadMore } = useOrders(accountId)
+/** 状态 tab：默认「全部」，与一手 order_status 一一对应 */
+const status = ref<OrderStatusTab>('all')
+
+const activeStatusLabel = computed(
+  () => ORDER_STATUS_OPTIONS.find(tab => tab.value === status.value)?.label ?? '全部'
+)
+
+const { orders, isLoading, error, hasMore, account, refresh, loadMore } = useOrders(accountId, status)
 
 /** 本次查询实际使用的账号（查询成功后由服务端返回） */
 const viewingAccount = computed(() => {
@@ -230,6 +257,11 @@ onMounted(() => {
 
 // 切换账号或返回默认订单（query 变化）时重新拉取，并清空上一账号的列表
 watch(accountId, () => {
+  refresh()
+})
+
+// 切换状态 tab 也要重新从第一页拉
+watch(status, () => {
   refresh()
 })
 </script>

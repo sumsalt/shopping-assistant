@@ -18,6 +18,12 @@ describe('md5 - MD5 哈希函数', () => {
     expect(md5('123456')).toBe('e10adc3949ba59abbe56e057f20f883e');
   });
 
+  it('数字按十进制字符串参与哈希，不会被静默丢弃', () => {
+    // SparkMD5 只认字符串 / ArrayBuffer，数字会被忽略；签名第二段就是 md5(hash + t_t)
+    expect(md5('abc', 123)).toBe(md5('abc123'));
+    expect(md5('abc', 0)).toBe(md5('abc0'));
+  });
+
   it('应返回32位小写哈希值', () => {
     const hash = md5('test');
     expect(hash).toHaveLength(32);

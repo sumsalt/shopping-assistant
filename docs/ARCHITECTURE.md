@@ -226,11 +226,17 @@ interface RequestProfile {
 
 ### 订单列表（只读）
 
-- 接口：`POST /order/get_order_list`，参数只有 `pageindex` / `pagesize`。
+- 接口：`POST /order/get_order_list`，业务参数 `order_status` / `pageidx` / `pagesize`。
+- 参数名是 **`pageidx`**（不是 `pageindex`），且 **从 0 开始**；写成 `pageindex`
+  会直接返回 `500 server error`，这是实测踩过的坑。对外仍暴露 1 起的页码，适配器内部换算。
+- `order_status` 只有 5 个合法值：`all` / `wait_pay` / `wait_shipping` /
+  `wait_comfirm`（上游拼写错误，必须照抄）/ `finish`；传非法值不报错，会静默回退成 `all`。
+- 返回结构取决于是否传 `pageidx`：传了是 `{ list, pageidx, current_timestamp }`，
+  不传是裸数组，适配器两种都兼容。
 - 一手**每页硬上限 10 条**（传 20 / 50 也只回 10 条），且**不返回总数**，
   所以 `hasMore` 只能按「本页是否满页」判断；翻到最后一页会多一次空请求，属正常。
-- 返回是纯数组，按时间倒序；订单状态直接用一手给的 `order_status_name`，
-  不维护状态码映射（状态码会变，文案不会）。
+- 订单状态直接用一手给的 `order_status_name`，不维护状态码映射
+  （状态码会变，文案不会）。
 - 商品规格在 `attribute` 里是「颜色 → 尺码 → 件数」的嵌套 JSON，
   由 `formatOrderAttribute` 摊平成「粉色 M ×1 / 灰色 均码 ×2」，解析失败再回退 `selected`。
 - 页面 `/orders` 与收藏夹同一套账号口径：默认当前账号，`?accountId=` 临时查看指定账号，

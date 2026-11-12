@@ -27,8 +27,8 @@ export { placeAutoOrder, precheckAutoOrder, DEFAULT_AUTO_ORDER_PAY_TOOL, MAX_AUT
 export type { AutoOrderAdapter, PlaceOrderParams, PrecheckOrderResult } from './auto-order';
 export type { PlatformAdapter, AdapterConfig, AuthCheckResult } from './adapters';
 
-// 订单列表分页上限（一手服务端硬限制）
-export { ORDER_LIST_PAGE_SIZE } from './adapters/yishou/order-api';
+// 订单列表分页上限与状态枚举（一手服务端硬限制）
+export { ORDER_LIST_PAGE_SIZE, ORDER_STATUS_TABS, normalizeOrderStatus } from './adapters/yishou/order-api';
 
 // 导出工具函数
 export { httpRequest, httpPost } from './utils/http';

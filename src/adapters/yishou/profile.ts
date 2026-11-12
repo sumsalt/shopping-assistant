@@ -110,6 +110,10 @@ const buildIosUserAgent = (params: Record<string, string>): string => {
     : IOS_USER_AGENT;
 };
 
+/** 是否 iOS App：plat_type 优先，大小写不敏感（真机上是 `iOS`，不是 `ios`） */
+const isIosCapture = (params: Record<string, string>): boolean =>
+  readParam(params, 'plat_type').toLowerCase() === 'ios';
+
 /** 补默认 UA；抓包已带 UA 时原样保留（UA 必须与 plat_type 匹配） */
 const resolveHeaders = (
   captured: Record<string, string> | undefined,
@@ -121,9 +125,8 @@ const resolveHeaders = (
 
   if (!hasUserAgent) {
     // iOS 抓包不能用 Android 的 okhttp UA 兜底，否则 UA 与 plat_type=iOS 矛盾
-    const isIosApp = readParam(params, 'plat_type').toLowerCase() === 'ios';
     headers['User-Agent'] = channel === 'app'
-      ? (isIosApp ? buildIosUserAgent(params) : APP_USER_AGENT)
+      ? (isIosCapture(params) ? buildIosUserAgent(params) : APP_USER_AGENT)
       : WX_USER_AGENT;
   }
 
@@ -194,6 +197,7 @@ export const resolveRequestProfile = (config: AdapterConfig = {}): RequestProfil
     if (token) params.token = token;
   }
 
+  const isIosApp = channel === 'app' && isIosCapture(params);
   const headers = resolveHeaders(config.requestHeaders, channel, params);
   if (channel === 'app') {
     ensureAppFingerprint(headers, params);
@@ -205,8 +209,13 @@ export const resolveRequestProfile = (config: AdapterConfig = {}): RequestProfil
   const signFirst = channel === 'app'
     ? readParam(params, 'udid') || readParam(params, 'device_id')
     : config.openid || readParam(params, 'openid');
-  // 签名取的是 form 里「已编码」的值，见 encodeFormComponent 注释
-  const signModel = channel === 'app' ? encodeFormComponent(rawModel) : rawModel;
+  /**
+   * 签名的 model 用「编码前」还是「编码后」，两端不一样：
+   *   - Android 由 OkHttp 拦截器签名，拿到的是 **已编码** 的表单值
+   *   - iOS 客户端自己拼 body，签的是 **原始** 值（实测 `iPhone 14 Pro` 不编码，
+   *     用编码后的值算出来的 sign 对不上抓包）
+   */
+  const signModel = channel === 'app' && !isIosApp ? encodeFormComponent(rawModel) : rawModel;
   const signVersion = config.version || readParam(params, 'version');
   const signVersionName = config.version_name || readParam(params, 'version_name');
 

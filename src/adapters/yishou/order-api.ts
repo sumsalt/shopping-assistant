@@ -11,6 +11,7 @@
 
 import type {
   OrderListResult,
+  OrderStatusTab,
   YishouAddress,
   YishouCartAddResult,
   YishouConfirmOrderData,
@@ -44,6 +45,31 @@ const ORDER_LIST_AUTH_MESSAGE = '查看订单需要登录态，请先在账号�
  */
 export const ORDER_LIST_PAGE_SIZE = 10;
 
+/** 订单列表 tab 的合法值（`wait_comfirm` 是一手上的拼写错误，必须照抄） */
+export const ORDER_STATUS_TABS: readonly OrderStatusTab[] = [
+  'all',
+  'wait_pay',
+  'wait_shipping',
+  'wait_comfirm',
+  'finish',
+];
+
+/** 收敛到合法 tab，非法值一律按「全部」处理（与服务端行为一致，但这里是显式的） */
+export const normalizeOrderStatus = (status?: string): OrderStatusTab =>
+  ORDER_STATUS_TABS.find(tab => tab === status) ?? 'all';
+
+/**
+ * 解析列表返回
+ *
+ * 这是个暗坑：传了 `pageidx` 时 data 是 `{ list, pageidx, current_timestamp }`，
+ * 不传则是裸数组。两种都要能读，否则换个调用方就静默变成空列表。
+ */
+const parseOrderListPayload = (data: unknown): YishouOrderRaw[] => {
+  if (Array.isArray(data)) return data as YishouOrderRaw[];
+  const list = (data as { list?: unknown } | null | undefined)?.list;
+  return Array.isArray(list) ? (list as YishouOrderRaw[]) : [];
+};
+
 export class YishouOrderApi {
   private readonly client: YishouClient;
 
@@ -54,10 +80,18 @@ export class YishouOrderApi {
   /**
    * 订单列表
    *
-   * 一手按时间倒序返回纯数组，没有总数：只能靠「本页是否满页」判断还有没有下一页。
-   * 每页上限 10 条由服务端决定，这里统一 clamp，避免调用方传大值后误判 hasMore。
+   * 三个实测细节（都踩过）：
+   *   1. 参数名是 `pageidx`，**不是** `pageindex`：写错会直接 500 server error
+   *   2. `pageidx` 从 0 开始，对外仍用 1 起的页码，这里换算
+   *   3. 不传 `pageidx` 时 data 是裸数组，传了才是 `{ list, pageidx, current_timestamp }`
+   *
+   * 没有总数，只能靠「本页是否满页」判断还有没有下一页。
    */
-  async getOrderList(page: number = 1, pageSize: number = ORDER_LIST_PAGE_SIZE): Promise<OrderListResult> {
+  async getOrderList(
+    page: number = 1,
+    pageSize: number = ORDER_LIST_PAGE_SIZE,
+    status?: OrderStatusTab
+  ): Promise<OrderListResult> {
     this.client.requireAuth(ORDER_LIST_AUTH_MESSAGE);
 
     const index = Math.max(1, Math.floor(page) || 1);
@@ -65,24 +99,28 @@ export class YishouOrderApi {
       Math.max(1, Math.floor(pageSize) || ORDER_LIST_PAGE_SIZE),
       ORDER_LIST_PAGE_SIZE
     );
+    const tab = normalizeOrderStatus(status);
 
-    const data = await this.client.post<YishouOrderRaw[]>(EP.ORDER_LIST, {
-      pageindex: `${index}`,
+    const data = await this.client.post<unknown>(EP.ORDER_LIST, {
+      order_status: tab,
+      pageidx: `${index - 1}`,
       pagesize: `${size}`,
     });
 
-    const items = (Array.isArray(data) ? data : []).map(mapOrderListItem);
+    const items = parseOrderListPayload(data).map(mapOrderListItem);
 
     return {
       items,
       page: index,
       pageSize: size,
+      status: tab,
       hasMore: items.length >= size,
     };
   }
 
   /** 收货地址列表 */
-  async getAddresses(): Promise<YishouAddress[]> {    this.client.requireAuth(AUTH_MESSAGE);
+  async getAddresses(): Promise<YishouAddress[]> {
+    this.client.requireAuth(AUTH_MESSAGE);
 
     const data = await this.client.post<
       YishouAddressRaw[] | { list?: YishouAddressRaw[] }

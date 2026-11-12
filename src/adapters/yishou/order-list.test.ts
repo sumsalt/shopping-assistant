@@ -1,8 +1,10 @@
 /**
  * 一手适配器 - 订单列表
  *
- * 只测「请求参数 + 映射」：一手返回纯数组、没有总数，
- * 分页上限与 hasMore 判定是最容易写错的两处。
+ * 只测「请求参数 + 映射」。三个最容易写错的点都在这里：
+ *   - 参数名是 pageidx（不是 pageindex），且 **0 起**
+ *   - 传了 pageidx 返回 `{list,...}`，不传是裸数组
+ *   - 没有总数，hasMore 只能按本页是否满页判断
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -87,18 +89,44 @@ describe('YishouAdapter 订单列表', () => {
     mocks.httpPost.mockReset()
   })
 
-  it('按 pageindex / pagesize 请求，并把每页条数收敛到 10', async () => {
-    mocks.httpPost.mockResolvedValue({ code: '200', msg: 'success', data: [order()] })
+  it('用 pageidx（0 起）请求，并把每页条数收敛到 10', async () => {
+    mocks.httpPost.mockResolvedValue({ code: '200', msg: 'success', data: { list: [order()] } })
 
     const adapter = new YishouAdapter(config)
     await adapter.getOrderList(2, 50)
 
-    expect(lastBody().pageindex).toBe('2')
+    // 一手是 0 起：对外第 2 页 = pageidx=1
+    expect(lastBody().pageidx).toBe('1')
     expect(lastBody().pagesize).toBe('10')
+    // 写错成 pageindex 会直接 500，这里守住参数名
+    expect(lastBody().pageindex).toBeUndefined()
+  })
+
+  it('默认 order_status=all，显式 tab 原样回传', async () => {
+    mocks.httpPost.mockResolvedValue({ code: '200', msg: 'success', data: { list: [] } })
+
+    const adapter = new YishouAdapter(config)
+    await adapter.getOrderList()
+    expect(lastBody().order_status).toBe('all')
+
+    const pay = await adapter.getOrderList(1, 10, 'wait_pay')
+    expect(lastBody().order_status).toBe('wait_pay')
+    expect(pay.status).toBe('wait_pay')
+
+    // wait_comfirm 是一手的拼写错误，必须照抄；非法值收敛成 all
+    await adapter.getOrderList(1, 10, 'wait_comfirm')
+    expect(lastBody().order_status).toBe('wait_comfirm')
+    await adapter.getOrderList(1, 10, 'wait_confirm' as never)
+    expect(lastBody().order_status).toBe('all')
   })
 
   it('映射金额、件数、截止时间与商品明细', async () => {
-    mocks.httpPost.mockResolvedValue({ code: '200', msg: 'success', data: [order()] })
+    mocks.httpPost.mockResolvedValue({
+      code: '200',
+      msg: 'success',
+      // 传了 pageidx 时的真实结构：list 包一层，附带服务器时间
+      data: { list: [order()], pageidx: 0, current_timestamp: 1794454534 },
+    })
 
     const adapter = new YishouAdapter(config)
     const result = await adapter.getOrderList(1, 10)
@@ -122,11 +150,15 @@ describe('YishouAdapter 订单列表', () => {
 
   it('满页视为可能还有下一页，不满页结束分页', async () => {
     const full = Array.from({ length: 10 }, () => order())
-    mocks.httpPost.mockResolvedValueOnce({ code: '200', msg: 'success', data: full })
+    mocks.httpPost.mockResolvedValueOnce({ code: '200', msg: 'success', data: { list: full } })
     const adapter = new YishouAdapter(config)
     expect((await adapter.getOrderList(1, 10)).hasMore).toBe(true)
 
-    mocks.httpPost.mockResolvedValueOnce({ code: '200', msg: 'success', data: [order()] })
+    mocks.httpPost.mockResolvedValueOnce({
+      code: '200',
+      msg: 'success',
+      data: { list: [order()] },
+    })
     expect((await adapter.getOrderList(2, 10)).hasMore).toBe(false)
   })
 
@@ -134,7 +166,7 @@ describe('YishouAdapter 订单列表', () => {
     mocks.httpPost.mockResolvedValue({
       code: '200',
       msg: 'success',
-      data: [order({ stock_total: '', order_amount: '' })],
+      data: { list: [order({ stock_total: '', order_amount: '' })] },
     })
 
     const adapter = new YishouAdapter(config)
@@ -158,13 +190,18 @@ describe('YishouAdapter 订单列表', () => {
     }
   })
 
-  it('接口返回空数组时列表为空且没有下一页', async () => {
-    mocks.httpPost.mockResolvedValue({ code: '200', msg: 'success', data: null })
-
+  it('兼容裸数组与空结构：都返回空列表且没有下一页', async () => {
     const adapter = new YishouAdapter(config)
+
+    // 不传 pageidx 时的裸数组
+    mocks.httpPost.mockResolvedValueOnce({ code: '200', msg: 'success', data: [order()] })
+    expect((await adapter.getOrderList(1, 10)).items).toHaveLength(1)
+
+    mocks.httpPost.mockResolvedValueOnce({ code: '200', msg: 'success', data: null })
     const result = await adapter.getOrderList(3, 10)
 
     expect(result.items).toEqual([])
     expect(result.hasMore).toBe(false)
+    expect(result.page).toBe(3)
   })
 })

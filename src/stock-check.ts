@@ -10,6 +10,7 @@ import type {
   BatchStockCheckResult,
   CollectionStockCheckResult,
   OrderListResult,
+  OrderStatusTab,
   ProductSkuResult,
   Platform
 } from './types';
@@ -56,6 +57,8 @@ export interface OrderListRequest {
   page?: number;
   /** 每页数量，平台上限 10 */
   pageSize?: number;
+  /** 订单状态 tab，不传按「全部」 */
+  status?: OrderStatusTab;
 }
 
 /**
@@ -287,7 +290,7 @@ export const getOrderList = async (
   request: OrderListRequest,
   options: CheckStockOptions = {}
 ): Promise<OrderListResult> => {
-  const { platform, page = 1, pageSize = 10 } = request;
+  const { platform, page = 1, pageSize = 10, status } = request;
   const { adapterConfig = {} } = options;
 
   if (!platform) {
@@ -302,7 +305,7 @@ export const getOrderList = async (
     );
   }
 
-  return adapter.getOrderList(page, pageSize);
+  return adapter.getOrderList(page, pageSize, status);
 };
 
 /**
