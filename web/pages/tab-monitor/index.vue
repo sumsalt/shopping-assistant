@@ -637,7 +637,7 @@
 
 <script setup lang="ts">
 import type { TabSeenProductItem } from '@/composables/useTabMonitorTasks'
-import { buildYishouProductLink } from '~/utils/yishou-deeplink'
+import { useYishouApp } from '@/composables/useYishouApp'
 
 // 页面元信息
 definePageMeta({
@@ -664,10 +664,7 @@ const {
 const expandedDetailIds = ref<Set<string>>(new Set())
 
 /** 手机端才可能唤起一手 App，桌面浏览器点了没有 App 可开 */
-const isMobileViewport = ref(false)
-onMounted(() => {
-  isMobileViewport.value = /Android|iPhone|iPad|iPod|HarmonyOS|Mobile/i.test(navigator.userAgent)
-})
+const { isMobileViewport, openYishouProduct } = useYishouApp()
 
 const isDetailExpanded = (taskId: string) => expandedDetailIds.value.has(taskId)
 
@@ -804,14 +801,6 @@ const formatSeenTitle = (item: TabSeenProductItem): string => {
 const seenDetailPath = (item: TabSeenProductItem): string =>
   item.productNo ? `/stock/${encodeURIComponent(item.productNo)}` : ''
 
-/**
- * 一手 App 深链：入口固定 yishou://fmkj/openyishou，目标页面靠 extra 分发。
- * iOS 认 ios_class_name（详情页 FMDetailViewController），Android 认 android_class_name，
- * 两个都带上，同一条链接双端可用。goods_id 即本系统的 productId，有货号就一并带上。
- */
-const buildSeenAppLink = (item: TabSeenProductItem): string =>
-  buildYishouProductLink(item.productId, item.productNo)
-
 /** 站内库存详情页（新窗口） */
 const openSeenWeb = (item: TabSeenProductItem) => {
   const path = seenDetailPath(item)
@@ -821,30 +810,21 @@ const openSeenWeb = (item: TabSeenProductItem) => {
 }
 
 /**
- * 点击商品：手机端优先唤起一手 App。
- * 唤起成功时页面会转入后台，1.5 秒后仍是前台说明没装 App 或被系统拦截，退回站内库存详情。
- * 桌面端不拦截，保持「新窗口打开站内详情」。
+ * 点击商品：手机端优先唤起一手 App；未装 App 时退回站内库存详情。
+ * 桌面端不拦截，交给卡片的 <a> 在新窗口打开站内详情。
  */
 const openSeenProduct = (event: MouseEvent, item: TabSeenProductItem) => {
-  if (!isMobileViewport.value || !item.productId) {
+  if (!isMobileViewport.value) {
     return
   }
 
   event.preventDefault()
-
-  const fallback = seenDetailPath(item)
-  const startedAt = Date.now()
-
-  window.location.href = buildSeenAppLink(item)
-
-  window.setTimeout(() => {
-    if (document.hidden || Date.now() - startedAt > 3000) {
-      return
-    }
+  openYishouProduct(item.productId, item.productNo, () => {
+    const fallback = seenDetailPath(item)
     if (fallback) {
       window.location.href = fallback
     }
-  }, 1500)
+  })
 }
 
 // 卡片名称：优先用接口算好的「不带店铺名」短名，老数据兜底去掉【店铺名】前缀

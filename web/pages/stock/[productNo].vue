@@ -110,7 +110,7 @@
               </div>
             </div>
 
-            <!-- 操作按钮：到货监控一个入口，是否自动下单在配置里选 -->
+            <!-- 操作按钮：到货监控 / 价格监控 / 打开一手 App -->
             <div class="flex flex-wrap gap-2 pt-2">
               <UiButton
                 variant="primary"
@@ -133,6 +133,19 @@
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
                 </svg>
                 价格监控
+              </UiButton>
+
+              <UiButton
+                v-if="isMobileViewport"
+                variant="outline"
+                size="sm"
+                class="text-orange-600 border-orange-200 hover:bg-orange-50 hover:border-orange-300"
+                @click="openYishou"
+              >
+                <svg class="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                </svg>
+                打开一手 App
               </UiButton>
             </div>
           </div>
@@ -168,11 +181,14 @@
 definePageMeta({
   title: 'SKU 详情',
 })
-
-// 获取路由参数
 const route = useRoute()
 const router = useRouter()
 const productNo = computed(() => route.params.productNo as string)
+
+// 获取路由参数
+
+// 一键唤起一手 App 商品详情（手机端才显示入口）
+const { isMobileViewport, openYishouProduct } = useYishouApp()
 
 // 使用库存查询 composable
 const {
@@ -201,6 +217,15 @@ const openStockMonitor = () => {
   }
 
   showStockMonitorDialog.value = true
+}
+
+// 唤起一手 App 到本商品详情页（桌面端不显示入口，无需兜底）
+const openYishou = () => {
+  const result = skuResult.value
+  if (!result) {
+    return
+  }
+  openYishouProduct(result.productId, result.productNo)
 }
 
 // 弹窗需要的商品信息
