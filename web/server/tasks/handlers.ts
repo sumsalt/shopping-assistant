@@ -70,6 +70,9 @@ export const createTaskHandler = <R extends TaskRecord>(
     }
     const payload = {
       ...(body && typeof body === 'object' && !Array.isArray(body) ? body : {}),
+      // 固化「本次创建用的是哪个账号」：自动下单成功后按它关联自动续期任务。
+      // 改造前的老任务 payload 里没有该字段，钩子据此跳过（不追溯）。
+      accountId: resolved.account?.id ?? '',
       config: {
         ...(body?.config && typeof body.config === 'object' ? body.config : {}),
         adapterConfig: resolved.config,

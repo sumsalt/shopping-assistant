@@ -17,16 +17,17 @@
 │ web/server/api                      HTTP 编解码（薄壳）    │
 ├─────────────────────────────────────────────────────────┤
 │ web/server/tasks                    任务定义与生命周期     │
-│   handlers  registry  stock / tab / price                │
+│   handlers  registry  stock / tab / price / renew        │
 ├─────────────────────────────────────────────────────────┤
 │ web/server/utils                    存储 / 会话 / 校验     │
 ├─────────────────────────────────────────────────────────┤
 │ src/                                平台无关的监控内核     │
 │   stock-monitor / tab-list-monitor / price-monitor       │
-│   auto-order / email                                     │
+│   order-renew-monitor / auto-order / email               │
 ├─────────────────────────────────────────────────────────┤
 │ src/adapters/yishou                 一手平台适配          │
 │   profile → client → order-api → adapter → mappers       │
+│   checkout / renew（协议纯函数）                          │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -131,22 +132,93 @@ prepareCheckout = add_cart_goods_info → add_goods_to_cart → get_carts_by_sup
 `Goods/get_cart_recommend`、`get_carts_filter`、`get_pinkage_activity`、
 `get_order_advanced_check_list`、`piece_together/*`、重复的 `add_cart_goods_info`。
 
+### 待支付订单续期链路（2026-11 抓包 + 真实账号验证）
+
+一手待支付订单的支付有效期是 **20 分钟**，到期自动关闭；App 的「重新提交支付」
+会把有效期**重置为「当前时刻 + 20 分钟」**，而不是「旧截止时间 + 20 分钟」。
+续期不新建订单、不扣款，只刷新 `cancel_expire`，付款仍需人工完成。
+
+抓包的 4 个请求按 `t_t` 排序的真实顺序是 `1.1 → 1.2 → 1.3 → 1.4`（上传顺序是乱的）：
+
+| 步骤 | 接口 | 作用 | 是否采用 |
+|---|---|---|---|
+| 1.1 | `POST /order/confirm_wait_pay_order` | 重新拉结算上下文：`stock[]` / `default_address` / `order_remark` / `pay_tool[]` / `express_options_v2[]` / `cancel_expire` / `current_timestamp` | 采用 |
+| 1.2 | `POST /order/get_order_advanced_check_list` | 高级校验清单 | 跳过：结果不被 1.4 消费 |
+| 1.3 | `POST /piece_together/check_piece_together_data` | 拼单数据校验 | 跳过：同上 |
+| 1.4 | `POST /order/reload_wait_pay_order` | 真正刷新有效期 | 采用 |
+
+只保留 **1.1 + 1.4**：1.2 / 1.3 的响应没有被 1.4 的请求体引用，多发两次只会增加风控面。
+真实账号验证（线上 `15928169484`，订单 `12641615428606`，¥43.19）证明两步即可把
+`cancel_expire - current_timestamp` 刷回 `1200`。第一次 E2E 看起来「只后移 3 秒」，
+是因为刚建单 3 秒就 reload；追加滚动探针（等待 9 秒后再 reload）确认
+`expireMinusNowSeconds=1200`、`remainAfter > remainBefore`、`resetsToFull20Minutes=true`。
+
+**1.4 请求关键点**（`src/adapters/yishou/renew.ts` 纯函数，契约单测锁死）：
+
+- `order_sn` 用原单号；**没有 `pay_id`**（与建单 `create_order_v4` 的最大差异）。
+- `selected` 直接复用 `checkout.ts` 的 `buildCreateSelected(stock)`：sku 级 9 字段，
+  **不带 `cart_id`**，带 `from=""` / `piece_together_num="0"`。
+- `selected_express` 取 1.1 的 `express_options_v2` 里 `selected:"1"` 项
+  （实测 `[{origin:"2",express_id:"9999"}]`）；无快递选项时跳过该单并告警，不发 reload。
+- `advanced_check_selected` 是**精确两个换行的字符串** `'[\n\n]'`，不是 `'[]'`。
+- 固定值：`is_balance_pay=0`、`user_address_tag=0`、`app_code=0`。
+- `rsa.previous_vc_sorce = 'YiShou.MyOrderViewController'`（来源页是「我的订单」，
+  与建单的「进货车」不同）。`buildReloadRsa()` 与 `buildRsa()` **并列但互不改动**
+  ——`checkout.test.ts` / `order.test.ts` 对旧建单 rsa 有精确断言。
+- 响应里的 `pay_tool`（实测 `12`）是内部渠道码，真正支付方式取 `current_pay_tool`
+  （实测 `1`），与建单结论一致。
+
+**编排层风控**（`src/order-renew-monitor.ts`，与协议层解耦）：
+
+| 约束 | 值 | 原因 |
+|---|---|---|
+| 扫描周期 | 60 秒 | 需求：每分钟触发一次 |
+| 触发阈值 | `0 < 剩余 < 300` 秒 | 需求：有效期小于 5 分钟 |
+| 剩余秒数口径 | 1.1 的 `cancel_expire - current_timestamp` | 用服务端时钟复判，避免本地时钟偏差 |
+| 本地初筛 | 订单列表 `cancelExpireAt` | 只快速排除「明显还有很久 / 已过期」 |
+| 单订单冷却 | 4 分钟 | 有效期未刷新时防止每分钟重复提交 |
+| 单轮上限 | 20 页 / 200 单 | 防止列表异常放大请求量 |
+| 请求间隔 | 300ms | 自律串行，不改 `GateTaskKind` |
+| 跳过并告警 | 无快递 / 无地址、续期后截止未后移 | 不发 reload / 保留 warning 不被成功轮清空 |
+| 标记结束 | `pay_status !== 'wait_pay'` | 该单不再续期 |
+| 停止任务 | 凭据失效 | 避免 `201 请登录` 刷屏 |
+
+`YishouOrderApi` 已 `skipGate:true`，续期不进请求闸门，由编排层自己做 300ms 串行间隔，
+**没有引入新的 `GateTaskKind`**。协议层能力用独立的 `RenewOrderAdapter` +
+`getRenewAdapter()` 暴露，不塞进 `AutoOrderAdapter`，避免影响既有自动下单的 mock。
+
+**任务层**：`kind='renew'` 是第 4 类任务。`TaskKind` 是普通联合类型、`tasks.kind` 是 TEXT，
+**不需要 DB 迁移**。与 stock/price/tab 同构（一个 `renewDefinition` + 列表/状态/删除/重启
+4 个通用路由），但**创建用专用路由** `POST /api/order-renew/create`：通用
+`createTaskHandler` 强制「当前激活账号」，而续期要求显式选择账号，服务端按 `accountId`
+校验归属并解析快照。每个账号（`userId + accountId`）同时只能有一个 `running` 续期任务，
+已有则跳过、不改动、不延长；`restart` 设 `removeOriginalOnRestart:true` 避免两个循环同时续期。
+
+**自动创建钩子**（`web/server/tasks/auto-renew.ts`）：到货 / 价格监控自动下单成功后，
+若对应账号还没有 `running` 续期任务，自动创建一个 **12 小时** 的任务
+（`source='auto'`，记 `sourceTaskId`）。通用 `createTaskHandler` 现把 `accountId` 注入
+payload 顶层，新 stock/price 任务固化到 record；**老任务没有 `accountId`，按决策跳过**
+（写 `autoRenewTriggered` 守卫落盘，避免 price 回调每轮 / restore 后重复判断）。
+`pending Set` 防同一 tick 并发重复创建。
+
 ## 三、任务层（`web/server/tasks`）
 
-三类监控的生命周期完全一致，差异只在「创建时校验什么」和「怎么跑一轮」。
+四类任务（到货 / Tab / 价格 / 续期）的生命周期完全一致，差异只在「创建时校验什么」和
+「怎么跑一轮」。
 
 ```
 TaskDefinition<R>          create / start / restart / restore / listView / statusView
 TaskRegistry<R>            内存 Map + SQLite 落盘 + controller + 状态流转 + 列表合并
 handlers.ts                5 个通用路由处理器（鉴权、所有权、错误映射）
-stock.ts / tab.ts / price.ts   只实现上面两个接口
+stock.ts / tab.ts / price.ts / renew.ts   只实现上面两个接口
 ```
 
 因此：
 
-- 15 个路由文件各 3 行，没有业务逻辑，也不持有状态。
+- 通用路由都是 3 行薄壳，没有业务逻辑，也不持有状态；续期的创建是唯一的专用路由
+  （要显式选账号，见上一节）。
 - 重启后续跑只有一份实现（`plugins/restore-tasks.ts` 负责算剩余时长，`definition.restore` 负责怎么续）。
-- 新增一类监控 = 一个 definition + 5 个 3 行路由 + 在 `tasks/index.ts` 注册。
+- 新增一类任务 = 一个 definition + 5 个 3 行路由 + 在恢复插件里注册。
 
 约定：
 
@@ -294,7 +366,7 @@ interface RequestProfile {
 ## 五、前端
 
 - `useTaskCollection<T>`：列表 / 删除 / 重启 / 轮询的唯一实现。
-- `useMonitorTasks` / `useTabMonitorTasks` / `usePriceMonitorTasks`：类型 + 专属方法（薄壳）。
+- `useMonitorTasks` / `useTabMonitorTasks` / `usePriceMonitorTasks` / `useOrderRenewTasks`：类型 + 专属方法（薄壳）。
 - `web/utils/taskFormat.ts`：状态文案、相对时间、金额、时长的唯一实现。
 
 ## 六、边界与已知取舍

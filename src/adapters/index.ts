@@ -4,7 +4,7 @@
 
 import { StockCheckError, StockCheckErrorType } from '../types';
 import type { Platform } from '../types';
-import type { PlatformAdapter, AdapterConfig } from './types';
+import type { PlatformAdapter, AdapterConfig, RenewOrderAdapter } from './types';
 import { YishouAdapter } from './yishou';
 import type { AutoOrderAdapter } from '../auto-order';
 
@@ -39,6 +39,26 @@ export const getOrderAdapter = (
     typeof adapter.prepareCheckout === 'function' &&
     typeof adapter.createOrder === 'function' &&
     typeof adapter.discardCheckout === 'function';
+
+  return capable ? adapter : null;
+};
+
+/**
+ * 获取支持「待支付订单续期」的适配器
+ *
+ * 独立于 getOrderAdapter 做能力检测：不改动下单的 5 项检测，
+ * 避免影响既有自动下单契约测试里只有 5 个方法的 mock adapter。
+ */
+export const getRenewAdapter = (
+  platform: Platform,
+  config: AdapterConfig = {}
+): RenewOrderAdapter | null => {
+  const adapter = getAdapter(platform, config) as unknown as RenewOrderAdapter;
+
+  const capable =
+    typeof adapter.getOrderList === 'function' &&
+    typeof adapter.confirmWaitPayOrder === 'function' &&
+    typeof adapter.reloadWaitPayOrder === 'function';
 
   return capable ? adapter : null;
 };

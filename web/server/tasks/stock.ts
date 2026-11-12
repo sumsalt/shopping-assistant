@@ -18,6 +18,7 @@ import type { StoredTaskBase } from '../utils/taskStore'
 import { persistTask } from '../utils/taskStore'
 import { TaskRegistry } from './registry'
 import { TaskApiError, type StartOverrides, type TaskDefinition } from './types'
+import { ensureAutoRenewFromOrder } from './auto-renew'
 
 export interface StockProductInfo {
   productId: string
@@ -29,6 +30,10 @@ export interface StockTaskRecord extends StoredTaskBase {
   product: StockProductInfo
   config: StockMonitorConfig
   result?: MonitorResult
+  /** 创建时固化的账号 ID（自动下单成功后据此关联自动续期任务）；老任务为 undefined */
+  accountId?: string
+  /** 自动续期任务触发的一次性守卫 */
+  autoRenewTriggered?: boolean
   controller?: AbortController
 }
 
@@ -149,7 +154,12 @@ export const stockDefinition: TaskDefinition<StockTaskRecord> = {
       ...(autoOrder ? { autoOrder } : {}),
     }
 
-    return { product, config }
+    return {
+      product,
+      config,
+      // 由 createTaskHandler 注入；老任务没有该字段（不追溯自动续期）
+      ...(body?.accountId ? { accountId: String(body.accountId) } : {}),
+    }
   },
 
   start(record, overrides: StartOverrides = {}) {
@@ -191,6 +201,10 @@ export const stockDefinition: TaskDefinition<StockTaskRecord> = {
           progress => console.log(`[到货监控] 任务 ${record.id} 进度:`, progress),
           result => {
             record.result = result
+            // 自动下单成功：为对应账号补一个 12 小时续期任务（一次性、失败不影响监控）
+            if (result.orderSn) {
+              void ensureAutoRenewFromOrder(record, () => stockTasks.touch(record))
+            }
             stockTasks.touch(record)
           }
         )

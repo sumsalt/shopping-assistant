@@ -14,7 +14,7 @@ import { closeDb, getDb } from './db'
 // 数据目录 / 数据库路径由 db 模块统一管理
 
 /** 任务种类 */
-export type TaskKind = 'stock' | 'price' | 'tab'
+export type TaskKind = 'stock' | 'price' | 'tab' | 'renew'
 
 /** 任务状态 */
 export type TaskStatus = 'running' | 'stopped' | 'completed'

@@ -201,6 +201,18 @@ export class YishouAdapter extends BaseAdapter {
   getOrderDetail(orderSn: string) {
     return this.order.getOrderDetail(orderSn);
   }
+
+  // ==================== 待支付订单续期（委托给 YishouOrderApi） ====================
+
+  /** 抓包 1.1：取重新结算上下文 */
+  confirmWaitPayOrder(orderSn: string) {
+    return this.order.confirmWaitPayOrder(orderSn);
+  }
+
+  /** 抓包 1.4：重新提交支付单刷新有效期 */
+  reloadWaitPayOrder(protocol: unknown) {
+    return this.order.reloadWaitPayOrder(protocol);
+  }
 }
 
 // 兼容既有引用：映射函数与请求档案解析仍从适配器入口导出

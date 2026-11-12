@@ -158,6 +158,22 @@
         <p class="text-sm text-gray-500">监控商品拿货价变化，降价涨价邮件提醒</p>
       </NuxtLink>
 
+      <!-- 订单续期 -->
+      <NuxtLink
+        to="/order-renew"
+        class="block p-6 bg-white rounded-lg border border-gray-200 hover:shadow-md hover:border-amber-300 transition-all group"
+      >
+        <div class="flex items-center mb-4">
+          <div class="w-12 h-12 rounded-lg bg-amber-100 flex items-center justify-center group-hover:bg-amber-200 transition-colors">
+            <svg class="w-6 h-6 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.182 3.182m0-4.991v4.992" />
+            </svg>
+          </div>
+        </div>
+        <h3 class="text-lg font-semibold text-gray-900 mb-1">订单续期</h3>
+        <p class="text-sm text-gray-500">自动为快到期的待付款订单刷新支付有效期</p>
+      </NuxtLink>
+
       <!-- 店铺评分 -->
       <NuxtLink
         to="/shops"

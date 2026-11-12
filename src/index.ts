@@ -9,6 +9,7 @@ export * from './types';
 export { 
   getAdapter, 
   getOrderAdapter,
+  getRenewAdapter,
   getSupportedPlatforms, 
   registerAdapter,
   BaseAdapter,
@@ -25,10 +26,25 @@ export {
 export type { StoredRequestProfile } from './adapter-config';
 export { placeAutoOrder, precheckAutoOrder, DEFAULT_AUTO_ORDER_PAY_TOOL, MAX_AUTO_ORDER_NUM } from './auto-order';
 export type { AutoOrderAdapter, PlaceOrderParams, PrecheckOrderResult } from './auto-order';
-export type { PlatformAdapter, AdapterConfig, AuthCheckResult } from './adapters';
+export type { PlatformAdapter, AdapterConfig, RenewOrderAdapter, AuthCheckResult } from './adapters';
 
 // 订单列表分页上限与状态枚举（一手服务端硬限制）
 export { ORDER_LIST_PAGE_SIZE, ORDER_STATUS_TABS, normalizeOrderStatus } from './adapters/yishou/order-api';
+
+// 待支付订单续期协议层（纯函数与常量，供契约测试直接引用）
+export {
+  buildReloadRsa,
+  buildReloadRequest,
+  parseWaitPayConfirm,
+  resolveRenewPayTool,
+  RENEW_CONSTANTS,
+} from './adapters/yishou/renew';
+export type {
+  YishouWaitPayConfirmRaw,
+  YishouReloadWaitPayRaw,
+  YishouRenewProtocol,
+  YishouOrderRemarkRaw,
+} from './adapters/yishou/renew';
 
 // 导出工具函数
 export { httpRequest, httpPost } from './utils/http';
@@ -94,6 +110,27 @@ export type {
   TabProgressCallback,
   TabResultCallback,
 } from './tab-list-monitor';
+
+// 导出待支付订单续期监控
+export {
+  createCancellableOrderRenewMonitor,
+  RENEW_SCAN_INTERVAL_SECONDS,
+  RENEW_THRESHOLD_SECONDS,
+  RENEW_COOLDOWN_MS,
+  RENEW_MAX_PAGES,
+  RENEW_MAX_ORDERS_PER_ROUND,
+  RENEW_REQUEST_GAP_MS,
+  RENEW_PAGE_SIZE,
+  RENEW_RECENT_LIMIT,
+} from './order-renew-monitor';
+export type {
+  OrderRenewMonitorConfig,
+  OrderRenewMonitorResult,
+  OrderRenewProgress,
+  OrderRenewalRecord,
+  OrderRenewResultCallback,
+  OrderRenewProgressCallback,
+} from './order-renew-monitor';
 
 // 导出价格监控
 export {

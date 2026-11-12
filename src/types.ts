@@ -684,6 +684,56 @@ export interface OrderListResult {
   hasMore: boolean;
 }
 
+// ==================== 待支付订单续期 ====================
+
+/**
+ * 待支付订单续期确认结果（抓包 1.1 `confirm_wait_pay_order`）
+ *
+ * 编排层只消费 remainingSeconds / payTools / hasExpress 这几个判定字段，
+ * 其余协议细节封在 protocol 不透明句柄里，原样回传 reloadWaitPayOrder。
+ */
+export interface WaitPayConfirmData {
+  /** 订单号 */
+  orderSn: string;
+  /** 支付截止时间戳（毫秒，由 cancel_expire 秒级换算） */
+  cancelExpireAt?: number;
+  /** 服务端当前时间（秒级），与 cancel_expire 同源，避免本地时钟偏差 */
+  currentTimestamp?: number;
+  /**
+   * 剩余可支付秒数（服务端时钟口径：cancel_expire - current_timestamp）。
+   * 编排层用它复判是否进入续期窗口；缺失时回落到本地时钟。
+   */
+  remainingSeconds?: number;
+  /** 该订单可用的支付方式（一手原值，如 ["1","4"]） */
+  payTools: string[];
+  /** 是否解析到默认快递；为空时不能续期（避免发空参数锁单） */
+  hasExpress: boolean;
+  /** 是否解析到默认地址；为空时不能续期 */
+  hasAddress: boolean;
+  /** 不透明协议上下文，原样回传 reloadWaitPayOrder */
+  protocol: unknown;
+}
+
+/**
+ * 重新提交待支付订单的结果（抓包 1.4 `reload_wait_pay_order`）
+ */
+export interface RenewOrderResult {
+  /** 订单号（应与原单一致） */
+  orderSn: string;
+  /** 支付状态：wait_pay / already ... */
+  payStatus: string;
+  /** 订单金额 */
+  orderAmount?: number;
+  /** 续期后的支付截止时间戳（毫秒），响应未带时为 undefined */
+  cancelExpireAt?: number;
+  /** 真正的支付方式（current_pay_tool，不是内部渠道码 pay_tool） */
+  payTool?: string;
+  /**
+   * 订单已不再是待支付（已付款 / 已关闭）：编排层据此把该单标记结束，不再续期。
+   */
+  finished: boolean;
+}
+
 /**
  * 自动下单配置
  */

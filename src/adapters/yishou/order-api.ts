@@ -20,6 +20,8 @@ import type {
   CheckoutSettledItem,
   OrderListResult,
   OrderStatusTab,
+  RenewOrderResult,
+  WaitPayConfirmData,
   YishouAddress,
   YishouCreateOrderData,
 } from '../../types';
@@ -57,6 +59,13 @@ import {
   type YishouConfirmRaw,
   type YishouConfirmStockRaw,
 } from './checkout';
+import {
+  buildReloadRequest,
+  parseWaitPayConfirm,
+  type YishouReloadWaitPayRaw,
+  type YishouRenewProtocol,
+  type YishouWaitPayConfirmRaw,
+} from './renew';
 
 /** 下单链路统一提示语：调用方据此引导用户去账号管理 */
 const AUTH_MESSAGE = '自动下单需要登录态，请先在账号管理中选择带登录态的账号';
@@ -364,6 +373,79 @@ export class YishouOrderApi {
     return {
       expireAt: Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : undefined,
       orderAmount: Number.isFinite(amount) && amount > 0 ? amount : undefined,
+    };
+  }
+
+  // ==================== 待支付订单续期（抓包 1.1 / 1.4） ====================
+
+  /**
+   * 续期确认（抓包 1.1）：只传 order_sn，取回重新结算上下文
+   *
+   * remainingSeconds 用服务端自己的 cancel_expire - current_timestamp 计算，
+   * 编排层据此判断是否进入「剩余 < 5 分钟」窗口，避免本地时钟偏差。
+   */
+  async confirmWaitPayOrder(orderSn: string): Promise<WaitPayConfirmData> {
+    this.client.requireAuth(AUTH_MESSAGE);
+
+    const data = await this.client.post<YishouWaitPayConfirmRaw>(EP.ORDER_CONFIRM_WAIT_PAY, {
+      order_sn: orderSn,
+    });
+
+    return parseWaitPayConfirm(data, orderSn);
+  }
+
+  /** 从续期协议句柄里安全取出上下文 */
+  private readRenewProtocol(protocol: unknown): YishouRenewProtocol {
+    const value = protocol as YishouRenewProtocol | null;
+    if (
+      !value ||
+      typeof value !== 'object' ||
+      !value.orderSn ||
+      !Array.isArray(value.stock) ||
+      !value.address
+    ) {
+      throw new StockCheckError(
+        StockCheckErrorType.API_ERROR,
+        '续期上下文缺失，请重新确认待支付订单'
+      );
+    }
+    return value;
+  }
+
+  /**
+   * 重新提交待支付订单（抓包 1.4）：刷新支付有效期
+   *
+   * 参数全部来自 confirmWaitPayOrder 的实时响应，不放建单用的 pay_id / rec_ids。
+   * 与 createOrder 一样，reload 是写操作、失败可能留下「订单支付中」临时锁，
+   * 调用方必须自己控制频率与冷却。
+   */
+  async reloadWaitPayOrder(protocol: unknown): Promise<RenewOrderResult> {
+    this.client.requireAuth(AUTH_MESSAGE);
+    const ctx = this.readRenewProtocol(protocol);
+    if (ctx.selectedExpress.length === 0) {
+      throw new StockCheckError(
+        StockCheckErrorType.API_ERROR,
+        '订单未返回可用快递，跳过续期以避免提交无效参数'
+      );
+    }
+
+    const data = await this.client.post<YishouReloadWaitPayRaw>(
+      EP.ORDER_RELOAD_WAIT_PAY,
+      buildReloadRequest(ctx)
+    );
+
+    const orderSn = String(data?.order_sn ?? ctx.orderSn);
+    const payStatus = String(data?.pay_status ?? 'wait_pay');
+    const seconds = Number(data?.cancel_expire);
+
+    return {
+      orderSn,
+      payStatus,
+      orderAmount: toOptionalNumber(data?.order_amount),
+      ...(Number.isFinite(seconds) && seconds > 0 ? { cancelExpireAt: seconds * 1000 } : {}),
+      // 响应里的 pay_tool 是内部渠道码（实测 "12"），真正的支付方式是 current_pay_tool
+      payTool: data?.current_pay_tool ? String(data.current_pay_tool) : ctx.payTool,
+      finished: payStatus !== 'wait_pay',
     };
   }
 }

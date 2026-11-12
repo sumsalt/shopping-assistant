@@ -10,6 +10,8 @@ import type {
   PriceSnapshot,
   OrderListResult,
   OrderStatusTab,
+  RenewOrderResult,
+  WaitPayConfirmData,
 } from '../types';
 
 /**
@@ -60,6 +62,24 @@ export interface PlatformAdapter {
    * 不是所有平台都有订单能力：未实现时调用方应提示「当前平台不支持」。
    */
   getOrderList?(page?: number, pageSize?: number, status?: OrderStatusTab): Promise<OrderListResult>;
+}
+
+/**
+ * 待支付订单续期能力（独立于自动下单）
+ *
+ * 单独定义、单独做能力检测，不塞进 AutoOrderAdapter：
+ * 自动下单的契约测试里 mock 的 adapter 只有下单那几个方法，混在一起会让
+ * 所有自动下单测试失去能力；而且续期是「查订单 + 重新提交支付」，语义与建单不同。
+ */
+export interface RenewOrderAdapter {
+  /** 翻页扫待支付订单（登录态，每页上限 10） */
+  getOrderList(page?: number, pageSize?: number, status?: OrderStatusTab): Promise<OrderListResult>;
+  /** 抓包 1.1：取重新结算上下文与服务端剩余时长 */
+  confirmWaitPayOrder(orderSn: string): Promise<WaitPayConfirmData>;
+  /** 抓包 1.4：重新提交支付单刷新有效期 */
+  reloadWaitPayOrder(protocol: unknown): Promise<RenewOrderResult>;
+  /** 续期后回查支付截止时间（可选，用于确认有效期确实后移） */
+  getOrderDetail?(orderSn: string): Promise<{ expireAt?: number; orderAmount?: number }>;
 }
 
 /**

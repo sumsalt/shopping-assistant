@@ -26,6 +26,7 @@ import { ErrorCode } from '../utils/response'
 import { persistTask, type StoredTaskBase } from '../utils/taskStore'
 import { TaskRegistry } from './registry'
 import { TaskApiError, type StartOverrides, type TaskDefinition } from './types'
+import { ensureAutoRenewFromOrder } from './auto-renew'
 
 export interface PriceProductInfo {
   productId: string
@@ -81,6 +82,10 @@ export interface PriceTaskRecord extends StoredTaskBase {
   orderError?: string
   /** 本轮因商品无货跳过了下单（没有真正发起下单请求） */
   orderSkipped?: 'no_stock'
+  /** 创建时固化的账号 ID（自动下单成功后据此关联自动续期任务）；老任务为 undefined */
+  accountId?: string
+  /** 自动续期任务触发的一次性守卫 */
+  autoRenewTriggered?: boolean
   controller?: AbortController
 }
 
@@ -288,6 +293,8 @@ export const priceDefinition: TaskDefinition<PriceTaskRecord> = {
       changes: [],
       couponChanges: [],
       snapshot,
+      // 由 createTaskHandler 注入；老任务没有该字段（不追溯自动续期）
+      ...(body?.accountId ? { accountId: String(body.accountId) } : {}),
     }
   },
 
@@ -348,6 +355,9 @@ export const priceDefinition: TaskDefinition<PriceTaskRecord> = {
                 expireAt: result.orderExpireAt,
                 orderedAt: Date.now(),
               }
+              // 自动下单成功：为对应账号补一个 12 小时续期任务。
+              // price 的回调每轮都会跑、restore 后也会跑，守卫必须是落盘字段。
+              void ensureAutoRenewFromOrder(record, () => priceTasks.touch(record))
             }
             record.orderError = result.orderError
             record.orderSkipped = result.orderSkipped

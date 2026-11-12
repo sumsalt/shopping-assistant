@@ -55,6 +55,22 @@ export const ORDER_LIST = `${BASE}/order/get_order_list`;
 /** 订单详情 */
 export const ORDER_DETAIL = `${BASE}/order/get_order_detail_v2`;
 
+/**
+ * 待支付订单续期确认（抓包 1.1）
+ *
+ * 只传 order_sn，返回重新结算上下文：stock / default_address / order_remark /
+ * pay_tool / express_options_v2 / cancel_expire / current_timestamp。
+ */
+export const ORDER_CONFIRM_WAIT_PAY = `${BASE}/order/confirm_wait_pay_order`;
+
+/**
+ * 重新提交待支付订单（抓包 1.4）
+ *
+ * 真正刷新支付有效期的一步：用 1.1 的实时上下文重新发起支付单，
+ * 不新建订单、不扣款。参数由 renew.ts 的 buildReloadRequest 组装。
+ */
+export const ORDER_RELOAD_WAIT_PAY = `${BASE}/order/reload_wait_pay_order`;
+
 /** 商品 H5 链接前缀 */
 export const GOODS_URL_PREFIX = 'https://www.yishouapp.com/goods/';
 

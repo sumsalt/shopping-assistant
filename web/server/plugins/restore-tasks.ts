@@ -12,6 +12,7 @@ import { activeSecondsBetween, normalizeActiveWindow, type ActiveWindow } from '
 import { priceDefinition, priceTasks } from '../tasks/price'
 import { stockDefinition, stockTasks } from '../tasks/stock'
 import { tabDefinition, tabTasks } from '../tasks/tab'
+import { renewDefinition, renewTasks } from '../tasks/renew'
 import type { TaskRegistry } from '../tasks/registry'
 import type { TaskDefinition } from '../tasks/types'
 import { closeTaskStore, listRunningTasks, persistTask, type StoredTaskBase } from '../utils/taskStore'
@@ -69,6 +70,7 @@ const restoreAllTasks = () => {
       到货: resumeKind(stockDefinition, stockTasks),
       Tab: resumeKind(tabDefinition, tabTasks),
       价格: resumeKind(priceDefinition, priceTasks),
+      续期: resumeKind(renewDefinition, renewTasks),
     }
 
     const total = Object.values(counts).reduce((sum, count) => sum + count, 0)
