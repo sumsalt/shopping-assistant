@@ -114,11 +114,20 @@ export interface PriceMonitorTask {
 /**
  * 价格触发的自动下单配置
  *
- * 和到货下单的区别只在于触发条件：这里盯的是拿货价，价格 ≤ targetPrice 就下单。
+ * 和到货下单的区别只在于触发条件：这里盯的是拿货价，价格 ≤ targetPrice（或折扣 ≤ targetDiscount）就下单。
+ * 两种触发方式通过 `triggerMode` 切换，二者互斥——同一任务只生效一种。
  */
 export interface PriceAutoOrderConfig extends AutoOrderConfig {
-  /** 目标价（元）：拿货价低于或等于该值时自动下单 */
-  targetPrice: number;
+  /** 触发方式：按目标价（price）或按折扣（discount），默认 price */
+  triggerMode?: 'price' | 'discount';
+  /** 目标价（元）：拿货价低于或等于该值时自动下单（triggerMode=price 时生效） */
+  targetPrice?: number;
+  /**
+   * 目标折扣（如 2.4 表示「2.4 折」）：当前折扣低于或等于该值时自动下单（triggerMode=discount 时生效）
+   *
+   * 折扣 = 拿货价 ÷ 门市价(档口价) × 10，取值 (0, 10)。
+   */
+  targetDiscount?: number;
   /** 只在这些规格里下单；空表示全部规格参与 */
   skus?: string[];
 }
@@ -434,8 +443,11 @@ export const createCancellablePriceMonitor = (
 
       const adapter = getAdapter(task.request.platform, adapterConfig);
 
-      // 价格到点自动下单：只在开关打开且目标价有效时建立下单链路
-      const autoOrderEnabled = Boolean(autoOrder?.enabled && Number(autoOrder.targetPrice) > 0);
+      // 价格到点自动下单：开关打开，且目标价或目标折扣任一有效时才建立下单链路
+      const autoOrderEnabled = Boolean(
+        autoOrder?.enabled &&
+          (Number(autoOrder.targetPrice) > 0 || Number(autoOrder.targetDiscount) > 0)
+      );
       const orderAdapter = autoOrderEnabled
         ? getOrderAdapter(task.request.platform, adapterConfig)
         : null;
@@ -484,15 +496,29 @@ export const createCancellablePriceMonitor = (
           result.orderError = undefined;
           result.orderSkipped = undefined;
 
-          // 目标价触发：拿货价 ≤ 目标价就下单，与「涨跌通知」相互独立。
-          // 首次检测也参与判断——创建任务时价格已经在目标价以下，应该立刻买。
+          // 触发条件：拿货价 ≤ 目标价（price 模式）或 当前折扣 ≤ 目标折扣（discount 模式）。
+          // 与「涨跌通知」相互独立；首次检测也参与判断——创建任务时已满足条件就该立刻买。
+          const currentDiscount =
+            current.shoppePrice && current.shoppePrice > 0
+              ? Math.round((current.shopPrice / current.shoppePrice) * 10 * 10) / 10
+              : undefined;
+          const triggerByPrice =
+            autoOrder?.triggerMode !== 'discount' &&
+            Number(autoOrder?.targetPrice) > 0 &&
+            current.shopPrice <= Number(autoOrder?.targetPrice);
+          const triggerByDiscount =
+            autoOrder?.triggerMode === 'discount' &&
+            Number(autoOrder?.targetDiscount) > 0 &&
+            currentDiscount !== undefined &&
+            currentDiscount <= Number(autoOrder?.targetDiscount);
+
           if (
             autoOrder &&
             autoOrderEnabled &&
             orderAdapter &&
             !orderPlaced &&
             current.shopPrice > 0 &&
-            current.shopPrice <= autoOrder.targetPrice
+            (triggerByPrice || triggerByDiscount)
           ) {
             // 商品详情这一次响应本身就带库存状态，无货时直接跳过整条下单链路：
             // 省掉查规格、加购、结算、清购物车四个请求，也不用把「买不到」记成下单失败。

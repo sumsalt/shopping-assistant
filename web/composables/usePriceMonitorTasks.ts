@@ -46,7 +46,11 @@ export interface CouponChangeRecord {
 /** 价格到点自动下单配置 */
 export interface PriceAutoOrderConfig {
   enabled: boolean
-  targetPrice: number
+  /** 触发方式：按目标价（price）或按折扣（discount），默认 price */
+  triggerMode?: 'price' | 'discount'
+  targetPrice?: number
+  /** 目标折扣（如 2.4 表示 2.4 折），triggerMode=discount 时生效 */
+  targetDiscount?: number
   num?: number
   payTool?: string
   addressId?: string

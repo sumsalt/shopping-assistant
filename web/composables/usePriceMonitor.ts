@@ -31,8 +31,12 @@ export interface PriceMonitorProduct {
 export interface PriceAutoOrderOptions {
   /** 是否启用自动下单（开关打开时必为 true，服务端据此落库配置） */
   enabled: boolean
-  /** 拿货价低于或等于该价格时自动下单 */
-  targetPrice: number
+  /** 触发方式：按目标价（price）或按折扣（discount），默认 price */
+  triggerMode?: 'price' | 'discount'
+  /** 拿货价低于或等于该价格时自动下单（triggerMode=price 时生效） */
+  targetPrice?: number
+  /** 目标折扣（如 2.4 表示 2.4 折），当前折扣低于或等于该值时自动下单（triggerMode=discount 时生效） */
+  targetDiscount?: number
   /** 购买件数 */
   num?: number
   /** 支付方式：1 支付宝 / 4 微信 */

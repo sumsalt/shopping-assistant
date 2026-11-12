@@ -108,7 +108,7 @@
           <div class="min-w-0">
             <p class="text-sm font-medium text-gray-900">价格到点自动下单</p>
             <p class="mt-0.5 text-xs text-gray-500">
-              拿货价低于或等于目标价时自动创建待付款订单，否则只发邮件提醒
+              拿货价低于或等于目标价（或折扣低于目标折扣）时自动创建待付款订单，否则只发邮件提醒
             </p>
           </div>
           <UiSwitch
@@ -119,6 +119,18 @@
       </div>
 
       <template v-if="autoOrderEnabled">
+        <!-- 触发方式 -->
+        <div class="flex items-center gap-2">
+          <label class="text-sm font-medium text-gray-700">触发方式</label>
+          <label class="flex items-center gap-1 text-sm text-gray-700 cursor-pointer">
+            <input v-model="autoOrderMode" type="radio" value="price" :disabled="isLoading" class="rounded border-gray-300">
+            目标价
+          </label>
+          <label class="flex items-center gap-1 text-sm text-gray-700 cursor-pointer">
+            <input v-model="autoOrderMode" type="radio" value="discount" :disabled="isLoading" class="rounded border-gray-300">
+            折扣
+          </label>
+        </div>
         <div
           v-if="!hasCredential"
           class="p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800"
@@ -130,11 +142,21 @@
 
         <template v-else>
           <UiInput
+            v-if="autoOrderMode === 'price'"
             v-model="targetPriceInput"
             type="number"
             label="目标价（元）"
             hint="拿货价低于或等于该价格时自动下单"
             :error="targetPriceError"
+            :disabled="isLoading"
+          />
+          <UiInput
+            v-else
+            v-model="targetDiscountInput"
+            type="number"
+            label="目标折扣（折）"
+            hint="当前折扣低于或等于该折扣时自动下单，例如 2.4 表示 2.4 折"
+            :error="targetDiscountError"
             :disabled="isLoading"
           />
 
@@ -367,8 +389,12 @@ const intervalError = ref('')
 
 // 价格到点自动下单
 const autoOrderEnabled = ref(false)
+/** 触发方式：目标价（price）/ 折扣（discount） */
+const autoOrderMode = ref<'price' | 'discount'>('price')
 const targetPriceInput = ref('')
 const targetPriceError = ref('')
+const targetDiscountInput = ref('')
+const targetDiscountError = ref('')
 const num = ref(1)
 const payTool = ref<'1' | '4'>('4')
 const productNo = ref('')
@@ -567,13 +593,6 @@ const handleSubmit = async () => {
   let autoOrder: PriceAutoOrderOptions | undefined
 
   if (autoOrderEnabled.value) {
-    const targetPrice = Number(targetPriceInput.value)
-
-    if (!Number.isFinite(targetPrice) || targetPrice <= 0) {
-      targetPriceError.value = '请输入大于 0 的目标价'
-      return
-    }
-
     if (!hasCredential.value) {
       toast.warning('自动下单需要一手登录态，请先在账号管理中选择账号')
       return
@@ -585,9 +604,29 @@ const handleSubmit = async () => {
       return
     }
 
+    // 按触发方式分别校验
+    let targetPrice: number | undefined
+    let targetDiscount: number | undefined
+
+    if (autoOrderMode.value === 'discount') {
+      targetDiscount = Number(targetDiscountInput.value)
+      if (!Number.isFinite(targetDiscount) || targetDiscount <= 0 || targetDiscount >= 10) {
+        targetDiscountError.value = '折扣需大于 0 且小于 10（例如 2.4 表示 2.4 折）'
+        return
+      }
+    } else {
+      targetPrice = Number(targetPriceInput.value)
+      if (!Number.isFinite(targetPrice) || targetPrice <= 0) {
+        targetPriceError.value = '请输入大于 0 的目标价'
+        return
+      }
+    }
+
     autoOrder = {
       enabled: true,
-      targetPrice,
+      triggerMode: autoOrderMode.value,
+      ...(targetPrice !== undefined ? { targetPrice } : {}),
+      ...(targetDiscount !== undefined ? { targetDiscount } : {}),
       num: Math.max(1, Math.floor(Number(num.value) || 1)),
       payTool: payTool.value,
       ...(addressId.value ? { addressId: addressId.value } : {}),
@@ -624,8 +663,11 @@ watch(
     intervalError.value = ''
     // 默认只发提醒，自动下单要显式打开
     autoOrderEnabled.value = false
+    autoOrderMode.value = 'price'
     targetPriceInput.value = ''
     targetPriceError.value = ''
+    targetDiscountInput.value = ''
+    targetDiscountError.value = ''
     num.value = 1
     payTool.value = '4'
     productNo.value = props.product?.productNo || ''

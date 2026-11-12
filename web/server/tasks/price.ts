@@ -104,7 +104,9 @@ const readAutoOrder = (raw: unknown): PriceAutoOrderConfig | undefined => {
   const source = raw as
     | {
         enabled?: unknown
+        triggerMode?: unknown
         targetPrice?: unknown
+        targetDiscount?: unknown
         num?: unknown
         payTool?: unknown
         addressId?: unknown
@@ -116,9 +118,22 @@ const readAutoOrder = (raw: unknown): PriceAutoOrderConfig | undefined => {
     return undefined
   }
 
-  const targetPrice = Number(source.targetPrice)
-  if (!Number.isFinite(targetPrice) || targetPrice <= 0) {
-    throw new TaskApiError(ErrorCode.INVALID_PARAMS, '价格到点自动下单需要设置大于 0 的目标价')
+  const triggerMode = source.triggerMode === 'discount' ? 'discount' : 'price'
+
+  let targetPrice: number | undefined
+  let targetDiscount: number | undefined
+
+  if (triggerMode === 'discount') {
+    targetDiscount = Number(source.targetDiscount)
+    // 折扣 (0, 10)：10 折等于没打折，没有意义
+    if (!Number.isFinite(targetDiscount) || targetDiscount <= 0 || targetDiscount >= 10) {
+      throw new TaskApiError(ErrorCode.INVALID_PARAMS, '目标折扣需大于 0 且小于 10（例如 2.4 表示 2.4 折）')
+    }
+  } else {
+    targetPrice = Number(source.targetPrice)
+    if (!Number.isFinite(targetPrice) || targetPrice <= 0) {
+      throw new TaskApiError(ErrorCode.INVALID_PARAMS, '价格到点自动下单需要设置大于 0 的目标价')
+    }
   }
 
   const rawNum = Number(source.num ?? 1)
@@ -133,8 +148,11 @@ const readAutoOrder = (raw: unknown): PriceAutoOrderConfig | undefined => {
 
   return {
     enabled: true,
+    triggerMode,
     // 目标价保留两位小数，避免前端传 99.999 这种值
-    targetPrice: Math.round(targetPrice * 100) / 100,
+    ...(triggerMode === 'price'
+      ? { targetPrice: Math.round(targetPrice! * 100) / 100 }
+      : { targetDiscount: Math.round(targetDiscount! * 10) / 10 }),
     num: Math.min(Math.floor(rawNum), MAX_AUTO_ORDER_NUM),
     payTool: source.payTool === '1' ? '1' : '4',
     ...(addressId ? { addressId } : {}),
@@ -224,6 +242,17 @@ export const priceDefinition: TaskDefinition<PriceTaskRecord> = {
     }
 
     const autoOrder = readAutoOrder(body?.config?.autoOrder)
+
+    // 折扣模式需要以门市价(档口价)为基准计算折扣，该字段缺失时无法判断是否到点
+    if (
+      autoOrder?.triggerMode === 'discount' &&
+      !(initialSnapshot.shoppePrice && initialSnapshot.shoppePrice > 0)
+    ) {
+      throw new TaskApiError(
+        ErrorCode.INVALID_PARAMS,
+        '该商品没有提供档口价/门市价，无法按折扣触发自动下单，请改用目标价'
+      )
+    }
 
     const config: PriceMonitorConfig = {
       interval,

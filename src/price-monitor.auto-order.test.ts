@@ -123,6 +123,66 @@ describe('价格到点自动下单', () => {
     expect(result.orderSn).toBeUndefined()
   })
 
+  it('折扣低于目标折扣时自动下单', async () => {
+    // 档口价 300，拿货价 60 → 折扣 2.0 折；目标 2.4 折 → 2.0 ≤ 2.4 触发
+    priceInfo.mockImplementation(() =>
+      Promise.resolve(snapshot(60, { shoppePrice: 300 }))
+    )
+    placeAutoOrder.mockResolvedValue({
+      success: true,
+      stage: 'done',
+      orderSn: '12641415441628',
+      orderAmount: 60,
+      skuLabel: '白色 / S',
+      items: [{ sku: '850003', skuLabel: '白色 / S', num: 1 }],
+      num: 1,
+      requestedNum: 1,
+      expireAt: 1794336279000,
+    })
+
+    const { promise } = createCancellablePriceMonitor(task, {
+      ...baseConfig,
+      autoOrder: { enabled: true, triggerMode: 'discount', targetDiscount: 2.4, num: 1 },
+    })
+
+    const result = await promise
+
+    expect(placeAutoOrder).toHaveBeenCalledTimes(1)
+    expect(result.orderSn).toBe('12641415441628')
+  })
+
+  it('折扣高于目标折扣时不下单', async () => {
+    // 档口价 300，拿货价 99 → 折扣 3.3 折；目标 2.4 折 → 3.3 > 2.4 不触发
+    priceInfo.mockImplementation(() =>
+      Promise.resolve(snapshot(99, { shoppePrice: 300 }))
+    )
+
+    const { promise } = createCancellablePriceMonitor(task, {
+      ...baseConfig,
+      autoOrder: { enabled: true, triggerMode: 'discount', targetDiscount: 2.4, num: 1 },
+    })
+
+    const result = await promise
+
+    expect(placeAutoOrder).not.toHaveBeenCalled()
+    expect(result.orderSn).toBeUndefined()
+  })
+
+  it('折扣模式下档口价缺失时不下单', async () => {
+    // getPriceInfo 未返回 shoppePrice，无法计算折扣，不应触发
+    priceInfo.mockImplementation(() => Promise.resolve(snapshot(60)))
+
+    const { promise } = createCancellablePriceMonitor(task, {
+      ...baseConfig,
+      autoOrder: { enabled: true, triggerMode: 'discount', targetDiscount: 9, num: 1 },
+    })
+
+    const result = await promise
+
+    expect(placeAutoOrder).not.toHaveBeenCalled()
+    expect(result.orderSn).toBeUndefined()
+  })
+
   it('还没到目标价时即使降价也不下单', async () => {
     currentPrice = 110
     const { promise } = createCancellablePriceMonitor(task, {

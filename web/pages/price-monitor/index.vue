@@ -72,7 +72,12 @@
                 v-if="task.autoOrder?.enabled"
                 class="px-3 py-1.5 bg-orange-50 rounded-lg border border-orange-100 text-orange-600"
               >
-                ≤ ¥{{ task.autoOrder.targetPrice.toFixed(2) }} 自动下单 × {{ task.autoOrder.num || 1 }}
+                <template v-if="task.autoOrder.triggerMode === 'discount'">
+                  ≤ {{ task.autoOrder.targetDiscount }}折 自动下单 × {{ task.autoOrder.num || 1 }}
+                </template>
+                <template v-else>
+                  ≤ ¥{{ (task.autoOrder.targetPrice ?? 0).toFixed(2) }} 自动下单 × {{ task.autoOrder.num || 1 }}
+                </template>
               </span>
             </div>
           </div>
@@ -308,7 +313,7 @@
         <li>检测间隔最低 60 秒；一个任务只监控一个商品，多个商品请分别创建任务</li>
         <li>首次检测只建立基线，不会发送通知</li>
         <li>价格变化会通过邮件通知，每轮检测（最短 60 秒）最多一封，检测到变化即推送</li>
-        <li>开启「价格到点自动下单」后，拿货价 ≤ 目标价时会自动创建待付款订单；下单成功后任务自动结束，货款仍需你手动支付</li>
+        <li>开启「价格到点自动下单」后，拿货价 ≤ 目标价（或折扣 ≤ 目标折扣）时会自动创建待付款订单；下单成功后任务自动结束，货款仍需你手动支付</li>
       </ul>
     </div>
   </div>
