@@ -208,6 +208,26 @@ export const getAccount = (id: string): AccountRecord | null => {
 }
 
 /**
+ * 按手机号查同一用户下的账号（用于创建 / 改手机号时的防重复校验）
+ */
+export const getAccountByPhone = (userId: string, phone: string): AccountRecord | null => {
+  const db = getDb()
+  if (!db) {
+    return null
+  }
+
+  try {
+    const row = db
+      .prepare('SELECT * FROM accounts WHERE user_id = ? AND phone = ? LIMIT 1')
+      .get(userId, phone) as AccountRow | undefined
+    return row ? toRecord(row) : null
+  } catch (error) {
+    console.error(`[AccountStore] 按手机号查询账号 ${phone} 失败:`, error)
+    return null
+  }
+}
+
+/**
  * 新增账号
  */
 export const createAccount = (userId: string, input: AccountInput): AccountRecord | null => {

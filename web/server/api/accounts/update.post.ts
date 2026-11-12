@@ -8,7 +8,7 @@
 import { readBody } from 'h3'
 import { createSuccessResponse, createErrorResponse } from '../../utils/response'
 import { getCurrentUser } from '../../utils/session'
-import { getAccount, updateAccount } from '../../utils/accountStore'
+import { getAccount, getAccountByPhone, updateAccount } from '../../utils/accountStore'
 import { parseAccountInput } from '../../utils/accountValidate'
 import { toAccountView } from '../../utils/accountMask'
 
@@ -36,6 +36,12 @@ export default defineEventHandler(async (event) => {
     const parsed = parseAccountInput(body)
     if (!parsed.ok) {
       return createErrorResponse('INVALID_PARAMS', parsed.error)
+    }
+
+    // 改手机号时同样防重复：不能改成同用户下另一个账号的手机号（排除自己）
+    const duplicate = getAccountByPhone(currentUser.username, parsed.value.phone)
+    if (duplicate && duplicate.id !== id) {
+      return createErrorResponse('DUPLICATE', '该手机号已添加过账号，不能重复使用')
     }
 
     const account = updateAccount(id, parsed.value)
