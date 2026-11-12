@@ -10,6 +10,7 @@
  */
 
 import type {
+  OrderListResult,
   YishouAddress,
   YishouCartAddResult,
   YishouConfirmOrderData,
@@ -21,14 +22,27 @@ import { StockCheckError, StockCheckErrorType } from '../../types';
 import * as EP from './endpoints';
 import { YishouClient } from './client';
 import {
+  mapOrderListItem,
   mapYishouAddress,
   pickScalarFields,
   toOptionalNumber,
   type YishouAddressRaw,
+  type YishouOrderRaw,
 } from './mappers';
 
 /** 下单链路统一提示语：调用方据此引导用户去账号管理 */
 const AUTH_MESSAGE = '自动下单需要登录态，请先在账号管理中选择带登录态的账号';
+
+/** 订单列表需要登录态，提示文案单独给，避免让用户以为是在下单 */
+const ORDER_LIST_AUTH_MESSAGE = '查看订单需要登录态，请先在账号管理中选择带登录态的账号';
+
+/**
+ * 一手订单列表每页上限
+ *
+ * 实测传 20 / 50 都只返回 10 条，是服务端硬限制，不是本项目的分页策略。
+ * 收敛成常量，避免调用方误以为调大就能少翻几页。
+ */
+export const ORDER_LIST_PAGE_SIZE = 10;
 
 export class YishouOrderApi {
   private readonly client: YishouClient;
@@ -37,9 +51,38 @@ export class YishouOrderApi {
     this.client = new YishouClient(config, { skipGate: true, timeout: 20000 });
   }
 
+  /**
+   * 订单列表
+   *
+   * 一手按时间倒序返回纯数组，没有总数：只能靠「本页是否满页」判断还有没有下一页。
+   * 每页上限 10 条由服务端决定，这里统一 clamp，避免调用方传大值后误判 hasMore。
+   */
+  async getOrderList(page: number = 1, pageSize: number = ORDER_LIST_PAGE_SIZE): Promise<OrderListResult> {
+    this.client.requireAuth(ORDER_LIST_AUTH_MESSAGE);
+
+    const index = Math.max(1, Math.floor(page) || 1);
+    const size = Math.min(
+      Math.max(1, Math.floor(pageSize) || ORDER_LIST_PAGE_SIZE),
+      ORDER_LIST_PAGE_SIZE
+    );
+
+    const data = await this.client.post<YishouOrderRaw[]>(EP.ORDER_LIST, {
+      pageindex: `${index}`,
+      pagesize: `${size}`,
+    });
+
+    const items = (Array.isArray(data) ? data : []).map(mapOrderListItem);
+
+    return {
+      items,
+      page: index,
+      pageSize: size,
+      hasMore: items.length >= size,
+    };
+  }
+
   /** 收货地址列表 */
-  async getAddresses(): Promise<YishouAddress[]> {
-    this.client.requireAuth(AUTH_MESSAGE);
+  async getAddresses(): Promise<YishouAddress[]> {    this.client.requireAuth(AUTH_MESSAGE);
 
     const data = await this.client.post<
       YishouAddressRaw[] | { list?: YishouAddressRaw[] }

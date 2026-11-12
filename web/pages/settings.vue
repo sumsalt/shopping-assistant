@@ -44,7 +44,7 @@
               </template>
               <template v-else-if="configStore.isInitialized">
                 <p class="text-sm text-gray-600">未选择账号（匿名模式）</p>
-                <p class="mt-1 text-xs text-gray-500">查询库存 / Tab 监控可用；价格监控、SKU 详情、收藏夹、自动下单需要选择带登录态的账号。</p>
+                <p class="mt-1 text-xs text-gray-500">查询库存 / Tab 监控可用；价格监控、SKU 详情、收藏夹、订单、自动下单需要选择带登录态的账号。</p>
               </template>
               <template v-else>
                 <p class="text-sm text-gray-500">读取当前账号…</p>

@@ -14,7 +14,7 @@
         <div class="ml-3 flex-1">
           <h3 class="text-sm font-medium text-yellow-800">未选择当前账号</h3>
           <p class="mt-1 text-sm text-yellow-700">
-            库存查询与 Tab 监控可匿名使用；价格监控、SKU 详情、收藏夹、自动下单需要选择带登录态的账号
+            库存查询与 Tab 监控可匿名使用；价格监控、SKU 详情、收藏夹、订单、自动下单需要选择带登录态的账号
           </p>
           <div class="mt-3">
             <NuxtLink
@@ -76,6 +76,22 @@
         </div>
         <h3 class="text-lg font-semibold text-gray-900 mb-1">收藏夹</h3>
         <p class="text-sm text-gray-500">查看收藏商品库存，进详情页创建监控</p>
+      </NuxtLink>
+
+      <!-- 订单 -->
+      <NuxtLink
+        to="/orders"
+        class="block p-6 bg-white rounded-lg border border-gray-200 hover:shadow-md hover:border-sky-300 transition-all group"
+      >
+        <div class="flex items-center mb-4">
+          <div class="w-12 h-12 rounded-lg bg-sky-100 flex items-center justify-center group-hover:bg-sky-200 transition-colors">
+            <svg class="w-6 h-6 text-sky-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+          </div>
+        </div>
+        <h3 class="text-lg font-semibold text-gray-900 mb-1">订单</h3>
+        <p class="text-sm text-gray-500">查看当前账号的订单记录，也可从账号管理查看指定账号</p>
       </NuxtLink>
 
       <!-- 凑单计算器 -->

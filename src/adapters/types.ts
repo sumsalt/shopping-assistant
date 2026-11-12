@@ -2,7 +2,7 @@
  * 平台适配器 - 类型定义
  */
 
-import type { Platform, StockCheckResult, CollectionStockCheckResult, ProductSkuResult, PriceSnapshot } from '../types';
+import type { Platform, StockCheckResult, CollectionStockCheckResult, ProductSkuResult, PriceSnapshot, OrderListResult } from '../types';
 
 /**
  * 平台适配器接口
@@ -41,6 +41,13 @@ export interface PlatformAdapter {
    * @returns 价格快照
    */
   getPriceInfo(productId: string): Promise<PriceSnapshot>;
+
+  /**
+   * 查询订单列表（必须携带登录态）
+   *
+   * 不是所有平台都有订单能力：未实现时调用方应提示「当前平台不支持」。
+   */
+  getOrderList?(page?: number, pageSize?: number): Promise<OrderListResult>;
 }
 
 /**

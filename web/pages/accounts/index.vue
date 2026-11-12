@@ -281,15 +281,24 @@
         <!-- 底部 -->
         <div class="mt-4 pt-3 border-t border-gray-100 flex flex-wrap items-center justify-between gap-2">
           <span class="text-xs text-gray-400">更新于 {{ formatAccountTime(item.updatedAt) }}</span>
-          <div class="flex items-center gap-1 flex-wrap">
+          <div class="flex items-center gap-x-2 gap-y-1 flex-wrap">
             <UiButton
               variant="ghost"
               size="sm"
               :disabled="!item.hasRequestProfile"
-              :title="collectionButtonTitle(item)"
+              :title="viewButtonTitle(item, '收藏夹')"
               @click="viewCollection(item)"
             >
               查看收藏夹
+            </UiButton>
+            <UiButton
+              variant="ghost"
+              size="sm"
+              :disabled="!item.hasRequestProfile"
+              :title="viewButtonTitle(item, '订单')"
+              @click="viewOrders(item)"
+            >
+              查看订单
             </UiButton>
             <UiButton
               variant="ghost"
@@ -743,14 +752,26 @@ const viewCollection = (item: AccountItem) => {
 }
 
 /** 按钮禁用时说明原因，抓包缺登录态时提前警示 */
-const collectionButtonTitle = (item: AccountItem): string => {
+const viewButtonTitle = (item: AccountItem, label: string): string => {
   if (!item.hasRequestProfile) {
     return '请先为该账号保存抓包请求信息'
   }
   if (!item.hasCredential) {
-    return '该账号抓包缺少 uid/token，收藏夹可能无法加载'
+    return `该账号抓包缺少 uid/token，${label}可能无法加载`
   }
-  return '查看该账号的收藏夹（不改变当前使用账号）'
+  return `查看该账号的${label}（不改变当前使用账号）`
+}
+
+/**
+ * 查看指定账号的订单：临时查看，不改变当前使用账号。
+ * 与收藏夹同一套门控：只有保存了抓包请求信息的账号才能跳转。
+ */
+const viewOrders = (item: AccountItem) => {
+  if (!item.hasRequestProfile) {
+    toast.warning('请先为该账号保存抓包请求信息')
+    return
+  }
+  navigateTo(`/orders?accountId=${encodeURIComponent(item.id)}`)
 }
 
 // 对话框状态

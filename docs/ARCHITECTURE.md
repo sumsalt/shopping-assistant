@@ -153,7 +153,7 @@ interface RequestProfile {
 |---|---|---|
 | 库存查询 / Tab 监控 | false | 剔除 uid/token，走匿名限流桶 |
 | 到货监控 | 仅自动下单时 true | 凭证只给下单链路；检测阶段在 `stock-monitor` 内再匿名化 |
-| SKU 详情 / 收藏夹 / 价格监控 / 下单 | true | 无凭证直接返回 `AUTH_REQUIRED`，不等一手 201 |
+| SKU 详情 / 收藏夹 / 订单列表 / 价格监控 / 下单 | true | 无凭证直接返回 `AUTH_REQUIRED`，不等一手 201 |
 
 **任务会固化创建时的快照**：之后切换账号不影响已创建任务；重启沿用原快照，
 要换账号请新建任务。
@@ -223,6 +223,18 @@ interface RequestProfile {
 - 建单失败会触发一手「订单支付中」临时锁，冷却期内只检测不重试（与到货任务同一套 `cooldownMs`）。
 - 任务卡片展示 `order`（订单号/金额/规格/件数/付款截止）与 `orderError`；
   `orderSkipped === 'no_stock'` 时措辞是「已到目标价，等待补货」，不当作下单失败。
+
+### 订单列表（只读）
+
+- 接口：`POST /order/get_order_list`，参数只有 `pageindex` / `pagesize`。
+- 一手**每页硬上限 10 条**（传 20 / 50 也只回 10 条），且**不返回总数**，
+  所以 `hasMore` 只能按「本页是否满页」判断；翻到最后一页会多一次空请求，属正常。
+- 返回是纯数组，按时间倒序；订单状态直接用一手给的 `order_status_name`，
+  不维护状态码映射（状态码会变，文案不会）。
+- 商品规格在 `attribute` 里是「颜色 → 尺码 → 件数」的嵌套 JSON，
+  由 `formatOrderAttribute` 摊平成「粉色 M ×1 / 灰色 均码 ×2」，解析失败再回退 `selected`。
+- 页面 `/orders` 与收藏夹同一套账号口径：默认当前账号，`?accountId=` 临时查看指定账号，
+  服务端同样校验归属与 `request_profile`，不改变当前使用账号。
 
 ### 抓包存什么
 

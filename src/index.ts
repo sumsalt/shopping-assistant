@@ -27,12 +27,15 @@ export { placeAutoOrder, precheckAutoOrder, DEFAULT_AUTO_ORDER_PAY_TOOL, MAX_AUT
 export type { AutoOrderAdapter, PlaceOrderParams, PrecheckOrderResult } from './auto-order';
 export type { PlatformAdapter, AdapterConfig, AuthCheckResult } from './adapters';
 
+// 订单列表分页上限（一手服务端硬限制）
+export { ORDER_LIST_PAGE_SIZE } from './adapters/yishou/order-api';
+
 // 导出工具函数
 export { httpRequest, httpPost } from './utils/http';
 
 // 导出库存查询主函数
-export { checkStock, checkStockBatch, checkCollectionStock, getProductSkus } from './stock-check';
-export type { CheckStockOptions, CollectionStockRequest, ProductSkuRequest } from './stock-check';
+export { checkStock, checkStockBatch, checkCollectionStock, getProductSkus, getOrderList } from './stock-check';
+export type { CheckStockOptions, CollectionStockRequest, ProductSkuRequest, OrderListRequest } from './stock-check';
 
 // 导出邮件服务
 export {

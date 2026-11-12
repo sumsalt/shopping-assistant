@@ -7,6 +7,8 @@
 
 import type {
   CollectionStockResult,
+  OrderGoodsItem,
+  OrderListItem,
   PriceSnapshot,
   ProductSkuResult,
   SkuInfo,
@@ -303,4 +305,133 @@ export const pickScalarFields = (
     result[key] = value;
   }
   return result;
+};
+
+// ==================== 订单列表 ====================
+
+/** 订单里的商品原始字段 */
+export interface YishouOrderGoodsRaw {
+  goods_id?: string | number;
+  goods_no?: string;
+  goods_name?: string;
+  goods_thumb?: string;
+  /** 规格 JSON：{"粉色":{"M":"1"},"灰色":{"均码":"2"}} */
+  attribute?: string;
+  /** 规格可读文本：粉色：M/1件，\n灰色：均码/2件， */
+  selected?: string;
+  shop_price?: string | number;
+  num?: string | number;
+  goods_status?: string | number;
+}
+
+/** 订单列表原始字段（只声明用得到的） */
+export interface YishouOrderRaw {
+  order_sn?: string;
+  order_status?: string | number;
+  order_status_name?: string;
+  add_time?: string;
+  order_amount?: string | number;
+  goods_amount?: string | number;
+  shipping_fee?: string | number;
+  stock_total?: string | number;
+  pay_tool?: string | number;
+  /** 秒级时间戳 */
+  cancel_expire?: string | number;
+  order_msg_text?: string;
+  purchased?: YishouOrderGoodsRaw[];
+}
+
+/**
+ * 规格 JSON → 可读文案
+ *
+ * 一手把规格存成「颜色 → 尺码 → 件数」的嵌套对象，直接展示 JSON 没法看，
+ * 这里摊平成「粉色 M ×1 / 灰色 均码 ×2」。解析失败返回空串，由调用方回退到 selected。
+ */
+export const formatOrderAttribute = (raw?: string): string => {
+  if (!raw) return '';
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return '';
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return '';
+
+  const parts: string[] = [];
+  for (const [color, sizes] of Object.entries(parsed as Record<string, unknown>)) {
+    if (sizes && typeof sizes === 'object' && !Array.isArray(sizes)) {
+      for (const [size, num] of Object.entries(sizes as Record<string, unknown>)) {
+        parts.push(`${color} ${size} ×${String(num)}`);
+      }
+    } else {
+      parts.push(`${color} ×${String(sizes)}`);
+    }
+  }
+  return parts.join(' / ');
+};
+
+/** selected 文本兜底：粉色：M/1件，\n灰色：均码/2件， → 粉色 M ×1 / 灰色 均码 ×2 */
+export const formatOrderSelected = (raw?: string): string => {
+  if (!raw) return '';
+
+  return raw
+    .split(/[\n,，]+/)
+    .map(part => part.trim())
+    .filter(Boolean)
+    .map(part => part.replace(/：/g, ' ').replace(/\/(\d+)\s*件?/, ' ×$1'))
+    .join(' / ');
+};
+
+/** 规格文案：优先解析 attribute，失败再用 selected */
+export const formatOrderSpec = (attribute?: string, selected?: string): string =>
+  formatOrderAttribute(attribute) || formatOrderSelected(selected);
+
+/** 订单商品 → 内部结构 */
+export const mapOrderGoodsItem = (raw: YishouOrderGoodsRaw): OrderGoodsItem => ({
+  goodsId: String(raw.goods_id ?? ''),
+  goodsNo: raw.goods_no ?? '',
+  goodsName: raw.goods_name ?? '',
+  goodsImage: raw.goods_thumb ?? '',
+  specText: formatOrderSpec(raw.attribute, raw.selected),
+  price: toOptionalNumber(raw.shop_price) ?? 0,
+  num: Number.parseInt(String(raw.num ?? ''), 10) || 0,
+  goodsStatus: String(raw.goods_status ?? ''),
+});
+
+/** 订单列表项 → 内部结构 */
+export const mapOrderListItem = (raw: YishouOrderRaw): OrderListItem => {
+  const items = (raw.purchased ?? []).map(mapOrderGoodsItem);
+
+  const goodsAmount = toOptionalNumber(raw.goods_amount);
+  const shippingFee = toOptionalNumber(raw.shipping_fee);
+  const orderAmount =
+    toOptionalNumber(raw.order_amount) ??
+    (goodsAmount !== undefined || shippingFee !== undefined
+      ? (goodsAmount ?? 0) + (shippingFee ?? 0)
+      : undefined);
+
+  const totalNum =
+    Number.parseInt(String(raw.stock_total ?? ''), 10) ||
+    items.reduce((sum, item) => sum + item.num, 0);
+
+  // cancel_expire 是秒级时间戳，统一转毫秒；0 / 非法值当作没有
+  const expireSeconds = Number(raw.cancel_expire);
+  const cancelExpireAt =
+    Number.isFinite(expireSeconds) && expireSeconds > 0 ? expireSeconds * 1000 : undefined;
+
+  return {
+    orderSn: raw.order_sn ?? '',
+    status: String(raw.order_status ?? ''),
+    statusName: raw.order_status_name ?? '',
+    addTime: raw.add_time ?? '',
+    orderAmount,
+    goodsAmount,
+    shippingFee,
+    totalNum,
+    payTool: String(raw.pay_tool ?? ''),
+    ...(cancelExpireAt ? { cancelExpireAt } : {}),
+    message: raw.order_msg_text ?? '',
+    items,
+  };
 };

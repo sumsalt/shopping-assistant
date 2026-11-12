@@ -34,6 +34,9 @@ export const ORDER_CONFIRM = `${BASE}/order/confirm_order_v4`;
 /** 创建订单（失败会锁单，调用前必须先 confirm） */
 export const ORDER_CREATE = `${BASE}/order/create_order_v4`;
 
+/** 订单列表（登录态；每页最多 10 条，无总数） */
+export const ORDER_LIST = `${BASE}/order/get_order_list`;
+
 /** 订单详情 */
 export const ORDER_DETAIL = `${BASE}/order/get_order_detail_v2`;
 

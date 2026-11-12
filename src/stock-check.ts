@@ -9,6 +9,7 @@ import type {
   BatchStockCheckRequest,
   BatchStockCheckResult,
   CollectionStockCheckResult,
+  OrderListResult,
   ProductSkuResult,
   Platform
 } from './types';
@@ -43,6 +44,18 @@ export interface ProductSkuRequest {
   platform: Platform;
   /** 商品货号 */
   productNo: string;
+}
+
+/**
+ * 订单列表查询请求参数
+ */
+export interface OrderListRequest {
+  /** 平台类型 */
+  platform: Platform;
+  /** 页码，从 1 开始 */
+  page?: number;
+  /** 每页数量，平台上限 10 */
+  pageSize?: number;
 }
 
 /**
@@ -258,6 +271,38 @@ export const checkCollectionStock = async (
 
   // 调用适配器查询收藏夹库存
   return adapter.checkCollectionStock(page, pageSize);
+};
+
+/**
+ * 查询订单列表
+ *
+ * 订单比收藏夹敏感：必须登录态，且不支持匿名降级。
+ * 一手没有总数，hasMore 只能按「本页是否满页」判断。
+ *
+ * @param request 订单列表请求参数
+ * @param options 查询选项（包含平台认证配置等）
+ * @returns 订单列表
+ */
+export const getOrderList = async (
+  request: OrderListRequest,
+  options: CheckStockOptions = {}
+): Promise<OrderListResult> => {
+  const { platform, page = 1, pageSize = 10 } = request;
+  const { adapterConfig = {} } = options;
+
+  if (!platform) {
+    throw new StockCheckError(StockCheckErrorType.API_ERROR, '缺少必要参数: platform');
+  }
+
+  const adapter = getAdapter(platform, adapterConfig);
+  if (typeof adapter.getOrderList !== 'function') {
+    throw new StockCheckError(
+      StockCheckErrorType.PLATFORM_NOT_SUPPORTED,
+      `平台 "${platform}" 暂不支持查询订单`
+    );
+  }
+
+  return adapter.getOrderList(page, pageSize);
 };
 
 /**

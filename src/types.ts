@@ -604,6 +604,68 @@ export interface YishouCreateOrderData {
   payParams?: Record<string, unknown>;
 }
 
+// ==================== 订单列表 ====================
+
+/** 订单里的一件商品 */
+export interface OrderGoodsItem {
+  /** 商品 ID */
+  goodsId: string;
+  /** 商品货号（详情页按它跳转） */
+  goodsNo: string;
+  /** 商品名称 */
+  goodsName: string;
+  /** 商品主图 */
+  goodsImage: string;
+  /** 规格文案：粉色 M ×1 / 灰色 均码 ×2 */
+  specText: string;
+  /** 拿货价单价 */
+  price: number;
+  /** 件数 */
+  num: number;
+  /** 商品状态（一手原值：1 正常 / 2 已下架 等） */
+  goodsStatus: string;
+}
+
+/** 订单列表项 */
+export interface OrderListItem {
+  /** 订单号 */
+  orderSn: string;
+  /** 状态码（一手原值，会变，只用于展示兜底） */
+  status: string;
+  /** 状态文案：待付款 / 待发货 / 待收货 / 交易关闭 ... */
+  statusName: string;
+  /** 下单时间，一手原始格式：2026-11-12 02:18:32 */
+  addTime: string;
+  /** 订单总额（含运费） */
+  orderAmount?: number;
+  /** 商品金额（不含运费） */
+  goodsAmount?: number;
+  /** 运费 */
+  shippingFee?: number;
+  /** 总件数 */
+  totalNum: number;
+  /** 支付方式码（一手原值） */
+  payTool: string;
+  /** 待付款的支付截止时间（毫秒时间戳） */
+  cancelExpireAt?: number;
+  /** 订单提示文案，如「交易关闭」 */
+  message: string;
+  /** 商品明细 */
+  items: OrderGoodsItem[];
+}
+
+/** 订单列表查询结果 */
+export interface OrderListResult {
+  /** 订单（一手按时间倒序返回） */
+  items: OrderListItem[];
+  /** 当前页码，从 1 开始 */
+  page: number;
+  /** 本次请求的每页条数（一手上限 10） */
+  pageSize: number;
+  /** 是否可能还有下一页：本页满页即认为有 */
+  hasMore: boolean;
+}
+
 /**
  * 自动下单配置
  */
