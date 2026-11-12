@@ -3,7 +3,7 @@
     <!-- 页面标题 -->
     <LayoutPageHeader
       title="收藏夹"
-      description="查看收藏夹商品库存，点击商品进入详情页创建监控"
+      :description="accountId ? '查看指定账号的收藏夹库存，点击商品进入详情页创建监控' : '查看收藏夹商品库存，点击商品进入详情页创建监控'"
     >
       <template #actions>
         <UiButton
@@ -18,6 +18,29 @@
         </UiButton>
       </template>
     </LayoutPageHeader>
+
+    <!-- 指定账号提示：临时查看，不改变当前使用账号 -->
+    <div
+      v-if="accountId"
+      class="mb-5 flex flex-col sm:flex-row sm:items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm"
+    >
+      <span class="text-blue-800">
+        <template v-if="viewingAccount">
+          正在查看
+          <strong class="font-mono">{{ viewingAccount.phone }}</strong>
+          的收藏夹（不改变当前使用账号）
+        </template>
+        <template v-else-if="isLoading">
+          正在加载指定账号的收藏夹…
+        </template>
+        <template v-else>
+          正在查看指定账号的收藏夹（不改变当前使用账号）
+        </template>
+      </span>
+      <NuxtLink to="/collection" class="sm:ml-auto text-xs text-blue-600 hover:text-blue-700 shrink-0">
+        返回默认收藏夹 →
+      </NuxtLink>
+    </div>
 
     <!-- 加载状态 -->
     <div v-if="isLoading && !collectionResult" class="space-y-4">
@@ -192,6 +215,13 @@ definePageMeta({
   title: '收藏夹',
 })
 
+// 指定账号 ID：从账号管理跳转时带上，只临时查看、不改变当前使用账号
+const route = useRoute()
+const accountId = computed<string | null>(() => {
+  const value = route.query.accountId
+  return typeof value === 'string' && value.trim() ? value.trim() : null
+})
+
 // 使用收藏夹 composable
 const {
   collectionResult,
@@ -204,7 +234,16 @@ const {
   refresh,
   loadMore,
   goToProductDetail,
-} = useCollection()
+} = useCollection(accountId)
+
+/** 本次查询实际使用的账号（查询成功后由服务端返回） */
+const viewingAccount = computed(() => {
+  if (!accountId.value) {
+    return null
+  }
+  const account = collectionResult.value?.account
+  return account?.id === accountId.value ? account : null
+})
 
 // 刷新处理
 const handleRefresh = () => {
@@ -223,6 +262,11 @@ const handleProductClick = (productNo: string) => {
 
 // 页面加载时自动获取数据
 onMounted(() => {
+  refresh()
+})
+
+// 切换账号或返回默认收藏夹（query 变化）时重新拉取，并清空上一账号的列表
+watch(accountId, () => {
   refresh()
 })
 </script>

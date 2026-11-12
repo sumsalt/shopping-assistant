@@ -5,6 +5,11 @@
  * 或整份抓包参数：所有业务接口按登录用户取当前账号，再叠加全局代理。
  *
  * 纯组装逻辑在 @core（src/adapter-config.ts），这里只负责读库与注入代理。
+ *
+ * 两个入口：
+ * - resolveAdapterConfigForUser：业务接口默认入口，取「当前账号」
+ * - resolveAdapterConfigForAccount：只读场景临时指定账号（如查看某账号的收藏夹），
+ *   调用方必须先校验账号归属，避免越权使用他人的抓包凭据
  */
 
 import type { AdapterConfig } from '@core'
@@ -21,19 +26,11 @@ export interface ResolvedAdapterConfig {
   hasCredential: boolean
 }
 
-/**
- * 按登录用户解析适配器配置
- *
- * 这是所有业务接口的唯一入口：路由不再接收前端传来的账号参数。
- *
- * @param username 登录用户名
- * @param needAuth 是否需要登录态；false 时剔除 uid/token 走匿名桶
- */
-export const resolveAdapterConfigForUser = (
-  username: string,
+/** 账号记录 → 适配器配置：叠加全局代理并判断登录态 */
+const resolveFromAccount = (
+  account: AccountRecord | null,
   needAuth: boolean
 ): ResolvedAdapterConfig => {
-  const account = getActiveAccount(username)
   const config = buildAdapterConfigFromProfile(account?.requestProfile, needAuth)
 
   const settings = getRuntimeSettings()
@@ -49,3 +46,27 @@ export const resolveAdapterConfigForUser = (
 
   return { config, account, hasCredential }
 }
+
+/**
+ * 按登录用户解析适配器配置
+ *
+ * 这是所有业务接口的默认入口：路由不接收前端传来的账号参数。
+ *
+ * @param username 登录用户名
+ * @param needAuth 是否需要登录态；false 时剔除 uid/token 走匿名桶
+ */
+export const resolveAdapterConfigForUser = (
+  username: string,
+  needAuth: boolean
+): ResolvedAdapterConfig => resolveFromAccount(getActiveAccount(username), needAuth)
+
+/**
+ * 按指定账号解析适配器配置
+ *
+ * 用于「临时查看某账号的收藏夹」这类只读场景：不改变当前账号标记。
+ * 调用方必须先校验 account.userId === 登录用户名，否则会越权使用他人抓包凭据。
+ */
+export const resolveAdapterConfigForAccount = (
+  account: AccountRecord | null,
+  needAuth: boolean
+): ResolvedAdapterConfig => resolveFromAccount(account, needAuth)

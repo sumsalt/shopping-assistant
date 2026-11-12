@@ -285,6 +285,15 @@
             <UiButton
               variant="ghost"
               size="sm"
+              :disabled="!item.hasRequestProfile"
+              :title="collectionButtonTitle(item)"
+              @click="viewCollection(item)"
+            >
+              查看收藏夹
+            </UiButton>
+            <UiButton
+              variant="ghost"
+              size="sm"
               :loading="verifyingId === item.id"
               :disabled="!item.hasRequestProfile"
               :title="item.hasRequestProfile ? '' : '请先粘贴抓包保存请求信息'"
@@ -719,6 +728,29 @@ const handleSetActive = async (item: AccountItem) => {
   } finally {
     switchingAccountId.value = ''
   }
+}
+
+/**
+ * 查看指定账号的收藏夹：临时查看，不改变当前使用账号。
+ * 只有保存了抓包请求信息的账号才能跳转。
+ */
+const viewCollection = (item: AccountItem) => {
+  if (!item.hasRequestProfile) {
+    toast.warning('请先为该账号保存抓包请求信息')
+    return
+  }
+  navigateTo(`/collection?accountId=${encodeURIComponent(item.id)}`)
+}
+
+/** 按钮禁用时说明原因，抓包缺登录态时提前警示 */
+const collectionButtonTitle = (item: AccountItem): string => {
+  if (!item.hasRequestProfile) {
+    return '请先为该账号保存抓包请求信息'
+  }
+  if (!item.hasCredential) {
+    return '该账号抓包缺少 uid/token，收藏夹可能无法加载'
+  }
+  return '查看该账号的收藏夹（不改变当前使用账号）'
 }
 
 // 对话框状态

@@ -1,4 +1,11 @@
+import type { Ref } from 'vue'
 import type { ApiResponse } from '@/types'
+
+/** 本次查询使用的账号摘要（脱敏） */
+export interface CollectionAccount {
+  id: string
+  phone: string
+}
 
 // 收藏夹商品类型
 interface CollectionItem {
@@ -26,13 +33,17 @@ interface CollectionResult {
   page: number
   pageSize: number
   hasMore: boolean
+  /** 本次查询使用的账号；未选中账号时为 null */
+  account?: CollectionAccount | null
 }
 
-// API 响应类型
 /**
  * 收藏夹管理组合式函数
+ *
+ * @param accountId 指定账号 ID（通常来自路由 query）；为空时查看当前账号的收藏夹
  */
-export const useCollection = () => {
+export const useCollection = (accountId?: Ref<string | null>) => {
+  const requestedAccountId = computed(() => accountId?.value?.trim() || null)
   const toast = useToast()
   const router = useRouter()
 
@@ -58,9 +69,13 @@ export const useCollection = () => {
     error.value = null
 
     try {
-      // 收藏夹需要登录态，账号快照由服务端按当前账号取
+      // 收藏夹需要登录态：不传 accountId 时服务端按当前账号取快照
       const response = await $fetch<ApiResponse<CollectionResult>>('/api/collection', {
-        query: { page: String(page), pageSize: String(pageSize.value) },
+        query: {
+          page: String(page),
+          pageSize: String(pageSize.value),
+          ...(requestedAccountId.value ? { accountId: requestedAccountId.value } : {}),
+        },
       })
 
       if (response.success && response.data) {
