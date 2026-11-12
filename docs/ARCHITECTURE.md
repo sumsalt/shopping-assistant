@@ -91,15 +91,45 @@ return mapXxx(data);
 | UA 与 `plat_type` 必须匹配 | 微信 UA + `plat_type=Android` 同样 404 |
 | `version` 在 App 通道是 **Android SDK 版本**（如 `29`），不是 App 版本 | 填 `7.65.00` 会 404 |
 | `t_t` 必须 **10 位秒级**数字 | App 用 `Math.floor(Date.now()/1000)`，wx 用毫秒 |
-| 签名 `md5(md5(udid + model + version + version_name) + t_t)`，**`model` 用 URL 编码后的值** | `profile.encodeFormComponent` 等价 OkHttp：`! ' ( ) *` 也要编码 |
+| 签名 `md5(md5(udid + model + version + version_name) + t_t)`，**Android 的 `model` 用 URL 编码后的值、iOS 用未编码原值** | Android 由 OkHttp 拦截器签编码值（`! ' ( ) *` 也要编码）；iOS 自己拼 body 签原值，见 `profile.ts` 的 `isIosCapture` |
 | 服务端当前**不校验** `sign`，也不校验 `equipmd5` | 仍需正确实现，避免名单未来生效时突然全线失败 |
 | RSA 动态包装只作用于 `_api_need_sign` 名单（`setpoint` / `address` 增改），**下单链路不在名单内** | 不需要实现 RSA，`sign` 头即可 |
+| iOS App 签名 `md5(md5(udid + model + version + version_name) + t_t)` 里 **`model` 用未编码原值**（Android 用编码值） | 用 iOS 抓包 `iPhone 14 Pro` 精确复现 sign `eead42af…` |
 | `create_order_v4` 的 `pay_params` 是**小程序跳转参数**（`userName` + `path`），不是 App prepay 五元组 | 服务端只能建单锁库存，付款必须人工 |
-| `pay_tool`：`1` = 支付宝、`4` = 微信（以 `confirm` 返回的 `pay_tool_list` 为准） | 配置项不可用时回落到微信，再回落到第一个 |
-| `selected` 必须是 `confirm` 返回的 `stock[]` 全字段（去掉嵌套对象） | 只传 `{sku,num}` 会 500，并留下 3–5 分钟锁单 |
+| `pay_tool`：`1` = 支付宝、`4` = 微信（以 `confirm` 返回的 `pay_tool[]` 为准） | 配置项不可用时回落到微信，再回落到第一个 |
+| create 响应的 `pay_tool` 是**内部渠道码**（实测 `12`），真正支付方式是 `current_pay_tool`（实测 `1`） | 结果里的支付方式取 `current_pay_tool`，别用 `pay_tool` |
+| create 响应**直接返回 `order_amount`**（实测 `43.19` = 商品 37.19 + 运费 6） | 不必回查详情拿金额，详情只用来补支付截止时间 |
 
 账号卡片上的「校验登录态」就是把这些「静默失败」变成一条明确结论：
 `POST /api/accounts/verify` → `checkYishouAuth` → `/users/get_user_info`。
+
+### 下单链路对齐抓包（2026-11 真实账号验证）
+
+`src/auto-order.ts`（编排层，只做业务决策）与 `src/adapters/yishou/{order-api,checkout}.ts`（协议层）
+分层，编排层只表达「买哪些规格、几件、用哪个地址」，不感知任何 selected 结构：
+
+```
+地址 → SKU → prepareCheckout（协议层一次做完）→ createOrder
+prepareCheckout = add_cart_goods_info → add_goods_to_cart → get_carts_by_supply
+                 → cart/activities → confirm_order_v4
+```
+
+四个接口的 `selected` 结构各不相同，全部收敛在 `checkout.ts` 的纯函数里（契约单测锁死）：
+
+| 接口 | selected 形态 | 关键 |
+|---|---|---|
+| `add_goods_to_cart` | 按颜色分组 `color+item[]`，item 复用商品详情原始规格 | 保险开关 `is_select_*_insurance=2`（不投保）、`source=3`、`add_cart_id` |
+| `cart/activities` | `select_goods` 按商品分组 | 算折，失败不阻断主链路 |
+| `confirm_order_v4` | sku 级明细，**带 `cart_id`** | `cart_id` 只能来自 `get_carts_by_supply` 的 `detail[]` |
+| `create_order_v4` | sku 级明细，**带 `from`/`piece_together_num`、不带 `cart_id`** | 补齐 `selected_express`（取 confirm 的 `express_options_v2` 里 `selected:"1"` 项）、`rsa`、`pay_id`、`user_address_tag` |
+
+**根因修复**：旧实现全链路只用简化 `[{sku,num}]` 结算，服务端返回的 `stock[].cart_id` 是假值 `"0"`，
+建单时又把这个 0 原样回传。真实账号验证确认：带 `cart_id` 的结算返回真值（如 `1278423441`）。
+端到端真实建单成功（`order_sn=12641615382582`，¥43.19，`wait_pay`），订单列表可回查。
+
+**跳过的不必要接口**（结果不被后续消费）：`goods_activities`、`get_add_cart_recommend`、
+`Goods/get_cart_recommend`、`get_carts_filter`、`get_pinkage_activity`、
+`get_order_advanced_check_list`、`piece_together/*`、重复的 `add_cart_goods_info`。
 
 ## 三、任务层（`web/server/tasks`）
 

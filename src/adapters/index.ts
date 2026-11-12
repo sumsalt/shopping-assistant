@@ -36,10 +36,9 @@ export const getOrderAdapter = (
   const capable =
     typeof adapter.getAddresses === 'function' &&
     typeof adapter.getProductSkus === 'function' &&
-    typeof adapter.addToCart === 'function' &&
-    typeof adapter.confirmOrder === 'function' &&
+    typeof adapter.prepareCheckout === 'function' &&
     typeof adapter.createOrder === 'function' &&
-    typeof adapter.deleteCart === 'function';
+    typeof adapter.discardCheckout === 'function';
 
   return capable ? adapter : null;
 };

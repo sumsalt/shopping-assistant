@@ -550,42 +550,50 @@ export interface YishouAddress {
 }
 
 /**
- * 加购结果
+ * 结算意图里的一行规格（编排层 → 适配器）
+ *
+ * 编排层只表达「要买哪个 SKU、几件」，不关心 selected 长什么样：
+ * 加购 / 算折 / 结算 / 建单四个接口的 selected 结构各不相同，全部由适配器内部构造。
  */
-export interface YishouCartAddResult {
-  /** 购物车商品级 ID（等于 goods_no），后续 confirm / 下单都传它 */
-  recId: string;
-  /** 商品货号 */
-  goodsNo: string;
-  /** 单价 */
-  shopPrice: number;
+export interface CheckoutLine {
+  /** SKU ID */
+  sku: string;
+  /** 件数 */
+  num: number;
+}
+
+/** 结算确认后的一行明细（适配器 → 编排层） */
+export interface CheckoutSettledItem {
+  /** SKU ID */
+  sku: string;
+  /** 一手实际认可的可买件数（库存不足时可能小于配置件数） */
+  num: number;
 }
 
 /**
- * 结算确认返回的 stock 单条（下单时需去掉嵌套字段后原样回传）
+ * 结算就绪结果（prepareCheckout 产物）
+ *
+ * 适配器内部走完「加购 → 购物车明细 → 算折 → 结算确认」，把业务结论交回编排层。
+ * `protocol` 是不透明的协议上下文（recIds / cart_id / selected_express / 埋点 ID 等），
+ * 编排层原样回传给 createOrder / discardCheckout，绝不解读——保证协议细节不泄漏到业务层。
  */
-export interface YishouConfirmStockItem {
-  [key: string]: unknown;
-}
-
-/**
- * 结算确认返回
- */
-export interface YishouConfirmOrderData {
-  /** 下单时必须原样回传的库存明细 */
-  stock: YishouConfirmStockItem[];
-  /** 失效商品 */
-  outStock: YishouConfirmStockItem[];
-  /** 默认地址 */
-  defaultAddress?: YishouAddress;
-  /** 商品金额（注意接口拼写是 price_tolal） */
+export interface CheckoutReady {
+  /** 结算确认的实际明细（已按一手认可件数） */
+  items: CheckoutSettledItem[];
+  /** 实际可买总件数 */
+  num: number;
+  /** 商品金额（结算的 price_tolal） */
   goodsAmount?: number;
   /** 运费 */
   shippingFee?: number;
-  /** 总件数 */
-  numTotal?: number;
-  /** 可用支付方式 */
+  /** 活动优惠金额（cart/activities 算出的 discount_amount，仅用于展示） */
+  activityDiscount?: number;
+  /** 该账号可用的支付方式（结算返回的 pay_tool[]） */
   payTools: string[];
+  /** 结算认可的收货地址 */
+  address: YishouAddress;
+  /** 不透明协议上下文 */
+  protocol: unknown;
 }
 
 /**
@@ -596,7 +604,7 @@ export interface YishouCreateOrderData {
   orderSn: string;
   /** 支付状态：wait_pay / already */
   payStatus: string;
-  /** 订单金额 */
+  /** 订单金额（create_order_v4 直接返回 order_amount） */
   orderAmount?: number;
   /** 支付方式 */
   payTool?: string;
@@ -744,8 +752,6 @@ export interface AutoOrderResult {
   requestedNum?: number;
   /** 库存不足，已按实际可买件数下单 */
   numReduced?: boolean;
-  /** 购物车 rec_id */
-  recId?: string;
   /** 支付截止时间（毫秒时间戳） */
   expireAt?: number;
   /**

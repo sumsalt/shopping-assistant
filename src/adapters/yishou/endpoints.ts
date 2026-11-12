@@ -13,8 +13,23 @@ export const GOODS_INFO = `${BASE}/goods/get_goods_info_v2`;
 /** 收藏夹商品列表 */
 export const COLLECTION_LIST = `${BASE}/users/get_goods_collection_list`;
 
-/** 商品详情（按 goods_no 查 SKU） */
+/** 商品详情（按 goods_no 查 SKU，匿名可用） */
 export const GOODS_DETAIL = `${BASE}/wechat/add_cart_goods_info`;
+
+/**
+ * 下单取商品规格（App 通道，登录态）
+ *
+ * 抓包 2.1 `cart/add_cart_goods_info`：返回 attribute[] 原始规格，
+ * 是加购 selected 的构造原料。与 GOODS_DETAIL 响应结构一致，但下单链路必须用这个端点
+ * 才能拿到与真机一致的完整规格字段。
+ */
+export const CART_GOODS_INFO = `${BASE}/cart/add_cart_goods_info`;
+
+/** 购物车明细（按供应商分组）：cart_id 的唯一来源，抓包 2.6 */
+export const CARTS_BY_SUPPLY = `${BASE}/cart/get_carts_by_supply`;
+
+/** 算折 / 活动金额，抓包 2.7 */
+export const CART_ACTIVITIES = `${BASE}/cart/activities`;
 
 /** H5 Tab 商品列表 */
 export const TAB_GOODS_LIST = `${BASE}/template/getNewTemplateH5Tab`;

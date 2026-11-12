@@ -68,6 +68,11 @@ export class YishouClient {
     return this.profile.hasAuth;
   }
 
+  /** 登录 uid：下单埋点 ID（add_cart_id / pay_id / event_id）需要 */
+  get uid(): string {
+    return this.profile.uid;
+  }
+
   /** 是否来自真实抓包（端点需要按抓包决定是否覆盖默认参数时用） */
   get captured(): boolean {
     return this.profile.captured;

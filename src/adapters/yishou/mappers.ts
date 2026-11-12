@@ -15,7 +15,6 @@ import type {
   StockCheckResult,
   YishouCartDetailData,
   YishouCollectionGoodsData,
-  YishouConfirmStockItem,
   YishouGoodsData,
   YishouTabGoodsData,
   YishouAddress,
@@ -288,23 +287,6 @@ export const mapCartDetailToSkuResult = (data: YishouCartDetailData): ProductSku
     totalSkuCount: skuList.length,
     restrictionNumber: data.restriction_number,
   };
-};
-
-/**
- * 下单时回传的 stock 项：只保留标量字段
- *
- * 一手要求把 confirm_order_v4 返回的 stock 原样传回，只传 sku + num 会 500 并触发锁单；
- * 但 tag_list / 图片等嵌套结构必须丢弃。
- */
-export const pickScalarFields = (
-  item: YishouConfirmStockItem
-): Record<string, unknown> => {
-  const result: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(item)) {
-    if (value === null || value === undefined || typeof value === 'object') continue;
-    result[key] = value;
-  }
-  return result;
 };
 
 // ==================== 订单列表 ====================

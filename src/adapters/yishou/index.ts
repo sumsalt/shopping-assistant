@@ -183,20 +183,19 @@ export class YishouAdapter extends BaseAdapter {
     return this.order.getAddresses();
   }
 
-  addToCart(goodsId: string, items: Array<{ sku: string; num: number }>) {
-    return this.order.addToCart(goodsId, items);
+  /** 准备结算（加购 → 购物车明细 → 算折 → 结算确认），产出协议上下文 */
+  prepareCheckout(input: Parameters<YishouOrderApi['prepareCheckout']>[0]) {
+    return this.order.prepareCheckout(input);
   }
 
-  confirmOrder(recIds: string, selected: string, addressId: string) {
-    return this.order.confirmOrder(recIds, selected, addressId);
+  /** 用 prepareCheckout 的上下文建单 */
+  createOrder(protocol: unknown, payTool: string) {
+    return this.order.createOrder(protocol, payTool);
   }
 
-  createOrder(params: Parameters<YishouOrderApi['createOrder']>[0]) {
-    return this.order.createOrder(params);
-  }
-
-  deleteCart(recIds: string) {
-    return this.order.deleteCart(recIds);
+  /** 放弃结算，清掉加购的商品 */
+  discardCheckout(protocol: unknown) {
+    return this.order.discardCheckout(protocol);
   }
 
   getOrderDetail(orderSn: string) {
