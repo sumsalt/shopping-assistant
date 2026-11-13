@@ -1,5 +1,15 @@
 <template>
-  <div class="bg-white rounded-lg border border-gray-200 overflow-hidden hover:shadow-md transition-shadow">
+  <div
+    :class="[
+      'bg-white rounded-lg border border-gray-200 overflow-hidden hover:shadow-md transition-shadow',
+      href ? 'cursor-pointer hover:border-blue-300 transition-colors' : '',
+    ]"
+    :title="href ? '点击卡片查看商品详情' : undefined"
+    :tabindex="href ? 0 : undefined"
+    :aria-label="href ? `查看商品详情：${task.target.name}` : undefined"
+    @click="handleCardClick"
+    @keydown.enter="handleCardActivate"
+  >
     <div class="p-4 sm:p-6">
       <!-- 状态 + 目标 + 时间 -->
       <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-4">
@@ -141,6 +151,28 @@ const KIND_LABEL: Record<TaskKind, string> = {
 const kindLabel = computed(() => KIND_LABEL[props.task.kind])
 
 const statusVariant = computed(() => getStatusColor(props.task.status))
+
+/** 仅商品目标且带货号时可跳详情；历史任务缺货号则整卡不可点 */
+const href = computed(() =>
+  props.task.target.type === 'product' && props.task.target.productNo
+    ? `/stock/${encodeURIComponent(props.task.target.productNo)}`
+    : ''
+)
+
+/** 卡片内的按钮、输入框、链接等交互元素不触发整卡跳转 */
+const isInteractiveTarget = (target: EventTarget | null): boolean =>
+  target instanceof Element &&
+  !!target.closest('a, button, input, select, textarea, label, [role="button"], [role="link"]')
+
+const handleCardClick = (event: MouseEvent) => {
+  if (!href.value || isInteractiveTarget(event.target)) return
+  navigateTo(href.value)
+}
+
+const handleCardActivate = (event: KeyboardEvent) => {
+  if (!href.value || isInteractiveTarget(event.target)) return
+  navigateTo(href.value)
+}
 
 const badgeClass = (tone: Tone): string =>
   ({

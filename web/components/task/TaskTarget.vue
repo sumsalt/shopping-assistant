@@ -39,29 +39,9 @@
     </div>
 
     <div class="min-w-0">
-      <NuxtLink
-        v-if="href"
-        :to="href"
-        class="text-sm font-medium text-gray-900 truncate hover:text-blue-600 block"
-        :title="`查看商品详情：${target.name}`"
-      >
-        {{ target.name }}
-      </NuxtLink>
-      <p v-else class="text-sm font-medium text-gray-900 truncate">{{ target.name }}</p>
-
-      <p class="text-xs text-gray-500 flex items-center gap-2">
-        <span v-if="target.subtitle">{{ target.subtitle }}</span>
-        <NuxtLink
-          v-if="href"
-          :to="href"
-          class="text-blue-600 inline-flex items-center gap-0.5"
-        >
-          查看详情
-          <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-          </svg>
-        </NuxtLink>
-      </p>
+      <!-- 不再单独放「查看详情」入口，由整张卡片承担跳转 -->
+      <p class="text-sm font-medium text-gray-900 truncate">{{ target.name }}</p>
+      <p v-if="target.subtitle" class="text-xs text-gray-500">{{ target.subtitle }}</p>
     </div>
   </div>
 </template>
@@ -69,12 +49,5 @@
 <script setup lang="ts">
 import type { TaskTarget } from '@core/contract'
 
-const props = defineProps<{ target: TaskTarget }>()
-
-/** 只有商品目标且带货号时才可跳转；历史任务缺货号则降级为纯文本 */
-const href = computed(() =>
-  props.target.type === 'product' && props.target.productNo
-    ? `/stock/${encodeURIComponent(props.target.productNo)}`
-    : ''
-)
+defineProps<{ target: TaskTarget }>()
 </script>
