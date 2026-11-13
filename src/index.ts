@@ -63,18 +63,21 @@ export {
   getEmailService,
   sendEmail,
   sendTabEmail,
+  ensureEmailServiceConfigured,
   verifyEmailConfig,
   createBackInStockTemplate,
   createStockReportTemplate,
   createPriceChangeTemplate,
   createAutoOrderTemplate,
   createAutoOrderFailedTemplate,
+  createRenewEndingSoonTemplate,
 } from './email';
 export type {
   EmailConfig,
   EmailContent,
   EmailAttachment,
   EmailResult,
+  RenewEndingSoonTemplateParams,
 } from './email';
 
 // 导出库存监控
@@ -122,6 +125,9 @@ export {
   RENEW_REQUEST_GAP_MS,
   RENEW_PAGE_SIZE,
   RENEW_RECENT_LIMIT,
+  RENEW_ENDING_SOON_LEAD_SECONDS,
+  RENEW_ENDING_SOON_RETRY_MS,
+  shouldNotifyRenewEndingSoon,
 } from './order-renew-monitor';
 export type {
   OrderRenewMonitorConfig,
@@ -130,6 +136,7 @@ export type {
   OrderRenewalRecord,
   OrderRenewResultCallback,
   OrderRenewProgressCallback,
+  RenewEndingSoonInput,
 } from './order-renew-monitor';
 
 // 导出价格监控

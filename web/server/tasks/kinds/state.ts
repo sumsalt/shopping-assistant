@@ -137,4 +137,8 @@ export interface RenewTaskState {
   lastError?: string
   lastScanAt?: number
   events: TaskEvent[]
+  /** 已发「即将结束」提醒所对应的计时起点（createdAt 毫秒）；延长任务重置计时后会自动失效 */
+  endingSoonNotifiedForCreatedAt?: number
+  /** 上次尝试发提醒的时间（毫秒），用于发信失败后的节流重试 */
+  endingSoonLastAttemptAt?: number
 }

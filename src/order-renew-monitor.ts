@@ -50,6 +50,51 @@ export const RENEW_PAGE_SIZE = 10;
 /** 最近续期记录保留条数 */
 export const RENEW_RECENT_LIMIT = 50;
 
+/** 结束前提前多久发提醒（秒）：10 分钟 */
+export const RENEW_ENDING_SOON_LEAD_SECONDS = 10 * 60;
+/** 提醒发信失败后的最小重试间隔（毫秒）：避免每轮都重试刷屏 */
+export const RENEW_ENDING_SOON_RETRY_MS = 2 * 60 * 1000;
+
+/**
+ * 「即将结束」提醒的判定入参（纯函数，供 web 层与单测共用）
+ */
+export interface RenewEndingSoonInput {
+  /** 本轮总时长（秒）；不传表示无限循环，永远不提醒 */
+  duration?: number;
+  /** 本轮已运行秒数 */
+  elapsedTime: number;
+  /** 上次成功提醒对应的计时起点（createdAt 毫秒）；延长任务后会变化 */
+  notifiedForCreatedAt?: number;
+  /** 当前计时起点（createdAt 毫秒） */
+  createdAt: number;
+  /** 上次尝试发信时间（毫秒） */
+  lastAttemptAt?: number;
+  /** 当前时间（毫秒） */
+  now: number;
+}
+
+/**
+ * 是否应该发送「自动续期即将结束」提醒。
+ *
+ * - 只针对有限时长任务，且总时长必须大于提前量（避免 5 分钟任务一启动就发）；
+ * - 剩余时长进入 10 分钟窗口才触发；
+ * - 以 createdAt 为去重键：进程重启续跑不会重复发，延长任务（计时起点重置）后可再次提醒；
+ * - 发信失败后隔一段时间才重试，成功后的去重置位由调用方负责。
+ */
+export const shouldNotifyRenewEndingSoon = (input: RenewEndingSoonInput): boolean => {
+  const { duration, elapsedTime } = input;
+  if (duration === undefined || duration <= RENEW_ENDING_SOON_LEAD_SECONDS) return false;
+  if (duration - elapsedTime > RENEW_ENDING_SOON_LEAD_SECONDS) return false;
+  if (input.notifiedForCreatedAt === input.createdAt) return false;
+  if (
+    input.lastAttemptAt !== undefined &&
+    input.now - input.lastAttemptAt < RENEW_ENDING_SOON_RETRY_MS
+  ) {
+    return false;
+  }
+  return true;
+};
+
 // ==================== 类型 ====================
 
 export interface OrderRenewMonitorConfig {

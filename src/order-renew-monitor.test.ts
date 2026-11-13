@@ -10,9 +10,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   createCancellableOrderRenewMonitor,
   RENEW_COOLDOWN_MS,
+  RENEW_ENDING_SOON_LEAD_SECONDS,
+  RENEW_ENDING_SOON_RETRY_MS,
   RENEW_MAX_PAGES,
   RENEW_PAGE_SIZE,
   RENEW_SCAN_INTERVAL_SECONDS,
+  shouldNotifyRenewEndingSoon,
   type OrderRenewMonitorConfig,
   type OrderRenewMonitorResult,
 } from './order-renew-monitor'
@@ -504,5 +507,64 @@ describe('退出条件', () => {
     expect(progress).toHaveBeenCalledWith(
       expect.objectContaining({ checkCount: 1, renewedCount: 1, duration: 60 })
     )
+  })
+})
+
+// ==================== 结束前 10 分钟提醒判定 ====================
+
+describe('shouldNotifyRenewEndingSoon', () => {
+  const createdAt = 1_700_000_000_000
+  const now = createdAt + 11 * 60 * 60 * 1000
+  const duration = 12 * 60 * 60
+
+  const base = {
+    duration,
+    elapsedTime: duration - RENEW_ENDING_SOON_LEAD_SECONDS,
+    createdAt,
+    now,
+  }
+
+  it('进入 10 分钟窗口才提醒', () => {
+    expect(shouldNotifyRenewEndingSoon(base)).toBe(true)
+    expect(
+      shouldNotifyRenewEndingSoon({ ...base, elapsedTime: duration - 601 })
+    ).toBe(false)
+    // 刚好差 1 秒进入窗口
+    expect(
+      shouldNotifyRenewEndingSoon({ ...base, elapsedTime: duration - 599 })
+    ).toBe(true)
+  })
+
+  it('无限时长任务与短于提前量的任务不提醒', () => {
+    expect(shouldNotifyRenewEndingSoon({ ...base, duration: undefined })).toBe(false)
+    expect(
+      shouldNotifyRenewEndingSoon({ ...base, duration: 600, elapsedTime: 0 })
+    ).toBe(false)
+  })
+
+  it('同一计时起点只提醒一次；计时起点重置（延长任务）后可再提醒', () => {
+    expect(
+      shouldNotifyRenewEndingSoon({ ...base, notifiedForCreatedAt: createdAt })
+    ).toBe(false)
+    // extend 后 createdAt 变化，旧守卫失效
+    expect(
+      shouldNotifyRenewEndingSoon({
+        ...base,
+        createdAt: now,
+        notifiedForCreatedAt: createdAt,
+      })
+    ).toBe(true)
+  })
+
+  it('发信失败后按间隔节流重试', () => {
+    expect(
+      shouldNotifyRenewEndingSoon({ ...base, lastAttemptAt: now - 1000 })
+    ).toBe(false)
+    expect(
+      shouldNotifyRenewEndingSoon({
+        ...base,
+        lastAttemptAt: now - RENEW_ENDING_SOON_RETRY_MS,
+      })
+    ).toBe(true)
   })
 })

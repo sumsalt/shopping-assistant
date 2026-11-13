@@ -5,7 +5,7 @@
 import { createTransport } from 'nodemailer';
 import type { SentMessageInfo, Transporter } from 'nodemailer';
 import type { AutoOrderItem } from './types';
-import { buildYishouProductLink } from './yishou-deeplink';
+import { buildYishouProductLink, buildYishouDeepLink, YISHOU_ROUTES } from './yishou-deeplink';
 
 /**
  * 邮件配置
@@ -267,6 +267,22 @@ export function loadTabEmailConfigFromEnv(): EmailConfig | null {
     pass,
     fromName: process.env.TAB_SMTP_FROM_NAME || process.env.SMTP_FROM_NAME || '购物助手',
   };
+}
+
+/**
+ * 确保默认邮件服务已按环境变量配置好。
+ *
+ * 其它监控模块在 import 时就配置了服务，但续期任务可能独立启动，
+ * 这里做一次幂等兜底：已配置则直接复用，未配置则尝试从环境变量读取。
+ *
+ * @returns 是否可用（未配置 SMTP_PASS 时返回 false，调用方应跳过发信而不是抛错）
+ */
+export function ensureEmailServiceConfigured(): boolean {
+  if (defaultEmailService) return true;
+  const config = loadEmailConfigFromEnv();
+  if (!config) return false;
+  configureEmailService(config);
+  return true;
 }
 
 /**
@@ -1304,6 +1320,115 @@ export function createAutoOrderFailedTemplate(params: {
           <div class="msg">${message}</div>
           ${uncertain ? '<p style="color:#c62828;font-size:14px;margin-top:14px;">建单请求中断，订单<strong>可能已经生成</strong>，请先到 App「我的订单」核对，避免重复下单或漏付款。</p>' : ''}
           <p style="font-size:14px;color:#666;margin-top:14px;">任务已停止。排除问题后可重新发起监控。</p>
+        </div>
+        <div class="footer">本邮件由购物助手自动发送，请勿直接回复。</div>
+      </div>
+    </body>
+    </html>
+  `;
+}
+
+/** HTML 文本转义：账号备注由用户填写，避免破坏邮件结构 */
+const escapeHtmlText = (value: string): string =>
+  value.replace(/[&<>"']/g, char =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char] ?? char
+  );
+
+/** 自动续期「即将结束」提醒的参数 */
+export interface RenewEndingSoonTemplateParams {
+  /** 账号显示名（备注 / 手机号 / ID） */
+  accountName: string;
+  /** 任务结束时间（毫秒时间戳） */
+  endsAt: number;
+  /** 任务总时长（小时），仅用于文案展示 */
+  durationHours?: number;
+  /** 累计扫描轮次 */
+  checkCount?: number;
+  /** 累计成功续期次数 */
+  renewedCount?: number;
+  /** 累计已结束订单数 */
+  finishedCount?: number;
+}
+
+/**
+ * 自动续期即将结束提醒
+ *
+ * 任务结束前 10 分钟发出，目的是让用户赶在停止续期前完成付款或重新发起任务。
+ * 不列具体订单（需要再查一次接口），只给时间、账号与累计统计。
+ */
+export function createRenewEndingSoonTemplate(
+  params: RenewEndingSoonTemplateParams
+): string {
+  const {
+    accountName,
+    endsAt,
+    durationHours,
+    checkCount = 0,
+    renewedCount = 0,
+    finishedCount = 0,
+  } = params;
+
+  const safeName = escapeHtmlText(accountName || '当前账号');
+  const endTime = new Date(endsAt);
+  const pad = (value: number) => String(value).padStart(2, '0');
+  const endsText = `${endTime.getFullYear()}-${pad(endTime.getMonth() + 1)}-${pad(endTime.getDate())} ${pad(endTime.getHours())}:${pad(endTime.getMinutes())}`;
+  const durationText = durationHours ? `${durationHours} 小时` : '本轮设定的时长';
+  const appLink = buildYishouDeepLink(YISHOU_ROUTES.myOrder, { check_login: 1 });
+
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <style>
+        body {
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+          line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;
+        }
+        .container { background: #fff8e1; border-radius: 8px; padding: 28px; }
+        .header { text-align: center; margin-bottom: 22px; border-bottom: 2px solid #ffe0a3; padding-bottom: 16px; }
+        .header h1 { color: #e65100; margin: 0; font-size: 21px; }
+        .content { background: white; padding: 22px; border-radius: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.08); }
+        .endtime { font-size: 22px; color: #e65100; font-weight: bold; margin: 14px 0; }
+        table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px; }
+        td { padding: 8px 0; border-bottom: 1px solid #f0f0f0; }
+        td.label { color: #888; width: 110px; }
+        .warn {
+          background: #fff3cd; border-left: 4px solid #ffb300;
+          padding: 12px 14px; border-radius: 4px; font-size: 14px; color: #795548; margin-top: 16px;
+        }
+        .steps { font-size: 14px; color: #444; margin-top: 16px; }
+        .app-btn {
+          display: inline-block; margin-top: 18px; padding: 10px 20px;
+          background: #e65100; color: #ffffff !important; text-decoration: none;
+          border-radius: 6px; font-size: 14px; font-weight: bold;
+        }
+        .footer { text-align: center; margin-top: 22px; color: #999; font-size: 12px; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>⏰ 订单自动续期即将结束</h1>
+        </div>
+        <div class="content">
+          <p>你好！你为账号 <strong>${safeName}</strong> 开启的订单自动续期任务，将在约 <strong>10 分钟后</strong>结束。</p>
+          <div class="endtime">结束时间：${endsText}</div>
+          <table>
+            <tr><td class="label">账号</td><td>${safeName}</td></tr>
+            <tr><td class="label">任务时长</td><td>${durationText}</td></tr>
+            <tr><td class="label">已扫描</td><td>${checkCount} 轮</td></tr>
+            <tr><td class="label">已续期</td><td>${renewedCount} 次</td></tr>
+            <tr><td class="label">已结束订单</td><td>${finishedCount} 笔</td></tr>
+          </table>
+          <div class="warn">
+            任务结束后，系统将<strong>不再自动刷新待付款订单的有效期</strong>。一手待付款订单超时未付会自动关闭并释放库存，请尽快完成支付。
+          </div>
+          <div class="steps">
+            付款方式：打开一手 App → 我的 → 待付款 → 完成支付。<br>
+            如果仍需继续续期，请在购物助手里重新发起「订单续期」任务。
+          </div>
+          <a class="app-btn" href="${appLink}">打开一手 App 查看订单</a>
         </div>
         <div class="footer">本邮件由购物助手自动发送，请勿直接回复。</div>
       </div>

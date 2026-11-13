@@ -8,7 +8,12 @@
 import {
   createCancellableOrderRenewMonitor,
   getRenewAdapter,
+  shouldNotifyRenewEndingSoon,
+  sendEmail,
+  createRenewEndingSoonTemplate,
+  ensureEmailServiceConfigured,
   type OrderRenewalRecord,
+  type OrderRenewProgress,
 } from '@core'
 import type { TaskEvent, TaskKind, TaskSummary, Tone } from '@core/contract'
 import { ErrorCode } from '../../utils/response'
@@ -62,6 +67,83 @@ const renewalEvents = (taskId: string, renewals: OrderRenewalRecord[]): TaskEven
       ...(item.verified !== undefined ? { verified: item.verified } : {}),
     })
   })
+
+/**
+ * 结束前 10 分钟邮件提醒（best-effort）
+ *
+ * 判定规则放在 core 的纯函数里；这里只负责取收件人、发信与落盘守卫。
+ * 发信异步进行、不阻塞监控循环；任何异常只写日志，绝不影响续期本身。
+ */
+const notifyRenewEndingSoon = (
+  record: TaskRecordBase<RenewTaskState>,
+  progress: OrderRenewProgress,
+  ctx: TaskRunContext
+): void => {
+  const state = record.state
+  const now = Date.now()
+  const createdAt = record.createdAt.getTime()
+
+  if (
+    !shouldNotifyRenewEndingSoon({
+      duration: progress.duration,
+      elapsedTime: progress.elapsedTime,
+      notifiedForCreatedAt: state.endingSoonNotifiedForCreatedAt,
+      createdAt,
+      lastAttemptAt: state.endingSoonLastAttemptAt,
+      now,
+    })
+  ) {
+    return
+  }
+
+  // 先记尝试时间：发信失败时按固定间隔节流重试，不每轮刷屏
+  state.endingSoonLastAttemptAt = now
+
+  // 结束时间以任务自身计时起点 + 配置时长为准，续跑/延长后仍然准确
+  const endsAt = createdAt + state.config.duration * 1000
+  const accountName = state.account.title || state.account.phone || state.account.id
+  const html = createRenewEndingSoonTemplate({
+    accountName,
+    endsAt,
+    durationHours: Math.round((state.config.duration / 3600) * 10) / 10,
+    checkCount: state.checkCount,
+    renewedCount: state.renewedCount,
+    finishedCount: state.finishedCount,
+  })
+  const text = [
+    `订单自动续期将在约 10 分钟后结束（账号 ${accountName}）。`,
+    `结束时间：${new Date(endsAt).toLocaleString('zh-CN')}`,
+    `已扫描 ${state.checkCount} 轮，累计续期 ${state.renewedCount} 次，已结束订单 ${state.finishedCount} 笔。`,
+    '任务结束后系统将不再刷新待付款订单有效期，请尽快打开一手 App → 我的 → 待付款 完成支付；如需继续续期，请在购物助手重新发起任务。',
+  ].join('\n')
+
+  void (async () => {
+    try {
+      if (!ensureEmailServiceConfigured()) {
+        ctx.log('「续期即将结束」提醒未发送：SMTP 未配置', 'warn')
+        return
+      }
+      const result = await sendEmail({
+        to: record.userEmail,
+        subject: '⏰ 订单自动续期即将结束（约 10 分钟后）',
+        text,
+        html,
+      })
+      if (result.success) {
+        state.endingSoonNotifiedForCreatedAt = createdAt
+        ctx.save('now')
+        ctx.log(`已发送「续期即将结束」提醒至 ${record.userEmail}`)
+      } else {
+        ctx.log(`「续期即将结束」提醒发送失败：${result.error ?? '未知错误'}`, 'warn')
+      }
+    } catch (error) {
+      ctx.log(
+        `「续期即将结束」提醒发送异常：${error instanceof Error ? error.message : String(error)}`,
+        'warn'
+      )
+    }
+  })()
+}
 
 export const renewDefinition: TaskKindDefinition<RenewTaskState> = {
   kind: KIND,
@@ -177,6 +259,8 @@ export const renewDefinition: TaskKindDefinition<RenewTaskState> = {
       },
       progress => {
         state.checkCount = base.checkCount + progress.checkCount
+        // 结束前 10 分钟邮件提醒（异步、best-effort，不影响续期循环）
+        notifyRenewEndingSoon(record, progress, ctx)
         ctx.save()
       }
     )

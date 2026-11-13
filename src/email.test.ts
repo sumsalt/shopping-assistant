@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { createTabChangeTemplate } from './email'
+import { createTabChangeTemplate, createRenewEndingSoonTemplate } from './email'
 
 const mkProduct = (i: number) => ({
   productId: `p${i}`,
@@ -122,5 +122,40 @@ describe('createTabChangeTemplate - 手机端版式（窄留白 / 固定图高 /
     expect(html).toContain('font-size:17px')
     expect(html).not.toContain('<h1>')
     expect(html).not.toContain('<h3')
+  })
+})
+
+describe('createRenewEndingSoonTemplate - 自动续期结束前提醒', () => {
+  const params = {
+    accountName: '测试账号 13800000000',
+    endsAt: new Date('2026-11-14T12:00:00+08:00').getTime(),
+    durationHours: 12,
+    checkCount: 700,
+    renewedCount: 23,
+    finishedCount: 2,
+  }
+
+  it('包含结束提示、结束时间、账号与累计统计', () => {
+    const html = createRenewEndingSoonTemplate(params)
+    expect(html).toContain('订单自动续期即将结束')
+    expect(html).toContain('10 分钟后')
+    expect(html).toMatch(/结束时间：\d{4}-\d{2}-\d{2} \d{2}:\d{2}/)
+    expect(html).toContain('测试账号 13800000000')
+    expect(html).toContain('12 小时')
+    expect(html).toContain('700 轮')
+    expect(html).toContain('23 次')
+    expect(html).toContain('2 笔')
+    expect(html).toContain('不再自动刷新待付款订单的有效期')
+  })
+
+  it('按钮唤起一手 App，并对账号备注做 HTML 转义', () => {
+    const html = createRenewEndingSoonTemplate({
+      ...params,
+      accountName: '<script>alert(1)</script> & "备注"',
+    })
+    expect(html).toContain('yishou://fmkj/openyishou')
+    expect(html).toContain('&lt;script&gt;')
+    expect(html).not.toContain('<script>')
+    expect(html).toContain('&amp;')
   })
 })
