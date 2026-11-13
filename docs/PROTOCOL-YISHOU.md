@@ -271,8 +271,12 @@ payload 顶层，新 stock/price 任务固化到 record；**老任务没有 `acc
   否则按入参 size 算 offset 会与服务端实际条数不符、重新出现「加载更多重复」。
   `hasMore` 按「本页是否满 10 条」判断；翻到最后一页会多一次空请求，属正常。
 - 调用口径：订单页 `/api/orders` 不传 `pageSize`（服务端直接用 10）、
-  自动续期固定传 `RENEW_PAGE_SIZE = 10`；收藏夹 / Tab 商品列表的 `page_size = 20`
-  是另外两个接口，与订单列表无关。
+  自动续期固定传 `RENEW_PAGE_SIZE = 10`。
+- 收藏夹（`/users/get_goods_collection_list`）是另一套分页：`pageindex` 是**页码**
+  （从 1 开始）、`pagesize` **生效**（实测 50 可一次取满），同样不返回总数，
+  `hasMore` 只能按本页是否满页判断。它和订单列表的 `pageidx`（记录偏移量）
+  只是名字相近，**语义完全不同**，改参数前先看本段。
+  Tab 商品列表用的是 `page` / `page_size`，三套不要混用。
 - 自动续期 `scanWaitPayOrders` 固定传 `order_status=wait_pay`，按 `page=1..20`
   逐页拉取（每页 10 条，最多 200 单），满页才继续；offset 语义修复后翻页不再重复。
 - 订单状态直接用一手给的 `order_status_name`，不维护状态码映射

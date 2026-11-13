@@ -296,7 +296,7 @@ export interface CollectionStockCheckResult {
   inStockItems: CollectionStockResult[];
   /** 无货商品列表 */
   outOfStockItems: CollectionStockResult[];
-  /** 总数量 */
+  /** 本页数量（收藏夹接口不返回总数） */
   total: number;
   /** 有货数量 */
   inStockCount: number;
