@@ -98,9 +98,6 @@
           </button>
         </div>
         <TaskEventList :events="shownEvents" />
-        <p v-if="expanded && allEvents && allEvents.length < task.eventCount" class="mt-2 text-xs text-gray-400">
-          仅保留最近 {{ allEvents.length }} 条，更早的记录已被清理
-        </p>
       </div>
 
       <!-- 操作 -->

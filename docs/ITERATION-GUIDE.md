@@ -104,6 +104,7 @@ export const couponDefinition: TaskKindDefinition<CouponTaskState> = {
       stats: [{ key: 'checks', label: '次检测', value: state.checkCount }],
       config: { interval: state.config.interval, duration: state.config.duration },
       events: options.full ? state.events : state.events.slice(0, LIST_EVENT_LIMIT),
+      eventCount: state.events.length,
       order: null,
       notice: null,
       ...(state.lastError ? { lastError: state.lastError } : {}),
@@ -123,6 +124,9 @@ export const couponDefinition: TaskKindDefinition<CouponTaskState> = {
 - `TaskKind` 是联合类型，加值只改 `src/contract/task.ts` 的类型，`tasks.kind` 是 TEXT 列，**不需要 DB 迁移**。
 - `project()` 必须是纯函数：不读库、不发请求、不读时间以外的外部状态。
 - 事件用 `makeEvent(type, {...})` + `capEvents(events, 50)`，同样的 `type + 秒` 自动去重。
+- 每个事件必须带**唯一** `id`（含业务主键 + 时间），否则第二次回调会把新记录覆盖掉。
+- `events` 列表只回最近 5 条，`eventCount` 回总数；卡片上的「查看全部」走 `status` 接口拿全量，
+  所以 `project` 里两者都要给。
 
 ### 3. 注册 `web/server/tasks/kinds/index.ts`
 
