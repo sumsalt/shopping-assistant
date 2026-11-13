@@ -150,14 +150,20 @@ prepareCheckout = add_cart_goods_info → add_goods_to_cart → get_carts_by_sup
 | 本地初筛 | 订单列表 `cancelExpireAt` | 只快速排除「明显还有很久 / 已过期」 |
 | 单订单冷却 | 4 分钟 | 有效期未刷新时防止每分钟重复提交 |
 | 单轮上限 | 20 页 / 200 单 | 防止列表异常放大请求量 |
-| 请求间隔 | 300ms | 自律串行，不改 `GateTaskKind` |
+| 读请求间隔 | 300ms | 列表 / confirm 之间自律串行 |
+| 写请求间隔 | 5 秒 | reload 之间拉开距离，避免同账号连续写被服务端拒绝 |
+| 单轮范围 | 所有进入窗口的订单 | 按 `cancelExpireAt` 升序逐单续，不再「一轮只续一个」 |
+| 失败重试 | 轮末隔 5 秒再试一次 | 失败不设冷却，仍失败留到下一轮 |
 | 跳过并告警 | 无快递 / 无地址、续期后截止未后移 | 不发 reload / 保留 warning 不被成功轮清空 |
 | 标记结束 | `pay_status !== 'wait_pay'` | 该单不再续期 |
 | 停止任务 | 凭据失效 | 避免 `201 请登录` 刷屏 |
 
-`YishouOrderApi` 已 `skipGate:true`，续期不进请求闸门，由编排层自己做 300ms 串行间隔，
-**没有引入新的 `GateTaskKind`**。协议层能力用独立的 `RenewOrderAdapter` +
+`YishouOrderApi` 已 `skipGate:true`，续期不进请求闸门，由编排层自己做 300ms 读间隔 +
+5 秒写间隔，**没有引入新的 `GateTaskKind`**。协议层能力用独立的 `RenewOrderAdapter` +
 `getRenewAdapter()` 暴露，不塞进 `AutoOrderAdapter`，避免影响既有自动下单的 mock。
+
+每轮结束打一行汇总（扫描 / 候选 / 续期 / 结束 / 失败 / 未到窗口 / 冷却 / 已过期），
+续期与失败逐单打明细，排障直接看 PM2 日志里的 `[订单续期]`。
 
 **任务层**：`kind='renew'` 是第 4 类任务。`TaskKind` 是普通联合类型、`tasks.kind` 是 TEXT，
 **不需要 DB 迁移**。与 stock/price/tab 同构（一个 `renewDefinition` + 列表/状态/删除/重启
