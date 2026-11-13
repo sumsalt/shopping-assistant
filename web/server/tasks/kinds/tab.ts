@@ -228,7 +228,6 @@ export const tabDefinition: TaskKindDefinition<TabTaskState> = {
         ...(state.config.activeWindow ? { activeWindow: state.config.activeWindow } : {}),
       },
       events,
-      eventCount: state.events.length,
       order: null,
       notice: null,
     } satisfies TaskSummary

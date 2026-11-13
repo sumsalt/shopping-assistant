@@ -239,7 +239,6 @@ export const stockDefinition: TaskKindDefinition<StockTaskState> = {
           : { enabled: false },
       },
       events,
-      eventCount: state.events.length,
       order: state.result.order ?? null,
       notice: buildNotice(state),
       ...(state.result.error ? { lastError: state.result.error } : {}),

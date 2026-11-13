@@ -475,7 +475,6 @@ export const priceDefinition: TaskKindDefinition<PriceTaskState> = {
         autoOrder: toAutoOrderView(policy),
       },
       events,
-      eventCount: state.events.length,
       order: state.order ?? null,
       notice:
         state.orderError && !state.order

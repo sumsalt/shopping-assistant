@@ -81,7 +81,6 @@ interface TaskSummary {
   stats: TaskStat[]         // 次检测 / 次提醒 / 本轮抓取 / 已记录商品
   config: TaskConfigView    // 间隔、时长、策略（只读投影）
   events: TaskEvent[]       // 最近 5 条（详情返回全部，上限 50）
-  eventCount: number        // 事件总数；大于 events.length 时前端显示「查看全部」
   order?: OrderBrief | null
   notice?: TaskNotice | null
   lastError?: string

@@ -134,8 +134,6 @@ export interface TaskSummary {
   config: TaskConfigView
   /** 最近事件（列表默认 5 条，详情返回全部） */
   events: TaskEvent[]
-  /** 事件总条数：events 被截断时前端据此决定是否显示「查看全部」 */
-  eventCount: number
   order?: OrderBrief | null
   notice?: TaskNotice | null
   lastError?: string

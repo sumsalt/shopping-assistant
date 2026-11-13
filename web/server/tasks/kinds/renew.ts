@@ -20,13 +20,7 @@ import type { RenewTaskState } from './state'
 
 const KIND: TaskKind = 'renew'
 const VERSION = 2
-/**
- * 续期事件保留上限
- *
- * 续期是「同一单反复刷有效期」的高频动作（约每 15 分钟一次），
- * 50 条只够覆盖十几分钟，排查「哪单漏续」时不够用，所以单独放宽到 200 条。
- */
-const MAX_EVENTS = 200
+const MAX_EVENTS = 50
 const LIST_EVENT_LIMIT = 5
 
 export const AUTO_RENEW_DURATION_SECONDS = 12 * 60 * 60
@@ -244,7 +238,6 @@ export const renewDefinition: TaskKindDefinition<RenewTaskState> = {
         source: state.source,
       },
       events,
-      eventCount: state.events.length,
       order: null,
       notice: null,
       ...(state.lastError ? { lastError: state.lastError } : {}),

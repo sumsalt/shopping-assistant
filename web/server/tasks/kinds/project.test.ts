@@ -128,27 +128,6 @@ describe('任务视图投影', () => {
     expect(priceDefinition.project(record, { full: true }).events).toHaveLength(8)
   })
 
-  it('列表被截断时带上事件总数，前端据此显示「查看全部」', () => {
-    const events = Array.from({ length: 6 }, (_, i) => ({
-      id: `e${i}`,
-      type: 'price.changed' as const,
-      at: i,
-      title: `变化 ${i}`,
-      tone: 'up' as const,
-    }))
-    const state: PriceTaskState = {
-      product: { productId: '1' },
-      config: { interval: 60, notifyOn: 'any', minPriceDelta: 0.01 },
-      checkCount: 0,
-      detectedCount: 0,
-      events,
-    }
-    const list = priceDefinition.project(base({ state }))
-    expect(list.events).toHaveLength(5)
-    expect(list.eventCount).toBe(6)
-    expect(priceDefinition.project(base({ state }), { full: true }).eventCount).toBe(6)
-  })
-
   it('续期记录逐条保留：同一订单多次续期不会被合并', () => {
     const state: RenewTaskState = {
       account: { id: 'acc1', phone: '166****', title: '主号' },
@@ -169,7 +148,6 @@ describe('任务视图投影', () => {
       ],
     }
     const summary = renewDefinition.project(base({ kind: 'renew', state }), { full: true })
-    expect(summary.eventCount).toBe(6)
     expect(summary.events).toHaveLength(6)
     expect(summary.events.map(e => e.orderSn)).toEqual(['SN1', 'SN1', 'SN2', 'SN2', 'SN3', 'SN3'])
   })
