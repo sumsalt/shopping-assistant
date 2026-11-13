@@ -251,7 +251,7 @@ bash deploy.sh restart
 | 在 `api/*.ts` 里存 Map / 启动循环 | 路由会被拆成独立 chunk，状态会在热更新和重启后消失 |
 | 在 `kinds` 里直接读写 SQLite | 节流、事务、退出刷盘只有 `store.ts` 一处能做对 |
 | 给 `TaskSummary` 加 `Record<string, any>` 之类的兜底 | 契约一松，前端就又开始各写一套 DTO |
-| 在 `project()` 里发请求 / 读当前账号 | 投影必须是纯函数，否则列表页一次渲染打十几个请求 |
+| 在 `project()` 里发网络请求 / 读当前登录态 | 列表一次渲染会打十几个请求；同步读本地小表（如店铺黑名单）可以，但不能做远程调用 |
 | 把 `secret` 塞进 `state` | 会随列表接口发给浏览器 |
 | 为了一个字段新建 `useXxxTasks` | 用 `useTaskList` + `project()` 的 `stats` |
 | 迁移脚本里 `throw` | 一条脏数据会中断整批，宁可降级为空 |

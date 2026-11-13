@@ -19,9 +19,3 @@ export const filterVisibleSeen = <T extends SeenProductLike>(
   if (blocked.size === 0) return items
   return items.filter(item => !item.supplyId || !blocked.has(item.supplyId))
 }
-
-/** 可见商品数：与 filterVisibleSeen 后的 length 一致 */
-export const countVisibleSeen = (
-  items: SeenProductLike[],
-  blacklisted: Iterable<string>
-): number => filterVisibleSeen(items, blacklisted).length
