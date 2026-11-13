@@ -181,3 +181,29 @@ export type {
   GateTaskStats,
   GateTaskKind,
 } from './utils/request-gate';
+
+// ==================== 共享契约层 ====================
+// 任务与商品/订单的统一类型，服务端与前端共用；Platform/AdapterConfig 仍从原出口导出。
+export type {
+  ProductRef,
+  AccountRef,
+  TabRef,
+  TaskTarget,
+  AutoOrderView,
+  OrderBrief,
+  PrecheckView,
+  TaskKind,
+  TaskStatus,
+  Tone,
+  TaskBadge,
+  TaskStat,
+  TaskEventType,
+  TaskEvent,
+  TaskNotice,
+  TaskConfigView,
+  TaskSummary,
+  TaskListPayload,
+  TaskCreatedPayload,
+  TaskDetailPayload,
+} from './contract';
+export { TASK_EVENT_LABELS } from './contract';

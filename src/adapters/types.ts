@@ -83,40 +83,8 @@ export interface RenewOrderAdapter {
 }
 
 /**
- * 平台适配器配置（用于认证等）
+ * 平台适配器配置
+ *
+ * 定义在共享契约层，这里 re-export，保持既有 import 不变。
  */
-export interface AdapterConfig {
-  /** 用户ID */
-  uid?: string;
-  /** 用户Token */
-  token?: string;
-  /** 时间戳 */
-  timestamp?: number;
-  /** 签名（如不传，将自动计算） */
-  sign?: string;
-  /** 用户openid（用于签名计算） */
-  openid?: string;
-  /** 设备型号（用于签名计算） */
-  model?: string;
-  /** 版本号（用于签名计算） */
-  version?: string;
-  /** 版本名称（用于签名计算） */
-  version_name?: string;
-  /** 微信版本名称 */
-  wx_version_name?: string;
-  /** 平台类型（默认: wx） */
-  plat_type?: string;
-  /**
-   * 抓包得到的完整公共参数快照（含 uid/token/udid/openid 等静态字段）。
-   * 存在时，请求体以它为基础，只覆盖动态 t_t；匿名请求由服务端先剔除 uid/token。
-   */
-  requestParams?: Record<string, string>;
-  /** 抓包得到的关键请求头（User-Agent / Content-Type / equipmd5 等） */
-  requestHeaders?: Record<string, string>;
-  /** 抓包通道：决定 UA、t_t 单位（app 秒级 / wx 毫秒级）与签名首段 */
-  channel?: 'wx' | 'app';
-  /** 代理 URL（可选） */
-  proxyUrl?: string;
-  /** 是否启用代理（"1" 或 "0"） */
-  proxyEnabled?: '1' | '0';
-}
+export type { AdapterConfig } from '../contract/platform';

@@ -2,12 +2,12 @@
  * 购物助手 - 核心类型定义
  */
 
+import type { Platform } from './contract/platform';
+
 // ==================== 平台通用类型 ====================
 
-/**
- * 支持的平台类型（首期仅支持一手）
- */
-export type Platform = 'yishou' | 'jd' | 'pdd';
+// 平台标识定义在共享契约层，这里 re-export，保持既有 import 不变
+export type { Platform } from './contract/platform';
 
 /**
  * 库存查询请求参数
