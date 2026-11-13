@@ -6,15 +6,10 @@
  */
 
 /**
- * 是否为「纯数字商品 ID / 货号」查询
+ * 是否为「单个纯数字商品 ID / 货号」查询
  *
- * 逗号（半角 / 全角）分隔的批量查询仍属于旧搜索；只要有一项含非数字字符，
- * 整条输入就按关键词搜索处理。
+ * 批量 ID 查询已下线：含逗号（半角 / 全角）的输入不再走库存查询，
+ * 整条输入按关键词搜索处理（前端会对多 ID 额外给出提示）。
  */
-export const isNumericProductQuery = (query: string): boolean => {
-  const parts = query
-    .split(/[,，]/)
-    .map(part => part.trim())
-    .filter(Boolean);
-  return parts.length > 0 && parts.every(part => /^\d+$/.test(part));
-};
+export const isNumericProductQuery = (query: string): boolean =>
+  /^\d+$/.test(query.trim());

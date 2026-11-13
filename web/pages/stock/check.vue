@@ -13,7 +13,7 @@
           <div class="flex-1">
             <UiInput
               v-model="searchQuery"
-              placeholder="输入商品 ID / 货号（多个用逗号分隔），或输入关键词搜索商品"
+              placeholder="输入商品 ID / 货号，或输入关键词搜索商品"
               size="lg"
               clearable
               :disabled="isCheckingStock || isSearchingKeyword"
@@ -24,13 +24,7 @@
                 </svg>
               </template>
             </UiInput>
-            <p
-              v-if="isNumericQuery && (searchQuery.includes(',') || searchQuery.includes('，'))"
-              class="mt-1 text-xs text-gray-500"
-            >
-              检测到多个商品 ID，将进行批量查询
-            </p>
-            <p v-else-if="searchQuery.trim() && !isNumericQuery" class="mt-1 text-xs text-blue-600">
+            <p v-if="searchQuery.trim() && !isNumericQuery" class="mt-1 text-xs text-blue-600">
               将按关键词搜索商品（可能有多页结果）
             </p>
           </div>
@@ -127,74 +121,6 @@
       </div>
     </div>
 
-    <!-- 批量查询结果 -->
-    <div v-else-if="batchStockResults" class="space-y-6">
-      <!-- 统计信息 -->
-      <div class="bg-white rounded-lg border border-gray-200 p-6">
-        <h3 class="text-lg font-medium text-gray-900 mb-4">查询结果统计</h3>
-        <div class="grid grid-cols-3 gap-4">
-          <div class="text-center">
-            <div class="text-3xl font-bold text-blue-600">{{ batchStockResults.total }}</div>
-            <div class="text-sm text-gray-500">总数</div>
-          </div>
-          <div class="text-center">
-            <div class="text-3xl font-bold text-green-600">{{ batchStockResults.successCount }}</div>
-            <div class="text-sm text-gray-500">成功</div>
-          </div>
-          <div class="text-center">
-            <div class="text-3xl font-bold text-red-600">{{ batchStockResults.failedCount }}</div>
-            <div class="text-sm text-gray-500">失败</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 成功的商品列表 -->
-      <div v-if="batchStockResults.successItems.length > 0" class="space-y-4">
-        <h3 class="text-lg font-medium text-gray-900">查询成功（{{ batchStockResults.successCount }}）</h3>
-        <div class="grid grid-cols-1 gap-4">
-          <div
-            v-for="item in batchStockResults.successItems"
-            :key="item.productId"
-            class="bg-white rounded-lg border border-gray-200 p-4"
-          >
-            <StockProductCard
-              :product-id="item.productId"
-              :product-no="item.productNo"
-              :name="item.productName"
-              :image-url="item.productImage"
-              :price="item.price"
-              :price-note="item.priceNote"
-              :in-stock="item.inStock"
-              :message="item.message"
-              @click="handleProductClick(item)"
-            />
-          </div>
-        </div>
-      </div>
-
-      <!-- 失败的商品列表 -->
-      <div v-if="batchStockResults.failedItems.length > 0" class="space-y-4">
-        <h3 class="text-lg font-medium text-gray-900">查询失败（{{ batchStockResults.failedCount }}）</h3>
-        <div class="space-y-2">
-          <div
-            v-for="item in batchStockResults.failedItems"
-            :key="item.productId"
-            class="bg-red-50 rounded-lg border border-red-200 p-4"
-          >
-            <div class="flex items-start justify-between">
-              <div>
-                <div class="font-medium text-gray-900">{{ item.productId }}</div>
-                <div class="mt-1 text-sm text-red-700">{{ item.error }}</div>
-              </div>
-              <div class="px-2 py-1 text-xs font-medium text-red-700 bg-red-100 rounded">
-                {{ item.errorType }}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
     <!-- 单个查询结果 -->
     <div v-else-if="stockResult" class="space-y-6">
       <!-- 商品卡片 -->
@@ -279,10 +205,10 @@
     <div class="mt-6 p-4 bg-blue-50 rounded-lg">
       <h4 class="text-sm font-medium text-blue-800 mb-2">使用说明</h4>
       <ul class="text-sm text-blue-700 list-disc list-inside space-y-1">
-        <li>纯数字（商品 ID / 货号）按原有方式查询库存，多个用逗号分隔可批量查询</li>
+        <li>输入单个纯数字商品 ID / 货号按原有方式查库存；一次只能查询一个</li>
         <li>输入含文字的关键词会搜索商品列表，点击商品进详情页查看实时库存与价格</li>
-        <li>关键词搜索使用当前账号的登录态，列表展示拿货价；点击卡片在新窗口打开详情页，搜索结果保留在原标签页</li>
-        <li>批量查询时，会显示成功和失败的商品列表及统计信息</li>
+        <li>库存查询与关键词搜索都使用当前账号登录态，展示真实拿货价</li>
+        <li>关键词搜索点击卡片在新窗口打开详情页，搜索结果保留在原标签页</li>
         <li>点击商品卡片或「查看 SKU 详情」可查看所有颜色尺码的库存</li>
         <li>到货监控、价格监控统一在商品详情页创建</li>
       </ul>
@@ -303,11 +229,9 @@ definePageMeta({
 // 使用库存查询 composable
 const {
   stockResult,
-  batchStockResults,
   isCheckingStock,
   stockError,
   checkStock,
-  checkStockBatch,
   goToProductDetail,
 } = useStock()
 
@@ -330,7 +254,6 @@ const lastKeyword = ref('')
 /** 切换搜索模式时清空两类结果，避免旧结果残留 */
 const clearResults = () => {
   stockResult.value = null
-  batchStockResults.value = null
   stockError.value = null
   keywordResults.value = null
   keywordError.value = null
@@ -367,22 +290,24 @@ const searchByKeyword = async (keyword: string, page: number, append: boolean) =
   }
 }
 
-// 搜索处理：纯数字走原有库存查询，其余走关键词搜索
+// 搜索处理：单个纯数字走原有库存查询，其余走关键词搜索
 const handleSearch = async () => {
   const query = searchQuery.value.trim()
   if (!query || isCheckingStock.value || isSearchingKeyword.value || isLoadingMore.value) {
     return
   }
 
+  // 批量 ID 查询已下线：明确提示，避免把多个 ID 当成关键词搜出空结果
+  const idParts = query.split(/[,，]/).map(part => part.trim()).filter(Boolean)
+  if (idParts.length > 1 && idParts.every(part => /^\d+$/.test(part))) {
+    toast.warning('一次只能查询一个商品 ID / 货号，批量查询已下线')
+    return
+  }
+
   if (isNumericProductQuery(query)) {
     lastSearchMode.value = 'stock'
     clearResults()
-    const productIds = query.split(/[,，]/).map(id => id.trim()).filter(id => id)
-    if (productIds.length > 1) {
-      await checkStockBatch(productIds)
-    } else {
-      await checkStock(productIds[0])
-    }
+    await checkStock(query)
   } else {
     lastSearchMode.value = 'keyword'
     lastKeyword.value = query

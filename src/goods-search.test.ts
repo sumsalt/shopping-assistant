@@ -7,12 +7,15 @@ import { isNumericProductQuery } from './utils/product-query';
 import { mapKeywordSearchResult, type YishouKeywordSearchData } from './adapters/yishou/mappers';
 
 describe('isNumericProductQuery - 库存查询页搜索分流', () => {
-  it('纯数字单个 / 批量（半角全角逗号、空格）走原有库存查询', () => {
+  it('单个纯数字（含首尾空格）走原有库存查询', () => {
     expect(isNumericProductQuery('1379202997')).toBe(true);
     expect(isNumericProductQuery('340210132')).toBe(true);
     expect(isNumericProductQuery(' 1379202997 ')).toBe(true);
-    expect(isNumericProductQuery('1379202997,1379200621')).toBe(true);
-    expect(isNumericProductQuery('1379202997， 1379200621')).toBe(true);
+  });
+
+  it('多个 ID（半角 / 全角逗号）不再走库存查询', () => {
+    expect(isNumericProductQuery('1379202997,1379200621')).toBe(false);
+    expect(isNumericProductQuery('1379202997， 1379200621')).toBe(false);
   });
 
   it('含文字 / 符号 / 混合输入 / 空串走关键词搜索', () => {

@@ -200,7 +200,8 @@ npx tsx scripts/migrate-tasks-v2.ts --apply     # 先 VACUUM INTO 备份，再�
 
 | 场景 | needAuth | 说明 |
 |---|---|---|
-| 库存查询 / Tab 监控 | false | 剔除 uid/token，走匿名限流桶 |
+| 库存查询（手动 API） | true | 带 uid/token，返回真实拿货价；无凭证直接 `AUTH_REQUIRED` |
+| Tab 监控（后台任务） | false | 剔除 uid/token，走匿名限流桶 |
 | 到货监控 | 仅自动下单时 true | 凭证只给下单链路；检测阶段在 `stock-monitor` 内再匿名化 |
 | SKU 详情 / 收藏夹 / 订单列表 / 价格监控 / 下单 | true | 无凭证直接返回 `AUTH_REQUIRED`，不等一手 201 |
 
@@ -217,9 +218,10 @@ npx tsx scripts/migrate-tasks-v2.ts --apply     # 先 VACUUM INTO 备份，再�
 - 任务详情不会下发凭证（创建时固化在 `secret` 列），凭证不随状态轮询传播。
 - **历史任务没有货号**时，前端降级为不可点、不显示「查看详情」，不做实时解析或回填
   （与 Tab 累计商品的降级口径一致）。
-- **匿名查询的价格口径**：一手对游客把 `shop_price` 返回成 `??.??`，但 `alone_price`
-  （单独购买价）仍是真实可售价格。映射层按 `shop_price → alone_price` 顺序取值，
-  回退时打上 `priceNote: '游客参考价'`，页面与邮件都会标注。
+- **匿名检测的价格口径**（后台到货检测仍匿名；手动库存查询已改登录态）：一手对游客把
+  `shop_price` 返回成 `??.??`，但 `alone_price`（单独购买价）仍是真实可售价格。
+  映射层按 `shop_price → alone_price` 顺序取值，回退时打上 `priceNote: '游客参考价'`，
+  页面与邮件都会标注。
 - `minPrice` / `maxPrice` 是**传给一手接口的筛选参数**，不是本地过滤。
 
 ## 九、部署
