@@ -80,6 +80,13 @@ export interface PlaceOrderParams {
    * 传入后只会在这些规格里找有货的那个下单，不会回退到未选中的规格。
    */
   skus?: string[];
+  /**
+   * 每个有货规格各买 1 件（多规格铺开），直到达到 config.num 的件数上限。
+   *
+   * 用于「手动一键下单」：不选规格，把所有有货 SKU 各下 1 件，总量受 config.num 约束。
+   * 默认 false 时沿用「从第一个有货规格起装满 N 件」的行为。
+   */
+  onePerSku?: boolean;
 }
 
 /** 预检结果（只准备结算 + 结算，不建单） */
@@ -118,6 +125,9 @@ export const DEFAULT_AUTO_ORDER_PAY_TOOL = '4';
 
 /** 单次最多购买件数（防止配置错误一下买一堆） */
 export const MAX_AUTO_ORDER_NUM = 99;
+
+/** 手动「一键下单」的件数上限：所有有货规格各 1 件，合计不超过此数 */
+export const MANUAL_ORDER_MAX_NUM = 5;
 
 /**
  * 建单失败后的冷却时长
@@ -193,10 +203,14 @@ const skuLabelOf = (sku: SkuInfo): string =>
  *
  * 「能买多少买多少」+ 合单：用户要 5 件、蓝色 1 件、黑色 1 件时，
  * 这一单就是 蓝色×1 + 黑色×1，而不是只买第一个规格的 1 件。
+ *
+ * onePerSku=true 时改为「每个有货规格各取 1 件」，直到凑满 requestedNum：
+ * 用于手动一键下单，把有货的规格都铺上，但总量不超过 requestedNum。
  */
 const allocateItems = (
   candidates: SkuInfo[],
-  requestedNum: number
+  requestedNum: number,
+  onePerSku = false
 ): Array<{ sku: SkuInfo; num: number }> => {
   const allocation: Array<{ sku: SkuInfo; num: number }> = [];
   let remaining = requestedNum;
@@ -205,7 +219,7 @@ const allocateItems = (
     if (remaining <= 0) break;
     const available = Math.floor(Number(item.saleStock) || 0);
     if (available <= 0) continue;
-    const take = Math.min(available, remaining);
+    const take = onePerSku ? Math.min(1, available, remaining) : Math.min(available, remaining);
     allocation.push({ sku: item, num: take });
     remaining -= take;
   }
@@ -261,7 +275,7 @@ const prepareOrder = async (
   adapter: AutoOrderAdapter,
   params: PlaceOrderParams
 ): Promise<PrepareOutcome> => {
-  const { goodsId, goodsNo, config, skus } = params;
+  const { goodsId, goodsNo, config, skus, onePerSku } = params;
   const requestedNum = normalizeNum(config.num);
   let num = requestedNum;
   const wantedSkus = (skus || []).filter(Boolean);
@@ -295,7 +309,7 @@ const prepareOrder = async (
         ? skuResult.skuList.filter(item => item.skuId === config.sku)
         : skuResult.skuList;
 
-    const allocation = allocateItems(candidates, requestedNum);
+    const allocation = allocateItems(candidates, requestedNum, Boolean(onePerSku));
 
     if (allocation.length === 0) {
       const hasFilter = wantedSkus.length > 0 || Boolean(config.sku);

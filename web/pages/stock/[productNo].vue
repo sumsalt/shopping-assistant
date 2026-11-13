@@ -136,6 +136,19 @@
               </UiButton>
 
               <UiButton
+                variant="danger"
+                size="sm"
+                :loading="isOrdering"
+                :disabled="isOrdering || skuResult.inStockSkuCount <= 0"
+                @click="handleManualOrder"
+              >
+                <svg class="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2 5h12m-6-3a1 1 0 100 2 1 1 0 000-2zm6 0a1 1 0 100 2 1 1 0 000-2z" />
+                </svg>
+                一键下单
+              </UiButton>
+
+              <UiButton
                 v-if="isMobileViewport"
                 variant="outline"
                 size="sm"
@@ -177,6 +190,9 @@
 </template>
 
 <script setup lang="ts">
+import type { AutoOrderResult } from '@core'
+import type { ApiResponse } from '@/types'
+
 // 页面元信息
 definePageMeta({
   title: 'SKU 详情',
@@ -197,6 +213,11 @@ const {
   skuError,
   getProductSkus,
 } = useStock()
+
+// 手动一键下单：所有有货规格各 1 件，合计不超过 5 件
+const toast = useToast()
+const { confirm: confirmDialog } = useConfirmDialog()
+const isOrdering = ref(false)
 
 // 到货监控配置弹窗（监控时长、是否自动下单都在弹窗里设置）
 const showStockMonitorDialog = ref(false)
@@ -255,6 +276,57 @@ const openPriceMonitor = () => {
     productNo: skuResult.value.productNo,
   }
   showPriceDialog.value = true
+}
+
+// 一键下单：不选规格，所有有货 SKU 各 1 件（最多 5 件），建单后去一手 App 付款
+const handleManualOrder = async () => {
+  const result = skuResult.value
+  if (!result || isOrdering.value) {
+    return
+  }
+
+  if (result.inStockSkuCount <= 0) {
+    toast.warning('当前没有有货的规格，无法下单')
+    return
+  }
+
+  const confirmed = await confirmDialog({
+    title: '确认下单',
+    message: `将为「${result.productName}」所有有货规格各下 1 件（最多 5 件）。下单会立即锁定库存，需到一手 App 内完成付款。`,
+    type: 'warning',
+    confirmText: '确认下单',
+    cancelText: '取消',
+  })
+  if (!confirmed) {
+    return
+  }
+
+  isOrdering.value = true
+  try {
+    const response = await $fetch<ApiResponse<AutoOrderResult>>('/api/order/manual', {
+      method: 'POST',
+      body: { goodsId: result.productId, goodsNo: result.productNo },
+    })
+
+    if (response.success && response.data) {
+      const order = response.data
+      if (order.success) {
+        const amountText =
+          typeof order.orderAmount === 'number' ? `，应付 ¥${order.orderAmount.toFixed(2)}` : ''
+        toast.success(
+          `已创建订单 ${order.orderSn ?? ''}（${order.num ?? 0} 件${amountText}），请到一手 App 付款`
+        )
+      } else {
+        toast.error(order.message || '下单失败')
+      }
+    } else {
+      toast.error(response.error?.message || '下单失败')
+    }
+  } catch (error) {
+    toast.error(error instanceof Error ? error.message : '网络请求失败')
+  } finally {
+    isOrdering.value = false
+  }
 }
 
 // 格式化销量

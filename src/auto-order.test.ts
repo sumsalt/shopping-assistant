@@ -290,6 +290,71 @@ describe('placeAutoOrder', () => {
     expect(result.num).toBe(5)
   })
 
+  it('一键下单：每个有货规格各 1 件，合计不超过 5 件', async () => {
+    // 7 个都有货的规格，上限 5 → 只铺前 5 个规格、各 1 件
+    const adapter = createAdapter({
+      getProductSkus: vi.fn().mockResolvedValue(skuResult([2, 3, 1, 1, 4, 2, 1])),
+      prepareCheckout: vi.fn().mockResolvedValue(
+        checkoutReady({
+          items: [
+            { sku: '850000', num: 1 },
+            { sku: '850001', num: 1 },
+            { sku: '850002', num: 1 },
+            { sku: '850003', num: 1 },
+            { sku: '850004', num: 1 },
+          ],
+          num: 5,
+        })
+      ),
+    })
+    const result = await placeAutoOrder(adapter, {
+      ...params,
+      config: { enabled: true, num: 5 },
+      onePerSku: true,
+    })
+
+    expect(result.success).toBe(true)
+    // 每个规格只取 1 件（不会把第一个规格的 2/3 件一次买光）
+    expect(prepareArgs(adapter).lines).toEqual([
+      { sku: '850000', num: 1 },
+      { sku: '850001', num: 1 },
+      { sku: '850002', num: 1 },
+      { sku: '850003', num: 1 },
+      { sku: '850004', num: 1 },
+    ])
+    expect(result.num).toBe(5)
+    expect(result.items?.every(item => item.num === 1)).toBe(true)
+  })
+
+  it('一键下单：有货规格少于上限时全部各 1 件', async () => {
+    // 3 个规格有货、1 个无货 → 只下 3 个有货规格各 1 件
+    const adapter = createAdapter({
+      getProductSkus: vi.fn().mockResolvedValue(skuResult([1, 0, 2])),
+      prepareCheckout: vi.fn().mockResolvedValue(
+        checkoutReady({
+          items: [
+            { sku: '850000', num: 1 },
+            { sku: '850002', num: 1 },
+          ],
+          num: 2,
+        })
+      ),
+    })
+    const result = await placeAutoOrder(adapter, {
+      ...params,
+      config: { enabled: true, num: 5 },
+      onePerSku: true,
+    })
+
+    expect(result.success).toBe(true)
+    expect(prepareArgs(adapter).lines).toEqual([
+      { sku: '850000', num: 1 },
+      { sku: '850002', num: 1 },
+    ])
+    expect(result.num).toBe(2)
+    expect(result.numReduced).toBe(true)
+  })
+
   it('结算时某个规格卖完，只下剩下的规格', async () => {
     const adapter = createAdapter({
       getProductSkus: vi.fn().mockResolvedValue(skuResult([1, 1])),

@@ -24,7 +24,7 @@ export {
   DEFAULT_WX_ADAPTER_CONFIG,
 } from './adapter-config';
 export type { StoredRequestProfile } from './adapter-config';
-export { placeAutoOrder, precheckAutoOrder, DEFAULT_AUTO_ORDER_PAY_TOOL, MAX_AUTO_ORDER_NUM } from './auto-order';
+export { placeAutoOrder, precheckAutoOrder, DEFAULT_AUTO_ORDER_PAY_TOOL, MAX_AUTO_ORDER_NUM, MANUAL_ORDER_MAX_NUM } from './auto-order';
 export type { AutoOrderAdapter, PlaceOrderParams, PrecheckOrderResult } from './auto-order';
 export type { PlatformAdapter, AdapterConfig, RenewOrderAdapter, AuthCheckResult } from './adapters';
 
