@@ -136,27 +136,47 @@ export const renewDefinition: TaskKindDefinition<RenewTaskState> = {
 
     const duration = ctx.durationSeconds ?? state.config.duration
 
+    // 续跑时保留历史累计：monitor 回调里的 result 只统计本次运行
+    const base = {
+      checkCount: state.checkCount,
+      scannedCount: state.scannedCount,
+      renewedCount: state.renewedCount,
+      skippedCount: state.skippedCount,
+      finishedCount: state.finishedCount,
+    }
+
     return createCancellableOrderRenewMonitor(
       adapter,
-      { duration, ...(adapterConfig ? { adapterConfig } : {}) },
+      {
+        duration,
+        ...(adapterConfig ? { adapterConfig } : {}),
+        logger: (message, level) => ctx.log(message, level),
+      },
       result => {
-        state.checkCount = result.checkCount
-        state.scannedCount = result.scannedCount
-        state.renewedCount = result.renewedCount
-        state.skippedCount = result.skippedCount
-        state.finishedCount = result.finishedCount
+        state.checkCount = base.checkCount + result.checkCount
+        state.scannedCount = base.scannedCount + result.scannedCount
+        state.renewedCount = base.renewedCount + result.renewedCount
+        state.skippedCount = base.skippedCount + result.skippedCount
+        state.finishedCount = base.finishedCount + result.finishedCount
         state.lastError = result.error
         state.lastScanAt = result.lastScanAt
+        // 本次运行的续期记录 + 历史事件按 id 去重合并：
+        // 重启后 recentRenewals 从空开始，直接覆盖会把历史续期记录抹掉
+        const merged = new Map<string, TaskEvent>()
+        for (const event of [
+          ...renewalEvents(record.id, result.recentRenewals),
+          ...state.events,
+        ]) {
+          if (!merged.has(event.id)) merged.set(event.id, event)
+        }
         state.events = capEvents(
-          [...renewalEvents(record.id, result.recentRenewals), ...state.events.filter(
-            item => item.type !== 'renew.succeeded' && item.type !== 'renew.finished'
-          )].sort((a, b) => b.at - a.at),
+          [...merged.values()].sort((a, b) => b.at - a.at),
           MAX_EVENTS
         )
         ctx.save()
       },
       progress => {
-        state.checkCount = progress.checkCount
+        state.checkCount = base.checkCount + progress.checkCount
         ctx.save()
       }
     )

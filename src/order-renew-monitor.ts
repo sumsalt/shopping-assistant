@@ -38,6 +38,13 @@ export const RENEW_MAX_PAGES = 20;
 export const RENEW_MAX_ORDERS_PER_ROUND = 200;
 /** 同一次扫描内相邻请求的最小间隔（毫秒） */
 export const RENEW_REQUEST_GAP_MS = 300;
+/**
+ * 两次 reload（写操作）之间的最小间隔（毫秒）
+ *
+ * reload 是写操作，连续提交同一账号的多笔订单容易被服务端限流；
+ * 读请求（列表 / confirm）仍按 {@link RENEW_REQUEST_GAP_MS} 走。
+ */
+export const RENEW_WRITE_GAP_MS = 5_000;
 /** 订单列表每页条数（一手硬上限） */
 export const RENEW_PAGE_SIZE = 10;
 /** 最近续期记录保留条数 */
@@ -57,6 +64,9 @@ export interface OrderRenewMonitorConfig {
   maxPages?: number;
   maxOrdersPerRound?: number;
   requestGapMs?: number;
+  writeGapMs?: number;
+  /** 运行日志，默认丢弃；web 层注入 ctx.log 后写入 PM2 */
+  logger?: (message: string, level?: 'info' | 'warn' | 'error') => void;
 }
 
 /** 一条续期记录（落盘展示用，全部用 number 时间戳） */
@@ -195,6 +205,8 @@ export const createCancellableOrderRenewMonitor = (
   const maxPages = config.maxPages ?? RENEW_MAX_PAGES;
   const maxOrders = config.maxOrdersPerRound ?? RENEW_MAX_ORDERS_PER_ROUND;
   const gapMs = config.requestGapMs ?? RENEW_REQUEST_GAP_MS;
+  const writeGapMs = config.writeGapMs ?? RENEW_WRITE_GAP_MS;
+  const logger = config.logger;
   const duration = config.duration;
 
   const result: OrderRenewMonitorResult = {
@@ -212,26 +224,40 @@ export const createCancellableOrderRenewMonitor = (
   /** 本轮告警（如缺快递 / 地址、有效期未后移），成功轮才清空上一轮的错误 */
   let roundWarning: string | undefined;
 
+  /** 单轮处理结果：用于日志与统计 */
+  type OrderOutcome =
+    | 'renewed'
+    | 'finished'
+    | 'not-due'
+    | 'cooldown'
+    | 'expired'
+    | 'no-address'
+    | 'failed';
+
   const recordRenewal = (record: OrderRenewalRecord) => {
     result.recentRenewals.unshift(record);
     result.recentRenewals = result.recentRenewals.slice(0, RENEW_RECENT_LIMIT);
   };
 
-  const processOrder = async (order: OrderListItem, now: number): Promise<void> => {
+  const processOrder = async (order: OrderListItem, now: number): Promise<OrderOutcome> => {
     const orderSn = String(order.orderSn || '').trim();
-    if (!orderSn || finishedOrders.has(orderSn)) return;
+    if (!orderSn || finishedOrders.has(orderSn)) return 'expired';
 
     if ((cooldownUntil.get(orderSn) ?? 0) > now) {
       result.skippedCount++;
-      return;
+      return 'cooldown';
     }
 
     // 初筛：本地时钟只用于「明显还有很久 / 已过期」的快速排除
     if (order.cancelExpireAt !== undefined) {
       const localRemaining = order.cancelExpireAt - now;
-      if (localRemaining <= 0 || localRemaining >= thresholdSeconds * 1000) {
+      if (localRemaining <= 0) {
         result.skippedCount++;
-        return;
+        return 'expired';
+      }
+      if (localRemaining >= thresholdSeconds * 1000) {
+        result.skippedCount++;
+        return 'not-due';
       }
     }
 
@@ -246,12 +272,13 @@ export const createCancellableOrderRenewMonitor = (
 
     if (remaining === undefined || remaining <= 0 || remaining >= thresholdSeconds) {
       result.skippedCount++;
-      return;
+      return remaining !== undefined && remaining >= thresholdSeconds ? 'not-due' : 'expired';
     }
     if (!confirmed.hasAddress || !confirmed.hasExpress) {
       result.skippedCount++;
       roundWarning = `订单 ${orderSn} 缺少默认地址或可用快递，跳过续期`;
-      return;
+      logger?.(`订单 ${orderSn} 缺少默认地址或可用快递，跳过续期`, 'warn');
+      return 'no-address';
     }
 
     const renewed = await adapter.reloadWaitPayOrder(confirmed.protocol);
@@ -293,10 +320,19 @@ export const createCancellableOrderRenewMonitor = (
       result.renewedCount++;
       if (verified === false) {
         roundWarning = `订单 ${orderSn} 续期后支付截止未后移，请人工核对续期流程`;
+        logger?.(`订单 ${orderSn} 续期后支付截止未后移`, 'warn');
       }
     }
 
     recordRenewal(record);
+
+    logger?.(
+      `订单 ${orderSn} 续期${renewed.finished ? '结束' : '成功'}：剩余 ${remaining}s → 截止 ${
+        expireAfter !== undefined ? new Date(expireAfter).toLocaleString('zh-CN') : '未知'
+      }`
+    );
+
+    return renewed.finished ? 'finished' : 'renewed';
   };
 
   const promise = (async (): Promise<OrderRenewMonitorResult> => {
@@ -312,10 +348,36 @@ export const createCancellableOrderRenewMonitor = (
       let roundError: string | undefined;
 
       try {
-        const orders = await scanWaitPayOrders(adapter, maxPages, maxOrders, gapMs, signal);
-        result.scannedCount += orders.length;
+        const scanned = await scanWaitPayOrders(adapter, maxPages, maxOrders, gapMs, signal);
+        result.scannedCount += scanned.length;
+
+        /**
+         * 剩余越少越先续
+         *
+         * 列表顺序通常按创建时间倒序，快过期的可能排在后面；一旦写操作被限流，
+         * 排在后面的单就会一直续不上。按服务端给的支付截止升序处理，
+         * 保证「本轮所有进入窗口的订单」按紧急程度依次提交。
+         */
+        const orders = [...scanned].sort(
+          (a, b) =>
+            (a.cancelExpireAt ?? Number.MAX_SAFE_INTEGER) -
+            (b.cancelExpireAt ?? Number.MAX_SAFE_INTEGER)
+        );
+
+        const round = {
+          renewed: 0,
+          finished: 0,
+          notDue: 0,
+          cooldown: 0,
+          expired: 0,
+          noAddress: 0,
+          failed: 0,
+        };
 
         const seenThisRound = new Set<string>();
+        /** 本轮续期失败的单：轮末统一重试一次，避免 60 秒空窗把订单拖过期 */
+        const failedOrders: OrderListItem[] = [];
+
         for (const order of orders) {
           if (signal.aborted) break;
           const orderSn = String(order.orderSn || '').trim();
@@ -325,15 +387,73 @@ export const createCancellableOrderRenewMonitor = (
           }
           seenThisRound.add(orderSn);
 
+          let wrote = false;
           try {
-            await processOrder(order, Date.now());
+            const outcome = await processOrder(order, Date.now());
+            if (outcome === 'renewed') round.renewed++;
+            else if (outcome === 'finished') round.finished++;
+            else if (outcome === 'not-due') round.notDue++;
+            else if (outcome === 'cooldown') round.cooldown++;
+            else if (outcome === 'no-address') round.noAddress++;
+            else round.expired++;
+            wrote = outcome === 'renewed' || outcome === 'finished';
           } catch (error) {
             // 凭据失效是全局问题，向上抛让主循环停止
             if (isAuthError(error)) throw error;
+            round.failed++;
+            failedOrders.push(order);
             roundError = errorMessage(error);
+            logger?.(`订单 ${orderSn} 续期失败：${roundError}`, 'warn');
           }
 
-          await sleepInterruptible(gapMs, signal);
+          // 写操作之间留更长间隔，避免同一账号连续 reload 被服务端限流
+          await sleepInterruptible(wrote ? Math.max(gapMs, writeGapMs) : gapMs, signal);
+        }
+
+        /**
+         * 轮末重试
+         *
+         * 同一账号连续 reload 时服务端可能短暂拒绝（上笔还在「支付中」），
+         * 失败的单不设冷却，隔一段时间在本轮内再试一次；
+         * 仍失败就留到下一轮，避免「一轮只续上一单」。
+         */
+        if (failedOrders.length > 0 && !signal.aborted) {
+          logger?.(`本轮 ${failedOrders.length} 单续期失败，${writeGapMs}ms 后重试`)
+          await sleepInterruptible(writeGapMs, signal)
+
+          const retry = { renewed: 0, finished: 0, failed: 0 };
+          for (const order of failedOrders) {
+            if (signal.aborted) break;
+            const orderSn = String(order.orderSn || '').trim();
+            try {
+              const outcome = await processOrder(order, Date.now());
+              if (outcome === 'renewed') retry.renewed++;
+              else if (outcome === 'finished') retry.finished++;
+            } catch (error) {
+              if (isAuthError(error)) throw error;
+              retry.failed++;
+              roundError = errorMessage(error);
+              logger?.(`订单 ${orderSn} 重试仍失败：${roundError}`, 'warn');
+            }
+            await sleepInterruptible(Math.max(gapMs, writeGapMs), signal);
+          }
+
+          round.renewed += retry.renewed;
+          round.finished += retry.finished;
+          round.failed = retry.failed;
+          if (retry.failed === 0) {
+            roundError = undefined;
+          }
+        }
+
+        const candidates = round.renewed + round.finished + round.noAddress + round.failed;
+        const acted = candidates > 0;
+        if (acted || result.checkCount % 10 === 0) {
+          logger?.(
+            `第 ${result.checkCount} 轮：扫描 ${scanned.length} 单，候选 ${candidates}，`
+              + `续期 ${round.renewed}，结束 ${round.finished}，失败 ${round.failed}，`
+              + `未到窗口 ${round.notDue}，冷却 ${round.cooldown}，已过期 ${round.expired}`
+          );
         }
       } catch (error) {
         roundError = errorMessage(error);

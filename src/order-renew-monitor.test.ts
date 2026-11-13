@@ -12,6 +12,7 @@ import {
   RENEW_COOLDOWN_MS,
   RENEW_MAX_PAGES,
   RENEW_PAGE_SIZE,
+  RENEW_SCAN_INTERVAL_SECONDS,
   type OrderRenewMonitorConfig,
   type OrderRenewMonitorResult,
 } from './order-renew-monitor'
@@ -93,6 +94,9 @@ const defaultConfig: OrderRenewMonitorConfig = {
   intervalSeconds: 60,
   duration: 60,
   requestGapMs: 0,
+  // 单测只推进 0ms，写间隔必须关掉，否则用例会挂在 sleep 上；
+  // 生产默认 1500ms 由 RENEW_WRITE_GAP_MS 提供。
+  writeGapMs: 0,
 }
 
 const runOneRound = async (
@@ -269,6 +273,41 @@ describe('单轮去重与串行', () => {
     expect(result.renewedCount).toBe(2)
     expect(result.recentRenewals.map(r => r.orderSn)).toEqual(['B', 'A'])
   })
+
+  it('同一轮内所有进入窗口的订单都会续期，按剩余时长升序', async () => {
+    const adapter = makeAdapter()
+    // 列表按创建时间倒序：最新下的 D 在前，但最紧急的是 A
+    adapter.getOrderList.mockResolvedValue(
+      pageResult([order('D', 240), order('C', 200), order('B', 120), order('A', 60)])
+    )
+    const remainingOf: Record<string, number> = { A: 60, B: 120, C: 200, D: 240 }
+    adapter.confirmWaitPayOrder.mockImplementation((sn: string) =>
+      Promise.resolve(confirmed(sn, remainingOf[sn])))
+    adapter.reloadWaitPayOrder.mockImplementation((p: unknown) =>
+      Promise.resolve(renewed((p as { mock: string }).mock)))
+
+    const result = await runOneRound(adapter)
+    expect(adapter.confirmWaitPayOrder.mock.calls.map(c => c[0])).toEqual(['A', 'B', 'C', 'D'])
+    expect(result.renewedCount).toBe(4)
+  })
+
+  it('单笔缺地址只跳过该单，同一轮其他订单继续续期', async () => {
+    const adapter = makeAdapter()
+    adapter.getOrderList.mockResolvedValue(pageResult([order('A', 60), order('B', 90), order('C', 120)]))
+    adapter.confirmWaitPayOrder.mockImplementation((sn: string) =>
+      Promise.resolve(
+        sn === 'B'
+          ? confirmed(sn, 90, { hasAddress: false })
+          : confirmed(sn, sn === 'A' ? 60 : 120)
+      ))
+    adapter.reloadWaitPayOrder.mockImplementation((p: unknown) =>
+      Promise.resolve(renewed((p as { mock: string }).mock)))
+
+    const result = await runOneRound(adapter)
+    expect(adapter.reloadWaitPayOrder).toHaveBeenCalledTimes(2)
+    expect(result.renewedCount).toBe(2)
+    expect(result.skippedCount).toBe(1)
+  })
 })
 
 describe('冷却（防止有效期未刷新时重复提交）', () => {
@@ -310,7 +349,7 @@ describe('冷却（防止有效期未刷新时重复提交）', () => {
 })
 
 describe('失败语义', () => {
-  it('reload 失败不中断循环，下一轮重试', async () => {
+  it('reload 失败后本轮立即重试，成功后不再报错', async () => {
     const adapter = makeAdapter()
     adapter.getOrderList.mockImplementation(() => Promise.resolve(pageResult([liveOrder('A')])))
     adapter.confirmWaitPayOrder.mockResolvedValue(confirmed('A', 60))
@@ -323,10 +362,33 @@ describe('失败语义', () => {
       adapter, { ...defaultConfig, duration: 1000 }, r => results.push({ ...r })
     )
     await vi.advanceTimersByTimeAsync(0)
-    expect(results[0].error).toMatch(/网络抖动/)
-
-    await vi.advanceTimersByTimeAsync(60_000)
     expect(adapter.reloadWaitPayOrder).toHaveBeenCalledTimes(2)
+    expect(results[0].renewedCount).toBe(1)
+    expect(results[0].error).toBeUndefined()
+
+    monitor.controller.abort()
+    await monitor.promise
+  })
+
+  it('重试仍失败时保留错误，下一轮继续尝试', async () => {
+    const adapter = makeAdapter()
+    adapter.getOrderList.mockImplementation(() => Promise.resolve(pageResult([liveOrder('A')])))
+    adapter.confirmWaitPayOrder.mockResolvedValue(confirmed('A', 60))
+    adapter.reloadWaitPayOrder.mockRejectedValue(new Error('网络抖动'))
+
+    const results: OrderRenewMonitorResult[] = []
+    const monitor = createCancellableOrderRenewMonitor(
+      adapter, { ...defaultConfig, duration: 60_000 }, r => results.push({ ...r })
+    )
+    await vi.advanceTimersByTimeAsync(0)
+    // 首轮 + 轮末重试各一次
+    expect(adapter.reloadWaitPayOrder).toHaveBeenCalledTimes(2)
+    expect(results[0].error).toMatch(/网络抖动/)
+    expect(results[0].renewedCount).toBe(0)
+
+    // 下一轮仍会继续尝试
+    await vi.advanceTimersByTimeAsync(RENEW_SCAN_INTERVAL_SECONDS * 1000)
+    expect(adapter.reloadWaitPayOrder.mock.calls.length).toBeGreaterThan(2)
 
     monitor.controller.abort()
     await monitor.promise
