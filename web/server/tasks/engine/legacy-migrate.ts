@@ -126,6 +126,10 @@ export const migratePrice = (raw: Raw): MigratedTask => {
                 : {}),
               shopPrice: num(raw.snapshot.shopPrice),
               checkedAt: num(raw.snapshot.checkedAt),
+              ...(Array.isArray(raw.snapshot.coupons) ? { coupons: raw.snapshot.coupons } : {}),
+              ...(Array.isArray(raw.snapshot.couponsNew)
+                ? { couponsNew: raw.snapshot.couponsNew }
+                : {}),
             },
           }
         : {}),

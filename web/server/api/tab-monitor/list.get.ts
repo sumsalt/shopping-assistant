@@ -1,4 +1,4 @@
-import { listTaskHandler } from '../../tasks/handlers'
-import { tabDefinition, tabTasks } from '../../tasks/tab'
+import { listTaskHandler } from '../../tasks/engine/handlers'
+import { tabService } from '../../tasks/kinds'
 
-export default listTaskHandler(tabDefinition, tabTasks)
+export default listTaskHandler(tabService)

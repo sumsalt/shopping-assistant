@@ -1,4 +1,4 @@
-import { listTaskHandler } from '../../tasks/handlers'
-import { renewDefinition, renewTasks } from '../../tasks/renew'
+import { listTaskHandler } from '../../tasks/engine/handlers'
+import { renewService } from '../../tasks/kinds'
 
-export default listTaskHandler(renewDefinition, renewTasks)
+export default listTaskHandler(renewService)

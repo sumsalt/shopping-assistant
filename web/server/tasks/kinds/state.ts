@@ -67,6 +67,9 @@ export interface PriceTaskState {
     productImage?: string
     shopPrice: number
     checkedAt: number
+    /** 重启后复用，避免把已有优惠券当成「新增」再提醒一次 */
+    coupons?: Array<{ couponId: string; typeTitle: string; title: string }>
+    couponsNew?: Array<{ couponId: string; threshold: number; reduce: number }>
   }
   order?: OrderBrief
   orderError?: string

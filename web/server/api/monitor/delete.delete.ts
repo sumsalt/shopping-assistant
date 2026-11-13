@@ -1,4 +1,4 @@
-import { deleteTaskHandler } from '../../tasks/handlers'
-import { stockDefinition, stockTasks } from '../../tasks/stock'
+import { deleteTaskHandler } from '../../tasks/engine/handlers'
+import { stockService } from '../../tasks/kinds'
 
-export default deleteTaskHandler(stockDefinition, stockTasks)
+export default deleteTaskHandler(stockService)

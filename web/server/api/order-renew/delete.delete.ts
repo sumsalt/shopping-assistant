@@ -1,4 +1,4 @@
-import { deleteTaskHandler } from '../../tasks/handlers'
-import { renewDefinition, renewTasks } from '../../tasks/renew'
+import { deleteTaskHandler } from '../../tasks/engine/handlers'
+import { renewService } from '../../tasks/kinds'
 
-export default deleteTaskHandler(renewDefinition, renewTasks)
+export default deleteTaskHandler(renewService)

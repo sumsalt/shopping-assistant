@@ -9,8 +9,8 @@ import { defineEventHandler, readBody } from 'h3'
 import { createErrorResponse, createSuccessResponse, ErrorCode } from '../../utils/response'
 import { getCurrentUser } from '../../utils/session'
 import { createRenewTaskForAccount } from '../../tasks/auto-renew'
-import { renewDefinition } from '../../tasks/renew'
-import { TaskApiError } from '../../tasks/types'
+import { renewDefinition } from '../../tasks/kinds/renew'
+import { TaskApiError } from '../../tasks/engine/types'
 
 export default defineEventHandler(async (event) => {
   try {
@@ -26,7 +26,11 @@ export default defineEventHandler(async (event) => {
       source: 'manual',
     })
 
-    return createSuccessResponse(renewDefinition.createdView(record, 'created'))
+    return createSuccessResponse({
+      taskId: record.id,
+      task: renewDefinition.project(record, { full: true }),
+      message: '订单续期任务已启动',
+    })
   } catch (error) {
     if (error instanceof TaskApiError) {
       return createErrorResponse(error.code, error.message)

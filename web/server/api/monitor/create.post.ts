@@ -1,4 +1,4 @@
-import { createTaskHandler } from '../../tasks/handlers'
-import { stockDefinition, stockTasks } from '../../tasks/stock'
+import { createTaskHandler } from '../../tasks/engine/handlers'
+import { stockService } from '../../tasks/kinds'
 
-export default createTaskHandler(stockDefinition, stockTasks)
+export default createTaskHandler(stockService)

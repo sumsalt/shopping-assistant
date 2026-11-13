@@ -1,4 +1,4 @@
-import { restartTaskHandler } from '../../tasks/handlers'
-import { renewDefinition, renewTasks } from '../../tasks/renew'
+import { restartTaskHandler } from '../../tasks/engine/handlers'
+import { renewService } from '../../tasks/kinds'
 
-export default restartTaskHandler(renewDefinition, renewTasks)
+export default restartTaskHandler(renewService)

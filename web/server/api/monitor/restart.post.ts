@@ -1,4 +1,4 @@
-import { restartTaskHandler } from '../../tasks/handlers'
-import { stockDefinition, stockTasks } from '../../tasks/stock'
+import { restartTaskHandler } from '../../tasks/engine/handlers'
+import { stockService } from '../../tasks/kinds'
 
-export default restartTaskHandler(stockDefinition, stockTasks)
+export default restartTaskHandler(stockService)

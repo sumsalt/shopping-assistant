@@ -1,4 +1,4 @@
-import { statusTaskHandler } from '../../tasks/handlers'
-import { tabDefinition, tabTasks } from '../../tasks/tab'
+import { statusTaskHandler } from '../../tasks/engine/handlers'
+import { tabService } from '../../tasks/kinds'
 
-export default statusTaskHandler(tabDefinition, tabTasks)
+export default statusTaskHandler(tabService)

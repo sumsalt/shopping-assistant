@@ -53,6 +53,10 @@ export interface TaskCreateInput {
 export interface TaskRunContext {
   /** 立即落盘 / 节流落盘 */
   save(mode?: 'now' | 'soon'): void
+  /** 是否重启后续跑（用于保留已见集合、统计） */
+  resume: boolean
+  /** 续跑时的剩余时长（秒）；新任务为空，由 state.config.duration 决定 */
+  durationSeconds?: number
   /** 运行日志（统一带任务前缀） */
   log(message: string, level?: 'info' | 'warn' | 'error'): void
 }
@@ -77,7 +81,17 @@ export interface TaskKindDefinition<S> {
   version: number
 
   /** 创建时是否需要登录态（决定服务端解析完整快照还是匿名快照） */
-  requiresAuth(body: unknown): boolean
+  requiresAuth(body: any): boolean
+
+  /**
+   * 覆盖「用哪个账号创建」
+   *
+   * 默认取当前激活账号；续期这类任务需要用户显式选账号，由定义自己解析并校验归属。
+   */
+  resolveAccount?(input: {
+    body: any
+    user: { username: string; email: string }
+  }): { accountId: string; secret: AdapterConfig; hasCredential: boolean }
 
   /** 校验输入 + 建立初始状态（可发一次基线请求） */
   create(input: TaskCreateInput): Promise<{ state: S }> | { state: S }
@@ -91,8 +105,11 @@ export interface TaskKindDefinition<S> {
   /** 重新发起：以原任务为模板生成新状态 */
   restart(record: TaskRecordBase<S>): { state: S }
 
-  /** 任务时长（秒），用于重启后计算剩余时长；Infinity/undefined 表示不限时 */
+  /** 任务时长（秒），用于重启后计算剩余时长；undefined 表示不限时 */
   durationOf(record: TaskRecordBase<S>): number | undefined
+
+  /** 生效时段：配置后，休眠时间不消耗时长（Tab 任务） */
+  activeWindowOf?(record: TaskRecordBase<S>): { start: string; end: string } | undefined
 
   /** 创建前查重（抛 TaskApiError） */
   uniqueness?(record: TaskRecordBase<S>, all: TaskRecordBase<S>[]): void
@@ -105,6 +122,9 @@ export interface TaskKindDefinition<S> {
    * 返回 false 表示不续跑（已到期 / 已下单 / 结果未知），由 service 标记结束。
    */
   restore?(record: TaskRecordBase<S>, remainingSeconds: number): boolean
+
+  /** 恢复前的查重（例如续期同账号只能有一个 running） */
+  canRestore?(record: TaskRecordBase<S>, all: TaskRecordBase<S>[]): boolean
 }
 
 /** 业务错误：由 HTTP 层统一转响应 */

@@ -1,4 +1,4 @@
-import { createTaskHandler } from '../../tasks/handlers'
-import { priceDefinition, priceTasks } from '../../tasks/price'
+import { createTaskHandler } from '../../tasks/engine/handlers'
+import { priceService } from '../../tasks/kinds'
 
-export default createTaskHandler(priceDefinition, priceTasks)
+export default createTaskHandler(priceService)

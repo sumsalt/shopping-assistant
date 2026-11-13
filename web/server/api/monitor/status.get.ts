@@ -1,4 +1,4 @@
-import { statusTaskHandler } from '../../tasks/handlers'
-import { stockDefinition, stockTasks } from '../../tasks/stock'
+import { statusTaskHandler } from '../../tasks/engine/handlers'
+import { stockService } from '../../tasks/kinds'
 
-export default statusTaskHandler(stockDefinition, stockTasks)
+export default statusTaskHandler(stockService)

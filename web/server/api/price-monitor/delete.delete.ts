@@ -1,4 +1,4 @@
-import { deleteTaskHandler } from '../../tasks/handlers'
-import { priceDefinition, priceTasks } from '../../tasks/price'
+import { deleteTaskHandler } from '../../tasks/engine/handlers'
+import { priceService } from '../../tasks/kinds'
 
-export default deleteTaskHandler(priceDefinition, priceTasks)
+export default deleteTaskHandler(priceService)

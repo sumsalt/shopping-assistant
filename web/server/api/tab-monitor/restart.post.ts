@@ -1,4 +1,4 @@
-import { restartTaskHandler } from '../../tasks/handlers'
-import { tabDefinition, tabTasks } from '../../tasks/tab'
+import { restartTaskHandler } from '../../tasks/engine/handlers'
+import { tabService } from '../../tasks/kinds'
 
-export default restartTaskHandler(tabDefinition, tabTasks)
+export default restartTaskHandler(tabService)

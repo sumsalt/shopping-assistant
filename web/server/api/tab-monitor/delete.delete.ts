@@ -1,4 +1,4 @@
-import { deleteTaskHandler } from '../../tasks/handlers'
-import { tabDefinition, tabTasks } from '../../tasks/tab'
+import { deleteTaskHandler } from '../../tasks/engine/handlers'
+import { tabService } from '../../tasks/kinds'
 
-export default deleteTaskHandler(tabDefinition, tabTasks)
+export default deleteTaskHandler(tabService)
