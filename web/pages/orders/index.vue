@@ -110,9 +110,9 @@
             <UiBadge :variant="statusVariant(order.statusName)" size="sm">
               {{ order.statusName || '未知状态' }}
             </UiBadge>
-            <!-- 待付款订单：按支付截止时间实时倒数 -->
+            <!-- 仅待付款订单：按支付截止时间实时倒数 -->
             <span
-              v-if="remainingSeconds(order.cancelExpireAt) !== null"
+              v-if="isWaitPay(order) && remainingSeconds(order.cancelExpireAt) !== null"
               :class="['text-xs tabular-nums', remainingClass(remainingSeconds(order.cancelExpireAt) || 0)]"
             >
               {{ remainingLabel(order.cancelExpireAt) }}
@@ -277,8 +277,9 @@ watch(status, () => {
 /**
  * 支付倒计时
  *
- * 一手只在待付款订单上给 cancelExpireAt（毫秒时间戳），列表里其它状态没有，
- * 所以有值就说明这单还没付款。秒级刷新一个 now，所有订单共用。
+ * 一手对「交易关闭」等非待付款订单也会返回 cancelExpireAt（实测关闭单仍带着未来的
+ * 截止时间），所以不能只看有没有截止时间，必须先用 isWaitPay 过滤状态。
+ * 秒级刷新一个 now，所有订单共用。
  */
 const now = ref(Date.now())
 let ticker: ReturnType<typeof setInterval> | null = null
@@ -292,6 +293,10 @@ onMounted(() => {
 onBeforeUnmount(() => {
   if (ticker) clearInterval(ticker)
 })
+
+/** 是否待付款：只有这类订单才该显示支付倒计时 */
+const isWaitPay = (order: { status: string; statusName: string }): boolean =>
+  order.status === 'wait_pay' || /待付款|待支付|等待付款/.test(order.statusName || '')
 
 /** 剩余秒数；没有截止时间返回 null（不显示） */
 const remainingSeconds = (expireAt?: number): number | null => {
