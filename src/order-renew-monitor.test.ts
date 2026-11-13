@@ -165,6 +165,29 @@ describe('翻页', () => {
     await runOneRound(adapter)
     expect(adapter.getOrderList).toHaveBeenCalledWith(1, RENEW_PAGE_SIZE, 'wait_pay')
   })
+
+  it('待付款超过 10 单时，跨页订单全部进入本轮处理', async () => {
+    const adapter = makeAdapter()
+    const page1 = Array.from({ length: RENEW_PAGE_SIZE }, (_, i) => order(`A${i}`, 60))
+    const page2 = [order('B1', 60), order('B2', 60), order('B3', 60)]
+
+    adapter.getOrderList
+      .mockResolvedValueOnce(pageResult(page1, true))
+      .mockResolvedValueOnce(pageResult(page2, false))
+    adapter.confirmWaitPayOrder.mockImplementation((sn: string) =>
+      Promise.resolve(confirmed(sn, 60)))
+    adapter.reloadWaitPayOrder.mockImplementation((p: unknown) =>
+      Promise.resolve(renewed((p as { mock: string }).mock)))
+
+    const result = await runOneRound(adapter)
+
+    expect(adapter.getOrderList).toHaveBeenCalledTimes(2)
+    expect(adapter.getOrderList).toHaveBeenNthCalledWith(2, 2, RENEW_PAGE_SIZE, 'wait_pay')
+    expect(result.scannedCount).toBe(13)
+    expect(adapter.confirmWaitPayOrder).toHaveBeenCalledTimes(13)
+    expect(result.renewedCount).toBe(13)
+    expect(new Set(result.recentRenewals.map(r => r.orderSn)).size).toBe(13)
+  })
 })
 
 describe('阈值判定（服务端时钟复判）', () => {
