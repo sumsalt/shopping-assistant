@@ -22,18 +22,6 @@ export interface StockCheckRequest {
 }
 
 /**
- * 批量库存查询请求参数
- */
-export interface BatchStockCheckRequest {
-  /** 平台类型 */
-  platform: Platform;
-  /** 商品ID列表 */
-  productIds: string[];
-  /** 可选的商品规格列表（与 productIds 一一对应，可选） */
-  skus?: string[];
-}
-
-/**
  * 库存查询结果
  */
 export interface StockCheckResult {
@@ -59,31 +47,6 @@ export interface StockCheckResult {
   productImage: string;
   /** 状态描述信息 */
   message: string;
-}
-
-/**
- * 批量库存查询结果
- */
-export interface BatchStockCheckResult {
-  /** 平台类型 */
-  platform: Platform;
-  /** 成功查询的商品列表 */
-  successItems: StockCheckResult[];
-  /** 查询失败的商品列表 */
-  failedItems: Array<{
-    /** 商品ID */
-    productId: string;
-    /** 错误信息 */
-    error: string;
-    /** 错误类型 */
-    errorType: StockCheckErrorType;
-  }>;
-  /** 总数量 */
-  total: number;
-  /** 成功数量 */
-  successCount: number;
-  /** 失败数量 */
-  failedCount: number;
 }
 
 // ==================== 一手平台专用类型 ====================

@@ -1,8 +1,8 @@
 /**
  * 关键词商品搜索
  *
- * 库存查询页的第二种搜索：单个纯数字（商品 ID / 货号）走原有 checkStock；
- * 含文字的关键词走一手 Goods/keyword_search。批量 ID 查询已下线。
+ * 库存查询页的第二种搜索：单个纯数字（商品 ID / 货号）走 checkStock；
+ * 含文字的关键词走一手 Goods/keyword_search。
  *
  * 登录态由调用方通过 AdapterConfig 决定，这里不做凭证校验：服务端传当前账号的
  * 完整快照（不主动剔除 uid/token）时，带登录态返回真实 shop_price（拿货价）；

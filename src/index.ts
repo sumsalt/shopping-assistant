@@ -50,7 +50,7 @@ export type {
 export { httpRequest, httpPost } from './utils/http';
 
 // 导出库存查询主函数
-export { checkStock, checkStockBatch, checkCollectionStock, getProductSkus, getOrderList } from './stock-check';
+export { checkStock, checkCollectionStock, getProductSkus, getOrderList } from './stock-check';
 export type { CheckStockOptions, CollectionStockRequest, ProductSkuRequest, OrderListRequest } from './stock-check';
 
 // 导出关键词商品搜索（类型 KeywordSearchItem / KeywordSearchResult 由 export * from './types' 带出）

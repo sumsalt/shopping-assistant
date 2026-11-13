@@ -8,8 +8,8 @@
 /**
  * 是否为「单个纯数字商品 ID / 货号」查询
  *
- * 批量 ID 查询已下线：含逗号（半角 / 全角）的输入不再走库存查询，
- * 整条输入按关键词搜索处理（前端会对多 ID 额外给出提示）。
+ * 只认单个纯数字：含逗号（半角 / 全角）或其他字符的输入不走库存查询，
+ * 前端会对多 ID 输入给出单独提示。
  */
 export const isNumericProductQuery = (query: string): boolean =>
   /^\d+$/.test(query.trim());

@@ -297,10 +297,10 @@ const handleSearch = async () => {
     return
   }
 
-  // 批量 ID 查询已下线：明确提示，避免把多个 ID 当成关键词搜出空结果
+  // 一次只查一个商品：多个 ID 输入给出明确提示，避免被当成关键词搜出空结果
   const idParts = query.split(/[,，]/).map(part => part.trim()).filter(Boolean)
   if (idParts.length > 1 && idParts.every(part => /^\d+$/.test(part))) {
-    toast.warning('一次只能查询一个商品 ID / 货号，批量查询已下线')
+    toast.warning('一次只能查询一个商品 ID / 货号，请分开查询')
     return
   }
 
