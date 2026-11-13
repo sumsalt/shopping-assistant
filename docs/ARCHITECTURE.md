@@ -1,257 +1,199 @@
 # 架构说明
 
-本文记录系统的分层、依赖规则，以及「为什么这样拆」。改动代码前先读这里，避免把已经收敛的逻辑重新打散。
+本文记录系统的分层、依赖规则，以及「为什么这样拆」。改动代码前先读这里；
+新增一类任务 / 改一个字段的实操步骤见 [ITERATION-GUIDE.md](./ITERATION-GUIDE.md)；
+一手接口的签名、下单与续期链路见 [PROTOCOL-YISHOU.md](./PROTOCOL-YISHOU.md)。
 
-## 一、分层
+## 一、这次重构解决了什么
+
+改造前的症状是「一个很小的需求也要改四五个地方」，根因只有一句：**同一份任务数据被手抄了四遍**。
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│ web/pages · web/components          Vue 页面与组件        │
-├─────────────────────────────────────────────────────────┤
-│ web/composables                     UI 状态与请求编排     │
-│   useTaskCollection  useXxxTasks  useXxx  useConfig      │
-├─────────────────────────────────────────────────────────┤
-│ web/utils                           纯前端逻辑（可单测）   │
-│   adapterConfig  yishou-capture  taskFormat              │
-├─────────────────────────────────────────────────────────┤
-│ web/server/api                      HTTP 编解码（薄壳）    │
-├─────────────────────────────────────────────────────────┤
-│ web/server/tasks                    任务定义与生命周期     │
-│   handlers  registry  stock / tab / price / renew        │
-├─────────────────────────────────────────────────────────┤
-│ web/server/utils                    存储 / 会话 / 校验     │
-├─────────────────────────────────────────────────────────┤
-│ src/                                平台无关的监控内核     │
-│   stock-monitor / tab-list-monitor / price-monitor       │
-│   order-renew-monitor / auto-order / email               │
-├─────────────────────────────────────────────────────────┤
-│ src/adapters/yishou                 一手平台适配          │
-│   profile → client → order-api → adapter → mappers       │
-│   checkout / renew（协议纯函数）                          │
-└─────────────────────────────────────────────────────────┘
+Result（核心库） → TaskRecord（服务端） → listView / statusView → 前端 DTO → 模板
 ```
 
-依赖只能向下，不能反向：
+每加一个字段（比如「最后检测时间」），要在四层各加一次，任何一层漏改就是线上空白或 `undefined`。
+除此之外还有三处结构性浪费：
 
-- 路由不能成为模块。**任何状态、Map、启动函数都不允许写在 `api/` 里**，只能放在 `server/tasks` 或 `server/utils`。
-- `src/` 不感知 HTTP、Cookie、SQLite、Vue。
-- 页面不拼请求参数，也不持有账号凭证：只传业务参数，账号快照由服务端按当前账号解析。
-
-## 二、平台适配层（`src/adapters/yishou`）
-
-一次需求（兼容 wx / App 抓包）把原来 1110 行的单体适配器拆成五层，每层只做一件事：
-
-| 文件 | 职责 | 关键约束 |
+| 问题 | 改造前 | 改造后 |
 |---|---|---|
-| `endpoints.ts` | 接口地址常量 | 只有 URL，没有逻辑 |
-| `profile.ts` | 账号 → 请求档案 | **唯一的参数/通道/签名真相** |
-| `client.ts` | 发请求、签名、代理、闸门、错误映射 | 所有接口共用一份实现 |
-| `order-api.ts` | 下单链路 | 必须登录 + `skipGate` |
-| `mappers.ts` | 原始响应 → 领域模型 | 纯函数，无 IO |
-| `index.ts` | `YishouAdapter` | 每个方法 ≤ 5 行 |
+| 视图投影 | 每类任务各写 `listView` / `statusView`，字段名互不相同 | 一个 `project()`，列表与详情共用同一结构 |
+| 任务定义 | `TaskDefinition` 是个 9 方法的「上帝接口」，实现方大量空实现 | `TaskKindDefinition` 只保留 4 个必需钩子，其余按需实现 |
+| 凭证 | `adapterConfig` 混在 payload 里，跟着状态轮询一起下发 | 单独的 `secret` 列，`project()` 永远拿不到 |
+| 事件（历史记录） | 价格变化 / 到货 / 下单 / 续期各有一套记录结构与渲染 | 一种 `TaskEvent`，一个 `TaskEventList` |
 
-`profile.ts` 是这层的核心。改造前三层回退（`config.x || 快照.x || 默认值`）散落在 8 个方法里，
-通道差异（UA / `t_t` 单位 / 签名首段）也要每次判断；现在在 `resolveRequestProfile` 里解析一次，
-产出不可变的 `RequestProfile`：
+现在的形状：**一种任务数据 = `TaskSummary`，三端共用一份类型**。
 
-```ts
-interface RequestProfile {
-  channel: 'wx' | 'app'
-  params: Readonly<Record<string, string>>   // 已剔除 t_t / sign
-  headers: Readonly<Record<string, string>>  // 已补齐 UA
-  proxyUrl?: string
-  uid: string; token: string; hasAuth: boolean
-  captured: boolean
-  timestamp(): number   // App 秒级，wx 毫秒级
-  sign(t_t): string
-}
+## 二、分层
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│ web/pages · web/components        Vue 页面与组件（只渲染）      │
+├──────────────────────────────────────────────────────────────┤
+│ web/composables                   UI 状态与请求编排            │
+│   useTaskList  useAutoOrderForm  useTabSeen  useXxx           │
+├──────────────────────────────────────────────────────────────┤
+│ web/server/api                    HTTP 编解码（每文件 3 行）    │
+├──────────────────────────────────────────────────────────────┤
+│ web/server/tasks/kinds            每类任务一个 definition      │
+├──────────────────────────────────────────────────────────────┤
+│ web/server/tasks/engine           任务引擎（store/registry/    │
+│                                   service/handlers）           │
+├──────────────────────────────────────────────────────────────┤
+│ src/contract                      三端共用的纯类型（无运行时代码）│
+├──────────────────────────────────────────────────────────────┤
+│ src/                              平台无关的监控内核            │
+│   stock-monitor / tab-list-monitor / price-monitor /           │
+│   order-renew-monitor / auto-order / email / monitor/loop      │
+├──────────────────────────────────────────────────────────────┤
+│ src/adapters/yishou               一手平台适配（见协议文档）     │
+└──────────────────────────────────────────────────────────────┘
 ```
 
-新增接口时只需：
+依赖只能向下：
 
-```ts
-const data = await this.client.post<RawType>(EP.XXX, { biz_param: value });
-return mapXxx(data);
-```
+- `src/contract` 只允许 `import type`，**不 import 任何实现**，这样服务端、前端、单测都能安全引用。
+- `engine` 不知道具体任务类型（泛型 `S`），也读不到业务字段；它只做「存 / 取 / 跑 / 投影」。
+- `kinds` 只能通过 `TaskRunContext` 落盘（`ctx.save()`），**不允许自己持 Map、自己写 SQL**。
+- `api/` 不能成为模块：任何状态、Map、启动函数都放在 `tasks/` 或 `utils/`。
+- 页面不拼请求参数，也不持有账号凭证：只传业务参数，凭证由服务端按当前账号解析。
 
-不要在适配器里重新拼公共参数或请求头——那正是这次重构消掉的重复。
+## 三、契约层（`src/contract`）
 
-**匿名链路**：`buildAdapterConfigFromProfile(profile, false)` 会剔除 `uid`/`token`，`profile.hasAuth` 为 false。
-适配器不会补出 `uid=undefined`（`URLSearchParams` 会把它序列化成字符串，一手会判为无效凭证）。
+三端唯一的类型来源，共三个文件：
 
-### 一手请求契约（实测结论，改动前务必对照）
-
-这些结论来自《接口请求字段与签名实测指南》《接口分析-小程序vsApp》的对照实验，
-`profile.ts` 与 `yishou-capture.ts` 的实现都以此为准：
-
-| 结论 | 影响 |
+| 文件 | 内容 |
 |---|---|
-| `uid` + `token` + `udid` **三元绑定**，任一不匹配只回 `201 请登录`，不区分是哪个错了 | 复用 token 必须连带复用它登录时的 udid；不要自己编 udid |
-| 可匿名接口（`get_goods_info_v2`）不报错，只把 `shop_price` 降级成 `??.??` | 「任务在跑但价格全是问号」= 登录态失效，用自检接口确认 |
-| App 通道硬门槛：`udid` + `plat_type=Android` + `model` + `version` + `version_name` + `t_t` + `okhttp/x.y.z` UA | 缺任一项网关直接 **404**（空 body，不是 JSON） |
-| UA 与 `plat_type` 必须匹配 | 微信 UA + `plat_type=Android` 同样 404 |
-| `version` 在 App 通道是 **Android SDK 版本**（如 `29`），不是 App 版本 | 填 `7.65.00` 会 404 |
-| `t_t` 必须 **10 位秒级**数字 | App 用 `Math.floor(Date.now()/1000)`，wx 用毫秒 |
-| 签名 `md5(md5(udid + model + version + version_name) + t_t)`，**Android 的 `model` 用 URL 编码后的值、iOS 用未编码原值** | Android 由 OkHttp 拦截器签编码值（`! ' ( ) *` 也要编码）；iOS 自己拼 body 签原值，见 `profile.ts` 的 `isIosCapture` |
-| 服务端当前**不校验** `sign`，也不校验 `equipmd5` | 仍需正确实现，避免名单未来生效时突然全线失败 |
-| RSA 动态包装只作用于 `_api_need_sign` 名单（`setpoint` / `address` 增改），**下单链路不在名单内** | 不需要实现 RSA，`sign` 头即可 |
-| iOS App 签名 `md5(md5(udid + model + version + version_name) + t_t)` 里 **`model` 用未编码原值**（Android 用编码值） | 用 iOS 抓包 `iPhone 14 Pro` 精确复现 sign `eead42af…` |
-| `create_order_v4` 的 `pay_params` 是**小程序跳转参数**（`userName` + `path`），不是 App prepay 五元组 | 服务端只能建单锁库存，付款必须人工 |
-| `pay_tool`：`1` = 支付宝、`4` = 微信（以 `confirm` 返回的 `pay_tool[]` 为准） | 配置项不可用时回落到微信，再回落到第一个 |
-| create 响应的 `pay_tool` 是**内部渠道码**（实测 `12`），真正支付方式是 `current_pay_tool`（实测 `1`） | 结果里的支付方式取 `current_pay_tool`，别用 `pay_tool` |
-| create 响应**直接返回 `order_amount`**（实测 `43.19` = 商品 37.19 + 运费 6） | 不必回查详情拿金额，详情只用来补支付截止时间 |
+| `platform.ts` | `Platform`、`AdapterConfig`、`ProductRef`、`AccountRef`、`TaskTarget` |
+| `order.ts` | `AutoOrderView`（展示）/ `AutoOrderPolicy`（落盘）、`OrderBrief`、`PrecheckView` |
+| `task.ts` | `TaskSummary`、`TaskEvent`、`TaskNotice`、`TaskConfigView`、各接口 payload |
 
-账号卡片上的「校验登录态」就是把这些「静默失败」变成一条明确结论：
-`POST /api/accounts/verify` → `checkYishouAuth` → `/users/get_user_info`。
-
-### 下单链路对齐抓包（2026-11 真实账号验证）
-
-`src/auto-order.ts`（编排层，只做业务决策）与 `src/adapters/yishou/{order-api,checkout}.ts`（协议层）
-分层，编排层只表达「买哪些规格、几件、用哪个地址」，不感知任何 selected 结构：
-
-```
-地址 → SKU → prepareCheckout（协议层一次做完）→ createOrder
-prepareCheckout = add_cart_goods_info → add_goods_to_cart → get_carts_by_supply
-                 → cart/activities → confirm_order_v4
-```
-
-四个接口的 `selected` 结构各不相同，全部收敛在 `checkout.ts` 的纯函数里（契约单测锁死）：
-
-| 接口 | selected 形态 | 关键 |
-|---|---|---|
-| `add_goods_to_cart` | 按颜色分组 `color+item[]`，item 复用商品详情原始规格 | 保险开关 `is_select_*_insurance=2`（不投保）、`source=3`、`add_cart_id` |
-| `cart/activities` | `select_goods` 按商品分组 | 算折，失败不阻断主链路 |
-| `confirm_order_v4` | sku 级明细，**带 `cart_id`** | `cart_id` 只能来自 `get_carts_by_supply` 的 `detail[]` |
-| `create_order_v4` | sku 级明细，**带 `from`/`piece_together_num`、不带 `cart_id`** | 补齐 `selected_express`（取 confirm 的 `express_options_v2` 里 `selected:"1"` 项）、`rsa`、`pay_id`、`user_address_tag` |
-
-**根因修复**：旧实现全链路只用简化 `[{sku,num}]` 结算，服务端返回的 `stock[].cart_id` 是假值 `"0"`，
-建单时又把这个 0 原样回传。真实账号验证确认：带 `cart_id` 的结算返回真值（如 `1278423441`）。
-端到端真实建单成功（`order_sn=12641615382582`，¥43.19，`wait_pay`），订单列表可回查。
-
-**跳过的不必要接口**（结果不被后续消费）：`goods_activities`、`get_add_cart_recommend`、
-`Goods/get_cart_recommend`、`get_carts_filter`、`get_pinkage_activity`、
-`get_order_advanced_check_list`、`piece_together/*`、重复的 `add_cart_goods_info`。
-
-### 待支付订单续期链路（2026-11 抓包 + 真实账号验证）
-
-一手待支付订单的支付有效期是 **20 分钟**，到期自动关闭；App 的「重新提交支付」
-会把有效期**重置为「当前时刻 + 20 分钟」**，而不是「旧截止时间 + 20 分钟」。
-续期不新建订单、不扣款，只刷新 `cancel_expire`，付款仍需人工完成。
-
-抓包的 4 个请求按 `t_t` 排序的真实顺序是 `1.1 → 1.2 → 1.3 → 1.4`（上传顺序是乱的）：
-
-| 步骤 | 接口 | 作用 | 是否采用 |
-|---|---|---|---|
-| 1.1 | `POST /order/confirm_wait_pay_order` | 重新拉结算上下文：`stock[]` / `default_address` / `order_remark` / `pay_tool[]` / `express_options_v2[]` / `cancel_expire` / `current_timestamp` | 采用 |
-| 1.2 | `POST /order/get_order_advanced_check_list` | 高级校验清单 | 跳过：结果不被 1.4 消费 |
-| 1.3 | `POST /piece_together/check_piece_together_data` | 拼单数据校验 | 跳过：同上 |
-| 1.4 | `POST /order/reload_wait_pay_order` | 真正刷新有效期 | 采用 |
-
-只保留 **1.1 + 1.4**：1.2 / 1.3 的响应没有被 1.4 的请求体引用，多发两次只会增加风控面。
-真实账号验证（线上 `15928169484`，订单 `12641615428606`，¥43.19）证明两步即可把
-`cancel_expire - current_timestamp` 刷回 `1200`。第一次 E2E 看起来「只后移 3 秒」，
-是因为刚建单 3 秒就 reload；追加滚动探针（等待 9 秒后再 reload）确认
-`expireMinusNowSeconds=1200`、`remainAfter > remainBefore`、`resetsToFull20Minutes=true`。
-
-**1.4 请求关键点**（`src/adapters/yishou/renew.ts` 纯函数，契约单测锁死）：
-
-- `order_sn` 用原单号；**没有 `pay_id`**（与建单 `create_order_v4` 的最大差异）。
-- `selected` 直接复用 `checkout.ts` 的 `buildCreateSelected(stock)`：sku 级 9 字段，
-  **不带 `cart_id`**，带 `from=""` / `piece_together_num="0"`。
-- `selected_express` 取 1.1 的 `express_options_v2` 里 `selected:"1"` 项
-  （实测 `[{origin:"2",express_id:"9999"}]`）；无快递选项时跳过该单并告警，不发 reload。
-- `advanced_check_selected` 是**精确两个换行的字符串** `'[\n\n]'`，不是 `'[]'`。
-- 固定值：`is_balance_pay=0`、`user_address_tag=0`、`app_code=0`。
-- `rsa.previous_vc_sorce = 'YiShou.MyOrderViewController'`（来源页是「我的订单」，
-  与建单的「进货车」不同）。`buildReloadRsa()` 与 `buildRsa()` **并列但互不改动**
-  ——`checkout.test.ts` / `order.test.ts` 对旧建单 rsa 有精确断言。
-- 响应里的 `pay_tool`（实测 `12`）是内部渠道码，真正支付方式取 `current_pay_tool`
-  （实测 `1`），与建单结论一致。
-
-**编排层风控**（`src/order-renew-monitor.ts`，与协议层解耦）：
-
-| 约束 | 值 | 原因 |
-|---|---|---|
-| 扫描周期 | 60 秒 | 需求：每分钟触发一次 |
-| 触发阈值 | `0 < 剩余 < 300` 秒 | 需求：有效期小于 5 分钟 |
-| 剩余秒数口径 | 1.1 的 `cancel_expire - current_timestamp` | 用服务端时钟复判，避免本地时钟偏差 |
-| 本地初筛 | 订单列表 `cancelExpireAt` | 只快速排除「明显还有很久 / 已过期」 |
-| 单订单冷却 | 4 分钟 | 有效期未刷新时防止每分钟重复提交 |
-| 单轮上限 | 20 页 / 200 单 | 防止列表异常放大请求量 |
-| 请求间隔 | 300ms | 自律串行，不改 `GateTaskKind` |
-| 跳过并告警 | 无快递 / 无地址、续期后截止未后移 | 不发 reload / 保留 warning 不被成功轮清空 |
-| 标记结束 | `pay_status !== 'wait_pay'` | 该单不再续期 |
-| 停止任务 | 凭据失效 | 避免 `201 请登录` 刷屏 |
-
-`YishouOrderApi` 已 `skipGate:true`，续期不进请求闸门，由编排层自己做 300ms 串行间隔，
-**没有引入新的 `GateTaskKind`**。协议层能力用独立的 `RenewOrderAdapter` +
-`getRenewAdapter()` 暴露，不塞进 `AutoOrderAdapter`，避免影响既有自动下单的 mock。
-
-**任务层**：`kind='renew'` 是第 4 类任务。`TaskKind` 是普通联合类型、`tasks.kind` 是 TEXT，
-**不需要 DB 迁移**。与 stock/price/tab 同构（一个 `renewDefinition` + 列表/状态/删除/重启
-4 个通用路由），但**创建用专用路由** `POST /api/order-renew/create`：通用
-`createTaskHandler` 强制「当前激活账号」，而续期要求显式选择账号，服务端按 `accountId`
-校验归属并解析快照。每个账号（`userId + accountId`）同时只能有一个 `running` 续期任务，
-已有则跳过、不改动、不延长；`restart` 设 `removeOriginalOnRestart:true` 避免两个循环同时续期。
-
-**自动创建钩子**（`web/server/tasks/auto-renew.ts`）：到货 / 价格监控自动下单成功后，
-若对应账号还没有 `running` 续期任务，自动创建一个 **12 小时** 的任务
-（`source='auto'`，记 `sourceTaskId`）。通用 `createTaskHandler` 现把 `accountId` 注入
-payload 顶层，新 stock/price 任务固化到 record；**老任务没有 `accountId`，按决策跳过**
-（写 `autoRenewTriggered` 守卫落盘，避免 price 回调每轮 / restore 后重复判断）。
-`pending Set` 防同一 tick 并发重复创建。
-
-## 三、任务层（`web/server/tasks`）
-
-四类任务（到货 / Tab / 价格 / 续期）的生命周期完全一致，差异只在「创建时校验什么」和
-「怎么跑一轮」。
-
-```
-TaskDefinition<R>          create / start / restart / restore / listView / statusView
-TaskRegistry<R>            内存 Map + SQLite 落盘 + controller + 状态流转 + 列表合并
-handlers.ts                5 个通用路由处理器（鉴权、所有权、错误映射）
-stock.ts / tab.ts / price.ts / renew.ts   只实现上面两个接口
-```
-
-因此：
-
-- 通用路由都是 3 行薄壳，没有业务逻辑，也不持有状态；续期的创建是唯一的专用路由
-  （要显式选账号，见上一节）。
-- 重启后续跑只有一份实现（`plugins/restore-tasks.ts` 负责算剩余时长，`definition.restore` 负责怎么续）。
-- 新增一类任务 = 一个 definition + 5 个 3 行路由 + 在恢复插件里注册。
-
-约定：
-
-1. 创建 / 重启时 `definition.start` 负责把 `config.taskId` 设成 `record.id`。
-2. 进度更新用 `registry.touch(record)`（1 秒节流落盘），状态变更用 `registry.add` 或 `launch` 的收尾逻辑。
-3. 业务失败抛 `TaskApiError(code, message)`，不要自己拼 `createErrorResponse`。
-4. 落盘 payload 形状不能随意改：老任务要靠它续跑。新增字段必须可选、有默认值。
-5. **商品货号 `product.productNo` 用于列表页跳商品详情页**（到货 / 价格两类任务）。
-   详情页创建任务时前端会带货号，服务端创建时落库，`listView`/`statusView` 直接整体下发
-   `product` 对象即可，无需单独投影。价格任务另有用 `initialSnapshot.productNo`（`goods_no`）兜底。
-   **历史任务没有货号，前端简单降级为不可点、不显示「查看详情」，不做实时解析或回填**——
-   与 Tab 监控 `seenDetailPath` 的降级口径一致。
-
-## 四、账号与凭证
-
-一个账号 = 一次抓包的完整请求快照，存在服务端 `accounts.request_profile`：
+核心是 `TaskSummary`：**列表、详情、创建响应都是它**，唯一区别是 `events` 的条数。
 
 ```ts
-interface RequestProfile {
-  channel: 'wx' | 'app'
-  params: Record<string, string>   // 公共参数（uid/token/udid/model/...）
-  headers: Record<string, string>  // UA / Content-Type / equipmd5 ...
-  path?: string
+interface TaskSummary {
+  id: string
+  kind: 'stock' | 'price' | 'tab' | 'renew'
+  status: 'running' | 'stopped' | 'completed'
+  createdAt: string
+  target: TaskTarget        // 商品 / Tab / 账号
+  badges: TaskBadge[]       // 自动下单、限定规格、逐轮对比……
+  stats: TaskStat[]         // 次检测 / 次提醒 / 本轮抓取 / 已记录商品
+  config: TaskConfigView    // 间隔、时长、策略（只读投影）
+  events: TaskEvent[]       // 最近 5 条（详情返回全部，上限 50）
+  order?: OrderBrief | null
+  notice?: TaskNotice | null
+  lastError?: string
 }
 ```
 
-### 当前账号是服务端状态
+两条硬规则：
+
+1. **前端不再定义任务 DTO**。要展示新字段，就在 `project()` 里加到 `badges` / `stats` / `config`，
+   前端按 `key` 渲染，不需要改类型。
+2. **`secret` 不进 `TaskSummary`**。`TaskRecordBase` 上虽有 `secret`，但 `project()` 的入参只声明
+   `record.state`，从类型上就拿不到凭证。
+
+## 四、任务引擎（`web/server/tasks/engine`）
+
+引擎把「所有任务都一样」的部分收干净，共四个文件：
+
+| 文件 | 职责 | 约束 |
+|---|---|---|
+| `store.ts` | 唯一的 SQL 入口：读写 `tasks` 表、1 秒节流落盘、退出刷盘 | 别处不允许写 SQL |
+| `registry.ts` | 内存态：`Map<id, record>`、`AbortController`、启动/停止 | 只碰 store，不碰业务 |
+| `service.ts` | 编排：创建、启动、列表、详情、删除、重启、进程启动恢复 | 唯一同时碰 registry 与 store 的地方 |
+| `handlers.ts` | 5 个通用路由处理器，统一 `{ task }` / `{ tasks, total }` | 不含业务判断 |
+
+### 数据模型
+
+`tasks` 表只存「任务壳 + 状态快照」：
+
+| 列 | 说明 |
+|---|---|
+| `id` / `kind` / `user_id` / `user_email` | 任务壳 |
+| `status` / `created_at` / `updated_at` | 状态与时间 |
+| `version` | payload schema 版本，与 `definition.version` 对应 |
+| `payload` | `{ version, state, accountId }`（业务状态整体序列化） |
+| `secret` | 创建时固化的 `AdapterConfig`，**永不外发** |
+
+`version < definition.version` 的任务不会出现在列表里（`service.list` 过滤），避免未迁移数据把页面打崩。
+迁移用离线脚本，不做读取时懒迁移：
+
+```
+npx tsx scripts/migrate-tasks-v2.ts --dry-run   # 默认，只统计
+npx tsx scripts/migrate-tasks-v2.ts --apply     # 先 VACUUM INTO 备份，再逐行改
+```
+
+`legacy-migrate.ts` 是纯函数：幂等（`version >= 2` 直接跳过）、不抛错（坏字段降级为空）、可单测。
+
+### 状态与事件
+
+- 状态只有三态：`running` / `stopped` / `completed`。「休眠中」「等待规格」这类是**展示态**，
+  由 `badges` / `notice` 表达，不占状态位。
+- 所有历史记录收敛成 `TaskEvent`（10 种类型），同类型同秒自动去重，列表取最近 5 条、详情上限 50。
+- 需要用户注意但不算历史的事（等待规格、到价无货、下单失败）走 `TaskNotice`，不进事件流。
+
+## 五、任务种类（`web/server/tasks/kinds`）
+
+一类任务 = 一个 `TaskKindDefinition<S>` + 一行注册。definition 的钩子：
+
+| 钩子 | 必需 | 作用 |
+|---|---|---|
+| `requiresAuth(body)` | 是 | 创建时是否需要登录态，决定解析完整快照还是匿名快照 |
+| `create(input)` | 是 | 校验输入、建立基线，返回 `{ state }` |
+| `run(record, ctx)` | 是 | 启动循环，返回 `{ controller, promise }`；进度只能 `ctx.save()` |
+| `project(record, opts)` | 是 | 唯一的视图投影，纯函数 |
+| `restart(record)` | 是 | 以原任务为模板生成新状态 |
+| `durationOf(record)` | 是 | 计算剩余时长（重启恢复用） |
+| `activeWindowOf` / `uniqueness` / `restore` / `canRestore` / `resolveAccount` / `removeOriginalOnRestart` | 否 | 生效时段、创建查重、续跑校正、显式选账号 |
+
+四类任务的差异都写在 definition 里，引擎完全不知道它们的业务字段：
+
+| kind | 循环 | 特色钩子 |
+|---|---|---|
+| `stock` | `createCancellableMonitor` | `uniqueness`：同商品同规格只允许一个运行中任务 |
+| `price` | `createCancellablePriceMonitor` | 自动下单策略 + 到价无货提示 |
+| `tab` | `createCancellableTabMonitor` | `activeWindowOf`（休眠不消耗时长）、已见集合 + 每日重建 |
+| `renew` | `createCancellableOrderRenewMonitor` | `resolveAccount`（用户显式选账号）、`canRestore`、`removeOriginalOnRestart` |
+
+新增一类任务 = 一个 definition 文件 + `kinds/index.ts` 注册 + 5 个 3 行路由，引擎与前端都不用动。
+详细步骤见 [ITERATION-GUIDE.md](./ITERATION-GUIDE.md)。
+
+### 统一循环
+
+`src/monitor/loop.ts` 的 `runMonitorLoop` 负责「多久跑一轮、什么时候停、出错怎么办」，
+四类任务共用：间隔与最小间隔、总时长、jitter、可被 abort 打断的 sleep、
+`shouldStop` 提前收敛、异常策略（继续 / `'fatal'` 中止）。
+任务 definition 只实现「跑一轮」这一件事。
+
+## 六、前端
+
+| 位置 | 职责 |
+|---|---|
+| `components/task/TaskCard.vue` | 唯一的任务卡片：状态、目标、badges、stats、事件、操作 |
+| `components/task/TaskEventList.vue` | 唯一的事件列表，按 `tone` 上色 |
+| `components/task/TaskTarget.vue` | 目标展示，商品有货号时跳 `/stock/{productNo}` |
+| `composables/useTaskList.ts` | 四类任务列表页共用：加载 / 删除 / 重启 / busy |
+| `composables/useAutoOrderForm.ts` | 价格与到货监控共用的自动下单表单（件数、地址、规格、预检） |
+| `composables/useTabSeen.ts` | Tab 累计商品分页查询 |
+| `utils/taskFormat.ts` | 状态文案、相对时间、金额、时长的唯一实现 |
+
+四个列表页（`/monitor`、`/price-monitor`、`/tab-monitor`、`/order-renew`）只剩三件事：
+页头、加载/错误/空态、`<TaskCard>`。kind 专属动作通过 `#actions` 插槽挂载
+（Tab 的「累计商品」、续期的「新建任务」）。
+
+新增展示字段时：改 `project()` 的 `stats` / `badges`，页面不用改；
+只有需要新交互或新布局时才动组件。
+
+## 七、账号与凭证
+
+一个账号 = 一次抓包的完整请求快照，存在服务端 `accounts.request_profile`。
 
 - `accounts.is_active`：每个登录用户至多一条为 1；`POST /api/accounts/active` 设置 / 清除。
 - 前端只拿脱敏摘要（`GET /api/accounts/active`：手机号、uin、通道、`hasCredential`），
-  **不再持有 uid/token，也不再回传 adapterConfig**。
-- 所有业务接口统一走 `resolveAdapterConfigForUser(username, needAuth)`：
-  取当前账号快照 → `buildAdapterConfigFromProfile` 组装 → 叠加服务端代理。
+  **不持有 uid/token，也不回传 adapterConfig**。
+- 所有业务接口统一走 `resolveAdapterConfigForUser(username, needAuth)`。
 - 纯组装逻辑在 `src/adapter-config.ts`（有单测），服务端只负责读库。
 
 需要登录态的链路：
@@ -262,163 +204,35 @@ interface RequestProfile {
 | 到货监控 | 仅自动下单时 true | 凭证只给下单链路；检测阶段在 `stock-monitor` 内再匿名化 |
 | SKU 详情 / 收藏夹 / 订单列表 / 价格监控 / 下单 | true | 无凭证直接返回 `AUTH_REQUIRED`，不等一手 201 |
 
-**任务会固化创建时的快照**：之后切换账号不影响已创建任务；重启沿用原快照，
-要换账号请新建任务。
+**任务固化创建时的凭证**：之后切换账号不影响已创建任务；重启沿用原 `secret`，要换账号请新建任务。
+凭证只写 `secret` 列，不随列表/状态接口下发。
 
-### 请求闸门（分桶）
-
-后台任务的出网请求统一在 `src/utils/http.ts` 排队。**桶由本次请求实际带的凭证决定**，
-不由任务自己声明（`YishouClient` 在请求级传 `accountKey`）：
-
-| 这次请求带什么 | 桶 | 默认间隔 |
-|---|---|---|
-| `uid` + `token` | `auth:<uid>` | 15s |
-| 其余（含只有 uid 没有 token） | `anon`（全局单桶） | 1s |
-
-同一 uid 的多个任务共享 15 秒配额，避免同一账号被并发打爆；匿名桶是全局单桶，
-所有匿名任务共享 1 秒一个槽位，按 `taskId` 轮转，任务多了实际检测周期会拉长。
-
-**用户手动操作不经过闸门**：没有任务上下文（`getGateContext()` 为空）就直接放行，
-所以页面上的查询、SKU 详情、下单预检都不受限；闸门只约束后台轮询。
-
-三种任务的落点因此是自然结果，不需要额外配置：
-
-| 任务 | 请求身份 | 桶 |
-|---|---|---|
-| 到货检测（全部规格） | 匿名（`toAnonymousAdapterConfig` 剔除凭证） | 1s |
-| 到货检测（限定规格） | 登录态（查 SKU 明细必须带凭证） | 15s |
-| 到货下单 | 登录态，但 `skipGate` | 不排队 |
-| Tab 监控 | 匿名（配置本身无凭证） | 1s |
-| 价格监控 | 登录态（强制） | 15s |
-
-到货检测的代价是价格回退 `alone_price`，邮件带「游客参考价」标注；有货判定
-（`is_stockout` / `is_on_sale` / `goods_status`）与下单所需的 `goods_no`、`color/size`
-实测匿名与登录态完全一致。
-
-### 自动下单的规格与件数
-
-- **按规格监控**：任务配置 `skus` 后，检测会额外查一次 SKU 明细，
-  只有所选规格 `saleStock > 0` 才算到货；商品整体有货但所选规格没货时只置 `skuWaiting`，
-  不发邮件、不下单。该接口拒绝匿名，所以这类任务必须带登录态，检测进 15 秒桶。
-- **多规格合单**：优先用任务配置的 `skus`（可多选），其次兼容旧的 `autoOrder.sku`，
-  都没有时全部规格参与。按规格顺序分配件数，需求 5 件、蓝色 1 件、黑色 1 件时，
-  一次加购带上 `[{蓝色,1},{黑色,1}]`，结算与建单都是同一份明细，
-  只产生一个订单、一笔运费。
-- **能买多少买多少**：每个规格取 `min(剩余需求, saleStock)`，累加到配置件数为止。
-  库存只剩 1 件时，配置 5 件的任务会按 1 件下单锁库存，而不是继续空等补货。
-- **以结算回传为准**：一手可能在结算时再削减数量或去掉某个规格，最终明细以 `confirm.stock`
-  为准（`num_total` 缺失时累加 `stock[].num`）；`result.items` 记录每个规格的件数，
-  `num` 是合计，`requestedNum` 保留配置值，`numReduced` 标记是否被削减。
-- **购物车残留防护**：结算件数大于本次加购件数、或结算里出现本次没加购的规格，
-  说明上一轮没清干净，清空购物车并跳过本轮，避免买错规格或一次买多。
-
-### 价格到点自动下单
-
-价格任务可以带一份 `autoOrder`（`targetPrice` + 件数/地址/支付方式/规格），
-触发条件与到货不同：**拿货价 ≤ 目标价** 就下单，与涨跌通知相互独立。
-
-- 首次检测也参与判断：创建任务时价格已经在目标价以下，会立刻买入，不等基线。
-- **先看同一次响应的库存状态**：价格监控拿到的商品详情里本就带 `is_stockout` /
-  `is_on_sale` / `goods_status`，`PriceSnapshot.inStock` 由 `mapToPriceSnapshot` 顺带填出。
-  到价但商品级无货时直接跳过整条下单链路（`orderSkipped: 'no_stock'`）：
-  不再发查规格请求，也不会把「注定买不到」记成一次下单失败；只有 `inStock === false` 才跳过，
-  旧快照缺该字段时仍按原逻辑尝试。
-- 商品级有货但所选规格无货，仍由 `placeAutoOrder` 的 `sku` 阶段兜住（详情接口没有规格级库存）。
-- 下单成功即结束任务（`orderPlaced`），避免每轮重复建单；下单邮件替代当轮的价格变动邮件。
-- 下单失败分两类：`retryable`（没货、被抢完）只记 `orderError`，继续监控、下轮再试；
-  其余（登录态失效、建单结果未知）发失败邮件并停任务。
-- 建单失败会触发一手「订单支付中」临时锁，冷却期内只检测不重试（与到货任务同一套 `cooldownMs`）。
-- 任务卡片展示 `order`（订单号/金额/规格/件数/付款截止）与 `orderError`；
-  `orderSkipped === 'no_stock'` 时措辞是「已到目标价，等待补货」，不当作下单失败。
-
-### 订单列表（只读）
-
-- 接口：`POST /order/get_order_list`，业务参数 `order_status` / `pageidx` / `pagesize`。
-- 参数名是 **`pageidx`**（不是 `pageindex`），写成 `pageindex` 会直接返回
-  `500 server error`，这是实测踩过的坑。
-- **`pageidx` 是「记录偏移量 offset」，不是页码**（用真实账号 Android 通道实证）：
-  `pageidx=0` 取第 0~9 条，`pageidx=1` 取第 1~10 条——只前移 1 条、与第一页重复 9 条。
-  早期实现把 `pageidx` 当页码写成 `页码-1`，导致「加载更多」重复第一页，
-  自动续期翻页也只挪 1 条。正确翻页步长是 `pagesize`：**对外第 N 页传 `(N-1) * size`**。
-- 响应里的 `pageidx` = 本次 offset + 本页条数（下一页游标），但本项目仍按 1 起页码建模，
-  适配器内部换算，前端 `loadMore` 只需 `currentPage + 1`。
-- `order_status` 只有 5 个合法值：`all` / `wait_pay` / `wait_shipping` /
-  `wait_comfirm`（上游拼写错误，必须照抄）/ `finish`；传非法值（含正确拼写的
-  `wait_confirm`、`tab`、空值、不传）不报错，会**静默回退成 `all`**。
-  代码里的 `tab` 只是「订单状态标签页」这一概念的变量名 / 类型名 `OrderStatusTab` /
-  常量名 `ORDER_STATUS_TABS`，**不是 `order_status` 的枚举值**。
-- 返回结构取决于是否传 `pageidx`：传了是 `{ list, pageidx, current_timestamp }`，
-  不传是裸数组，适配器两种都兼容。
-- 一手**完全忽略 `pagesize`**：实测传 `3` / `5` / `10` / `20` 都固定返回 **10 条**，
-  且**不返回总数**。因此适配器把 `size` 锁死为常量 `ORDER_LIST_PAGE_SIZE = 10`——
-  offset 步长、`pagesize` 请求值、`hasMore` 的满页判定三者必须用同一个 10，
-  否则按入参 size 算 offset 会与服务端实际条数不符、重新出现「加载更多重复」。
-  `hasMore` 按「本页是否满 10 条」判断；翻到最后一页会多一次空请求，属正常。
-- 调用口径：订单页 `/api/orders` 不传 `pageSize`（服务端直接用 10）、
-  自动续期固定传 `RENEW_PAGE_SIZE = 10`；收藏夹 / Tab 商品列表的 `page_size = 20`
-  是另外两个接口，与订单列表无关。
-- 自动续期 `scanWaitPayOrders` 固定传 `order_status=wait_pay`，按 `page=1..20`
-  逐页拉取（每页 10 条，最多 200 单），满页才继续；offset 语义修复后翻页不再重复。
-- 订单状态直接用一手给的 `order_status_name`，不维护状态码映射
-  （状态码会变，文案不会）。
-- 商品规格在 `attribute` 里是「颜色 → 尺码 → 件数」的嵌套 JSON，
-  由 `formatOrderAttribute` 摊平成「粉色 M ×1 / 灰色 均码 ×2」，解析失败再回退 `selected`。
-- 页面 `/orders` 与收藏夹同一套账号口径：默认当前账号，`?accountId=` 临时查看指定账号，
-  服务端同样校验归属与 `request_profile`，不改变当前使用账号。
-
-### 抓包存什么
-
-不是整条请求全存，而是「跨接口稳定的公共参数 + 关键请求头」白名单
-（`web/utils/yishou-capture.ts`）：
-
-- **参数**：登录态（`uid` `token` `openid` `udid` `device_id`）、签名原料与网关门槛
-  （`model` `version` `version_name` `plat_type`）、版本冗余、设备信息、其余公共参数。
-- **丢弃**：`t_t` / `sign`（每次请求重新生成），以及全部业务参数
-  （`goods_id`、`rec_ids`、`selected`、`tabId`、`page` ...）。
-- **请求头**：只留 `User-Agent`、`Content-Type`、`Accept-Encoding`、`equipmd5`、
-  `Referer`、`X-Forwarded-For`；`Host` / `Content-Length` 由框架生成。
-
-为什么用白名单而不是「存全部、发请求时再挑」：不同接口的业务参数完全不同，
-白名单保证同一份快照能安全复用到任意接口；漏掉的公共参数只会少发一个字段，
-不会把 `goods_id` 之类的业务值带到别的接口上。参数个数在账号卡片里可见。
-
-登录态自检：`POST /api/accounts/verify` → `checkYishouAuth`，用 `/users/get_user_info`
-探针，只有 200 才说明这份抓包还能用。
-
-## 五、前端
-
-- `useTaskCollection<T>`：列表 / 删除 / 重启 / 轮询的唯一实现。
-- `useMonitorTasks` / `useTabMonitorTasks` / `usePriceMonitorTasks` / `useOrderRenewTasks`：类型 + 专属方法（薄壳）。
-- `web/utils/taskFormat.ts`：状态文案、相对时间、金额、时长的唯一实现。
-
-## 六、边界与已知取舍
+## 八、边界与已知取舍
 
 - 当前账号与代理都是服务端状态，前端不再持有请求快照；旧版 localStorage 会在首次打开时
   一次性迁移（账号 id + 代理），迁移后删键。
 - 代理是**全局**运行设置（影响服务器出网），不按登录用户隔离；多用户共用同一出口。
 - 抓包快照原样回放，只覆盖动态 `t_t`；不对 `udid` 是否必需做猜测。
 - `sign` 服务端当前不校验，但保留生成逻辑以兼容网关变化。
-- 任务详情不会下发 `config.adapterConfig`（创建时固化在服务端），凭证不随状态轮询传播。
+- 任务详情不会下发凭证（创建时固化在 `secret` 列），凭证不随状态轮询传播。
+- **历史任务没有货号**时，前端降级为不可点、不显示「查看详情」，不做实时解析或回填
+  （与 Tab 累计商品的降级口径一致）。
 - **匿名查询的价格口径**：一手对游客把 `shop_price` 返回成 `??.??`，但 `alone_price`
-  （单独购买价）仍是真实可售价格，实测与登录态拿货价同值。映射层按
-  `shop_price → alone_price` 顺序取值，回退时给结果打上 `priceNote: '游客参考价'`，
-  页面与到货邮件都会标注，避免被当成拿货价拿去比价。
-  库存判断不受影响（监控只看是否有货）；价格监控要求登录态，不会走这条回退。
-- `minPrice` / `maxPrice` 是**传给一手接口的筛选参数**，不是本地过滤，因此游客态的价格 0
-  不会导致本地误过滤；若一手在游客态不按价格筛选，属于服务端行为。
+  （单独购买价）仍是真实可售价格。映射层按 `shop_price → alone_price` 顺序取值，
+  回退时打上 `priceNote: '游客参考价'`，页面与邮件都会标注。
+- `minPrice` / `maxPrice` 是**传给一手接口的筛选参数**，不是本地过滤。
 
-## 七、部署
+## 九、部署
 
 ```
 npm run web:build            # 产物在 web/.output
 bash deploy.sh upload        # 同步到 .output.next，再原子切换成 .output
-bash deploy.sh restart       # pm2 startOrReload（读 ecosystem，保留环境变量）
+bash deploy.sh restart       # pm2 startOrReload（保留环境变量）
 ```
 
 **不要直接 `rsync --delete` 覆盖运行中的 `.output`**：旧进程持有的文件被就地替换后，
 可能加载到新旧混合的 chunk，表现为「`xxx is not a function`」这类与代码不符的运行时错误。
-`deploy.sh upload` 已改为「同步到 `.output.next` → `mv` 原子切换」，并保留 `.output.prev` 作为回滚点。
+`deploy.sh upload` 已是「同步到 `.output.next` → `mv` 原子切换」，并保留 `.output.prev` 作为回滚点。
 
-数据库 `data/tasks.db` 不在 `.output` 内，不会被覆盖；`accounts.request_profile` 列在服务启动时幂等补齐。
-
-
+数据库 `data/tasks.db` 不在 `.output` 内，不会被覆盖；`tasks.version` / `tasks.secret` /
+`accounts.request_profile` 等列在服务启动时幂等补齐（`PRAGMA table_info` 判断后 `ALTER TABLE`）。
