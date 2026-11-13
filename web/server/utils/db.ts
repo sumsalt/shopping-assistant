@@ -62,10 +62,23 @@ const createTables = (instance: SqliteDatabase): void => {
       status TEXT NOT NULL,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL,
+      version INTEGER NOT NULL DEFAULT 0,
       payload TEXT NOT NULL,
+      secret TEXT NOT NULL DEFAULT '',
       PRIMARY KEY (kind, id)
     )
   `)
+  // 老库兼容：v2 新增 version / secret 列（幂等补列）
+  const taskColumns = instance.prepare('PRAGMA table_info(tasks)').all() as { name: string }[]
+  const existingTaskColumns = new Set(taskColumns.map(column => column.name))
+  for (const [column, definition] of [
+    ['version', 'INTEGER NOT NULL DEFAULT 0'],
+    ['secret', "TEXT NOT NULL DEFAULT ''"],
+  ] as const) {
+    if (!existingTaskColumns.has(column)) {
+      instance.exec(`ALTER TABLE tasks ADD COLUMN ${column} ${definition}`)
+    }
+  }
   instance.exec('CREATE INDEX IF NOT EXISTS idx_tasks_kind_user ON tasks (kind, user_id)')
   instance.exec('CREATE INDEX IF NOT EXISTS idx_tasks_kind_status ON tasks (kind, status)')
 

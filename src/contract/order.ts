@@ -18,6 +18,27 @@ export interface AutoOrderView {
   skus?: string[]
 }
 
+/**
+ * 自动下单策略（落盘的用户配置）
+ *
+ * 与 AutoOrderView 的区别：这是创建时保存的原始策略，字段名与核心库一致；
+ * 展示时由 project 转成 AutoOrderView。
+ */
+export interface AutoOrderPolicy {
+  enabled: boolean
+  num?: number
+  addressId?: string
+  payTool?: '1' | '4'
+  /** 指定 SKU（旧字段，兼容用） */
+  sku?: string
+  /** 价格任务：触发方式 */
+  triggerMode?: 'price' | 'discount'
+  targetPrice?: number
+  targetDiscount?: number
+  /** 指定规格（多选） */
+  skus?: string[]
+}
+
 /** 订单摘要（下单成功后展示） */
 export interface OrderBrief {
   orderSn: string

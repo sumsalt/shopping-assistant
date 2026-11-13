@@ -190,6 +190,7 @@ export type {
   TabRef,
   TaskTarget,
   AutoOrderView,
+  AutoOrderPolicy,
   OrderBrief,
   PrecheckView,
   TaskKind,
