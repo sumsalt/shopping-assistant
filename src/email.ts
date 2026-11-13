@@ -502,8 +502,89 @@ export function createTabChangeTemplate(
 const TAB_MAIL_MAX_PRODUCTS = 50;
 
 /**
+ * 商品图高度（px）。
+ *
+ * 不用 `aspect-ratio`：邮件客户端（尤其 Gmail）不认，竖长图会按原始比例撑成一条长条。
+ * 这里用 img 的 height 属性 + object-fit:cover 固定高度，保证卡片高度一致、不变形。
+ */
+const TAB_MAIL_IMAGE_HEIGHT = 190;
+
+/**
+ * Tab 邮件统一外壳。
+ *
+ * 邮件里不能用 flex/grid，且多层 padding 会让手机上两侧留白过大；
+ * 这里只用「外层 table 居中 + 内层 table 限宽」两层，左右留白合计约 14px，
+ * 主体宽度接近满屏（桌面最多 640px）。
+ */
+function tabMailShell(opts: {
+  schema: string;
+  title: string;
+  subtitle: string;
+  bodyHtml: string;
+  footerHtml?: string;
+}): string {
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <meta name="color-scheme" content="light only">
+      <meta name="supported-color-schemes" content="light only">
+      ${opts.schema}
+    </head>
+    <body style="margin:0;padding:0;background:#ffffff;-webkit-text-size-adjust:100%;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#ffffff" style="background:#ffffff;">
+        <tr>
+          <td align="center" style="padding:10px 8px 16px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:640px;border-collapse:collapse;">
+              <tr>
+                <td style="padding:2px 6px 10px;border-bottom:1px solid #f0f0f0;">
+                  <div style="font-size:17px;font-weight:700;color:#111827;line-height:1.35;">${opts.title}</div>
+                  <div style="font-size:12px;color:#6b7280;line-height:1.4;margin-top:3px;">${opts.subtitle}</div>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:12px 6px 0;">
+                  ${opts.bodyHtml}
+                </td>
+              </tr>
+              ${
+                opts.footerHtml
+                  ? `<tr><td style="padding:16px 6px 0;text-align:center;font-size:11px;color:#9ca3af;line-height:1.6;">${opts.footerHtml}</td></tr>`
+                  : ''
+              }
+            </table>
+          </td>
+        </tr>
+      </table>
+    </body>
+    </html>
+  `;
+}
+
+/** 三列统计条（用 table，邮件客户端不支持 flex） */
+function tabSummaryBar(items: Array<{ value: string; label: string; color: string }>): string {
+  const cells = items
+    .map(
+      item => `
+      <td width="33%" align="center" valign="middle" style="padding:8px 2px;">
+        <div style="font-size:20px;font-weight:700;color:${item.color};line-height:1.2;">${item.value}</div>
+        <div style="font-size:11px;color:#6b7280;line-height:1.3;margin-top:2px;">${item.label}</div>
+      </td>`
+    )
+    .join('');
+  return `<table   role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f9fafb;border:1px solid #f1f2f4;border-radius:10px;"><tr>${cells}</tr></table>`;
+}
+
+/** 区块标题（✨ 新商品 / ❌ 删除商品） */
+function tabSectionTitle(text: string, color: string): string {
+  return `<div style="font-size:14px;font-weight:700;color:${color};line-height:1.4;margin:0 0 8px;">${text}</div>`;
+}
+
+/**
  * 把商品渲染成两列表格（邮件客户端对 CSS grid/flex 支持差，用 table 模拟页面的 grid-cols-2）。
- * 卡片风格对齐页面累计商品：圆角灰底、3/4 封面、左下角 ¥价格、商品名 + 店铺名。
+ * 卡片风格对齐页面累计商品：圆角浅灰底、固定高度封面、¥价格标签、商品名 + 店铺名。
  */
 function renderTabProductGrid(products: TabMailProduct[], removed = false): string {
   const shown = products.slice(0, TAB_MAIL_MAX_PRODUCTS);
@@ -512,28 +593,39 @@ function renderTabProductGrid(products: TabMailProduct[], removed = false): stri
   for (let i = 0; i < cells.length; i += 2) {
     const left = cells[i] ?? '';
     const right = cells[i + 1] ?? '';
-    rows.push(
-      `<tr><td width="50%" valign="top" style="padding:3px;">${left}</td>` +
-        `<td width="50%" valign="top" style="padding:3px;">${right}</td></tr>`
-    );
+    // 用 cellspacing 做卡片间距：td 加 padding 会撑破 50% 宽度，导致两列溢出屏幕
+    rows.push(`<tr><td width="50%" valign="top">${left}</td><td width="50%" valign="top">${right}</td></tr>`);
   }
-  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">${rows.join('')}</table>`;
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="6" border="0">${rows.join('')}</table>`;
 }
 
 function tabProductCell(p: TabMailProduct, removed: boolean): string {
-  const imgStyle = removed ? 'opacity:0.6;' : '';
+  const dim = removed ? 'opacity:0.55;' : '';
   // 点击唤起一手 App（与页面手机端同一套深链），而非跳 H5 网页
   const appLink = buildYishouProductLink(p.productId, p.productNo);
+  const shopText = p.brandName ?? '';
+  const cover = p.productImage
+    ? `<img src="${p.productImage}" alt="${p.productName}" width="100%" height="${TAB_MAIL_IMAGE_HEIGHT}" style="display:block;width:100%;height:${TAB_MAIL_IMAGE_HEIGHT}px;object-fit:cover;border:0;border-radius:10px 10px 0 0;${dim}" />`
+    : `<div style="height:${TAB_MAIL_IMAGE_HEIGHT}px;background:#f3f4f6;"></div>`;
+
   return `
-    <a href="${appLink}" target="_blank" rel="noopener noreferrer" style="display:block;text-decoration:none;background:#f9fafb;border:1px solid #f3f4f6;border-radius:12px;overflow:hidden;">
-      <img src="${p.productImage}" alt="${p.productName}" width="100%" style="width:100%;aspect-ratio:3/4;object-fit:cover;display:block;${imgStyle}" />
-      <div style="padding:8px 10px;">
-        <div style="font-size:12px;font-weight:600;color:#1f2937;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${p.productName}</div>
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:4px;">
-          <span style="background:rgba(0,0,0,0.55);color:#ffffff;font-size:11px;font-weight:600;padding:1px 6px;border-radius:4px;">¥${p.price.toFixed(2)}</span>
-          <span style="font-size:11px;color:#6b7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:55%;margin-left:6px;">${p.brandName ?? ''}${p.marketName ? ` · ${p.marketName}` : ''}</span>
-        </div>
-      </div>
+    <a href="${appLink}" target="_blank" rel="noopener noreferrer" style="display:block;text-decoration:none;color:inherit;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;box-sizing:border-box;background:#f9fafb;border:1px solid #f1f2f4;border-radius:10px;">
+        <tr><td style="padding:0;font-size:0;line-height:0;">${cover}</td></tr>
+        <tr>
+          <td style="padding:6px 8px 7px;">
+            <div style="font-size:12px;font-weight:600;color:#1f2937;line-height:1.35;height:32px;overflow:hidden;">${p.productName}</div>
+            <div style="margin-top:3px;">
+              <span style="display:inline-block;background:rgba(0,0,0,0.7);color:#ffffff;font-size:11px;font-weight:600;line-height:1.4;padding:1px 5px;border-radius:4px;">¥${p.price.toFixed(2)}</span>
+              ${
+                shopText
+                  ? `<span style="display:inline-block;font-size:11px;color:#9ca3af;line-height:1.4;margin-left:5px;max-width:58%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom;">${shopText}</span>`
+                  : ''
+              }
+            </div>
+          </td>
+        </tr>
+      </table>
     </a>`;
 }
 
@@ -572,116 +664,31 @@ function createTabAccumulateTemplate(
   const gridHtml = renderTabProductGrid(info.newProducts, false);
   const moreHtml =
     info.newProducts.length > TAB_MAIL_MAX_PRODUCTS
-      ? `<p style="color:#9ca3af;font-size:12px;text-align:center;margin:10px 0 0;">... 还有 ${info.newProducts.length - TAB_MAIL_MAX_PRODUCTS} 个新商品</p>`
+      ? `<p style="color:#9ca3af;font-size:11px;text-align:center;margin:10px 0 0;">... 还有 ${info.newProducts.length - TAB_MAIL_MAX_PRODUCTS} 个新商品</p>`
       : '';
-  const schema = tabEmailSchema(info, tabName);
 
-  return `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="utf-8">
-      ${schema}
-      <style>
-        body {
-          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-          line-height: 1.6;
-          color: #333;
-          max-width: 800px;
-          margin: 0 auto;
-          padding: 20px;
-        }
-        .container {
-          background: #f9f9f9;
-          border-radius: 8px;
-          padding: 30px;
-        }
-        .header {
-          text-align: center;
-          margin-bottom: 30px;
-          border-bottom: 2px solid #e0e0e0;
-          padding-bottom: 20px;
-        }
-        .header h1 {
-          color: #FF9800;
-          margin: 0;
-        }
-        .summary {
-          background: white;
-          padding: 20px;
-          border-radius: 6px;
-          margin-bottom: 20px;
-          display: flex;
-          justify-content: space-around;
-        }
-        .summary-item {
-          text-align: center;
-        }
-        .summary-number {
-          font-size: 32px;
-          font-weight: bold;
-        }
-        .summary-new {
-          color: #4CAF50;
-        }
-        .summary-current {
-          color: #2196F3;
-        }
-        .summary-seen {
-          color: #FF9800;
-        }
-        .summary-label {
-          color: #666;
-          margin-top: 5px;
-        }
-        .footer {
-          text-align: center;
-          margin-top: 30px;
-          color: #999;
-          font-size: 12px;
-        }
-      </style>
-    </head>
-    <body>
-      <div class="container">
-        <div class="header">
-          <h1>🆕 Tab 发现新商品</h1>
-        </div>
+  const summary = tabSummaryBar([
+    { value: String(info.newProducts.length), label: '本次新商品', color: '#16a34a' },
+    { value: String(info.currentTotal), label: '当前在架', color: '#2563eb' },
+    { value: String(info.seenTotal), label: '累计记录', color: '#f97316' },
+  ]);
 
-        <div style="background: white; padding: 20px; border-radius: 6px; margin-bottom: 20px;">
-          <h3 style="margin-top: 0;">${tabName}</h3>
-          <p style="color: #666; font-size: 14px;">Tab ID: ${tabId}</p>
-        </div>
-
-        <div class="summary">
-          <div class="summary-item">
-            <div class="summary-number summary-new">${info.newProducts.length}</div>
-            <div class="summary-label">本次新商品</div>
-          </div>
-          <div class="summary-item">
-            <div class="summary-number summary-current">${info.currentTotal}</div>
-            <div class="summary-label">当前在架</div>
-          </div>
-          <div class="summary-item">
-            <div class="summary-number summary-seen">${info.seenTotal}</div>
-            <div class="summary-label">累计记录</div>
-          </div>
-        </div>
-
-        <div style="margin-top: 20px;">
-          <h3 style="color: #4CAF50; margin-bottom: 15px;">✨ 新商品 (${info.newProducts.length})</h3>
-          ${gridHtml}
-          ${moreHtml}
-        </div>
-
-        <div class="footer">
-          <p>同一商品只记录一次，反复上下架不会重复提醒。</p>
-          <p>这是一封自动发送的邮件，请勿直接回复。</p>
-        </div>
-      </div>
-    </body>
-    </html>
+  const bodyHtml = `
+    ${summary}
+    <div style="margin-top:14px;">
+      ${tabSectionTitle(`✨ 新商品 (${info.newProducts.length})`, '#16a34a')}
+      ${gridHtml}
+      ${moreHtml}
+    </div>
   `;
+
+  return tabMailShell({
+    schema: tabEmailSchema(info, tabName),
+    title: '🆕 Tab 发现新商品',
+    subtitle: `${tabName} · Tab ID: ${tabId}`,
+    bodyHtml,
+    footerHtml: '同一商品只记录一次，反复上下架不会重复提醒。<br>这是一封自动发送的邮件，请勿直接回复。',
+  });
 }
 
 /**
@@ -699,140 +706,44 @@ function createTabDiffTemplate(
   }[info.changeType];
 
   const newProductsHtml = info.newProducts.length > 0 ? `
-    <div style="margin-top: 20px;">
-      <h3 style="color: #4CAF50; margin-bottom: 15px;">✨ 新增商品 (${info.newProducts.length})</h3>
+    <div style="margin-top:14px;">
+      ${tabSectionTitle(`✨ 新增商品 (${info.newProducts.length})`, '#16a34a')}
       ${renderTabProductGrid(info.newProducts, false)}
-      ${info.newProducts.length > TAB_MAIL_MAX_PRODUCTS ? `<p style="color:#9ca3af;font-size:12px;text-align:center;margin:10px 0 0;">... 还有 ${info.newProducts.length - TAB_MAIL_MAX_PRODUCTS} 个新增商品</p>` : ''}
+      ${info.newProducts.length > TAB_MAIL_MAX_PRODUCTS ? `<p style="color:#9ca3af;font-size:11px;text-align:center;margin:10px 0 0;">... 还有 ${info.newProducts.length - TAB_MAIL_MAX_PRODUCTS} 个新增商品</p>` : ''}
     </div>
   ` : '';
 
   const removedProductsHtml = info.removedProducts.length > 0 ? `
-    <div style="margin-top: 20px;">
-      <h3 style="color: #f44336; margin-bottom: 15px;">❌ 删除商品 (${info.removedProducts.length})</h3>
+    <div style="margin-top:14px;">
+      ${tabSectionTitle(`❌ 删除商品 (${info.removedProducts.length})`, '#ef4444')}
       ${renderTabProductGrid(info.removedProducts, true)}
-      ${info.removedProducts.length > TAB_MAIL_MAX_PRODUCTS ? `<p style="color:#9ca3af;font-size:12px;text-align:center;margin:10px 0 0;">... 还有 ${info.removedProducts.length - TAB_MAIL_MAX_PRODUCTS} 个删除商品</p>` : ''}
+      ${info.removedProducts.length > TAB_MAIL_MAX_PRODUCTS ? `<p style="color:#9ca3af;font-size:11px;text-align:center;margin:10px 0 0;">... 还有 ${info.removedProducts.length - TAB_MAIL_MAX_PRODUCTS} 个删除商品</p>` : ''}
     </div>
   ` : '';
 
-  const schema = tabEmailSchema(info, tabName);
+  const summary = tabSummaryBar([
+    { value: String(info.previousTotal), label: '变化前', color: '#2563eb' },
+    {
+      value: `${info.currentTotal > info.previousTotal ? '+' : ''}${info.currentTotal - info.previousTotal}`,
+      label: '变化量',
+      color: '#f97316',
+    },
+    { value: String(info.currentTotal), label: '变化后', color: '#16a34a' },
+  ]);
 
-  return `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="utf-8">
-      ${schema}
-      <style>
-        body {
-          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-          line-height: 1.6;
-          color: #333;
-          max-width: 800px;
-          margin: 0 auto;
-          padding: 20px;
-        }
-        .container {
-          background: #f9f9f9;
-          border-radius: 8px;
-          padding: 30px;
-        }
-        .header {
-          text-align: center;
-          margin-bottom: 30px;
-          border-bottom: 2px solid #e0e0e0;
-          padding-bottom: 20px;
-        }
-        .header h1 {
-          color: #FF9800;
-          margin: 0;
-        }
-        .summary {
-          background: white;
-          padding: 20px;
-          border-radius: 6px;
-          margin-bottom: 20px;
-          display: flex;
-          justify-content: space-around;
-        }
-        .summary-item {
-          text-align: center;
-        }
-        .summary-number {
-          font-size: 32px;
-          font-weight: bold;
-        }
-        .summary-previous {
-          color: #2196F3;
-        }
-        .summary-current {
-          color: #4CAF50;
-        }
-        .summary-diff {
-          color: #FF9800;
-        }
-        .summary-label {
-          color: #666;
-          margin-top: 5px;
-        }
-        .change-type {
-          background: #FFF3E0;
-          padding: 15px;
-          border-radius: 6px;
-          margin-bottom: 20px;
-          text-align: center;
-          font-weight: bold;
-          color: #FF6F00;
-        }
-        .footer {
-          text-align: center;
-          margin-top: 30px;
-          color: #999;
-          font-size: 12px;
-        }
-      </style>
-    </head>
-    <body>
-      <div class="container">
-        <div class="header">
-          <h1>🔔 Tab商品列表变化提醒</h1>
-        </div>
-        
-        <div style="background: white; padding: 20px; border-radius: 6px; margin-bottom: 20px;">
-          <h3 style="margin-top: 0;">${tabName}</h3>
-          <p style="color: #666; font-size: 14px;">Tab ID: ${tabId}</p>
-        </div>
-
-        <div class="change-type">
-          变化类型: ${changeTypeText}
-        </div>
-
-        <div class="summary">
-          <div class="summary-item">
-            <div class="summary-number summary-previous">${info.previousTotal}</div>
-            <div class="summary-label">变化前</div>
-          </div>
-          <div class="summary-item">
-            <div class="summary-number summary-diff">
-              ${info.currentTotal > info.previousTotal ? '+' : ''}${info.currentTotal - info.previousTotal}
-            </div>
-            <div class="summary-label">变化量</div>
-          </div>
-          <div class="summary-item">
-            <div class="summary-number summary-current">${info.currentTotal}</div>
-            <div class="summary-label">变化后</div>
-          </div>
-        </div>
-
-        ${newProductsHtml}
-        ${removedProductsHtml}
-
-        <div class="footer">
-          <p>这是一封自动发送的邮件，请勿直接回复。</p>
-        </div>
-      </div>
-    </body>
-    </html>
+  const changeTypeHtml = `
+    <div style="background:#fff7ed;border:1px solid #ffedd5;border-radius:10px;padding:8px 10px;margin-bottom:10px;text-align:center;font-size:12px;font-weight:600;color:#c2410c;">
+      变化类型：${changeTypeText}
+    </div>
   `;
+
+  return tabMailShell({
+    schema: tabEmailSchema(info, tabName),
+    title: '🔔 Tab 商品列表变化提醒',
+    subtitle: `${tabName} · Tab ID: ${tabId}`,
+    bodyHtml: `${changeTypeHtml}${summary}${newProductsHtml}${removedProductsHtml}`,
+    footerHtml: '这是一封自动发送的邮件，请勿直接回复。',
+  });
 }
 
 /**

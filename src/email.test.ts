@@ -91,3 +91,36 @@ describe('createTabChangeTemplate - 两列布局 / 上限50 / schema / 无时间
     expect(html).toContain('yishou://fmkj/openyishou')
   })
 })
+
+describe('createTabChangeTemplate - 手机端版式（窄留白 / 固定图高 / 字号）', () => {
+  const info = {
+    mode: 'accumulate' as const,
+    newProducts: [mkProduct(1), mkProduct(2)],
+    currentTotal: 2,
+    seenTotal: 2,
+  }
+
+  it('主体限宽 640、左右留白压到最小（不再用 800 + 30px 内层 padding）', () => {
+    const html = createTabChangeTemplate('TabA', info, '123')
+    expect(html).toContain('max-width:640px')
+    expect(html).not.toContain('max-width: 800px')
+    expect(html).not.toContain('padding: 30px')
+    // 卡片间距用 cellspacing（td 加 padding 会撑破 50% 宽度导致两列溢出）
+    expect(html).toContain('cellspacing="6"')
+  })
+
+  it('商品图固定高度，避免竖长图在客户端里被拉成长条', () => {
+    const html = createTabChangeTemplate('TabA', info, '123')
+    expect(html).toContain(`height:190px`)
+    expect(html).toContain('object-fit:cover')
+    // aspect-ratio 在 Gmail 等客户端不生效，不再依赖
+    expect(html).not.toContain('aspect-ratio')
+  })
+
+  it('标题与正文字号明确设值（不再依赖 h1/h3 默认大小）', () => {
+    const html = createTabChangeTemplate('TabA', info, '123')
+    expect(html).toContain('font-size:17px')
+    expect(html).not.toContain('<h1>')
+    expect(html).not.toContain('<h3')
+  })
+})
