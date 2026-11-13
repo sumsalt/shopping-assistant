@@ -34,6 +34,14 @@ export const CART_ACTIVITIES = `${BASE}/cart/activities`;
 /** H5 Tab 商品列表 */
 export const TAB_GOODS_LIST = `${BASE}/template/getNewTemplateH5Tab`;
 
+/**
+ * 关键词搜索商品列表（抓包来自 iOS App，路径首字母大写）
+ *
+ * 匿名可用：不带 uid/token 也能返回 goods_list，但 shop_price 会降级成 "??.??"，
+ * 真实价格需进商品详情页查看。
+ */
+export const KEYWORD_SEARCH = `${BASE}/Goods/keyword_search`;
+
 /** 收货地址列表 */
 export const ADDRESS_LIST = `${BASE}/userAddress/get_user_address`;
 

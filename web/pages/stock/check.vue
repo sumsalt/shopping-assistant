@@ -3,7 +3,7 @@
     <!-- 页面标题 -->
     <div class="mb-6">
       <h1 class="text-2xl font-bold text-gray-900">库存查询</h1>
-      <p class="mt-1 text-sm text-gray-500">输入商品 ID 或货号查询库存状态，支持批量查询</p>
+      <p class="mt-1 text-sm text-gray-500">纯数字按商品 ID / 货号查库存，输入文字关键词则搜索商品</p>
     </div>
 
     <!-- 搜索区域 -->
@@ -13,10 +13,10 @@
           <div class="flex-1">
             <UiInput
               v-model="searchQuery"
-              placeholder="请输入商品 ID 或货号，多个 ID 用逗号分隔"
+              placeholder="输入商品 ID / 货号（多个用逗号分隔），或输入关键词搜索商品"
               size="lg"
               clearable
-              :disabled="isCheckingStock"
+              :disabled="isCheckingStock || isSearchingKeyword"
             >
               <template #prefix>
                 <svg class="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -24,15 +24,21 @@
                 </svg>
               </template>
             </UiInput>
-            <p v-if="searchQuery.includes(',') || searchQuery.includes('，')" class="mt-1 text-xs text-gray-500">
+            <p
+              v-if="isNumericQuery && (searchQuery.includes(',') || searchQuery.includes('，'))"
+              class="mt-1 text-xs text-gray-500"
+            >
               检测到多个商品 ID，将进行批量查询
+            </p>
+            <p v-else-if="searchQuery.trim() && !isNumericQuery" class="mt-1 text-xs text-blue-600">
+              将按关键词搜索商品（可能有多页结果）
             </p>
           </div>
           <UiButton
             type="submit"
             size="lg"
-            :loading="isCheckingStock"
-            :disabled="!searchQuery.trim()"
+            :loading="isCheckingStock || isSearchingKeyword"
+            :disabled="!searchQuery.trim() || isCheckingStock || isSearchingKeyword || isLoadingMore"
           >
             查询
           </UiButton>
@@ -41,25 +47,80 @@
     </div>
 
     <!-- 加载状态 -->
-    <div v-if="isCheckingStock" class="bg-white rounded-lg border border-gray-200 p-8">
+    <div v-if="isCheckingStock || isSearchingKeyword" class="bg-white rounded-lg border border-gray-200 p-8">
       <div class="flex flex-col items-center justify-center">
         <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4" />
-        <p class="text-gray-500">正在查询库存...</p>
+        <p class="text-gray-500">{{ isSearchingKeyword ? '正在搜索商品...' : '正在查询库存...' }}</p>
       </div>
     </div>
 
     <!-- 错误状态 -->
-    <div v-else-if="stockError" class="bg-white rounded-lg border border-red-200 p-8">
+    <div v-else-if="stockError || keywordError" class="bg-white rounded-lg border border-red-200 p-8">
       <div class="flex flex-col items-center justify-center text-center">
         <div class="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center mb-4">
           <svg class="w-8 h-8 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
           </svg>
         </div>
-        <h3 class="text-lg font-medium text-gray-900 mb-2">查询失败</h3>
-        <p class="text-gray-500 mb-4">{{ stockError }}</p>
+        <h3 class="text-lg font-medium text-gray-900 mb-2">{{ keywordError ? '搜索失败' : '查询失败' }}</h3>
+        <p class="text-gray-500 mb-4">{{ stockError || keywordError }}</p>
         <UiButton variant="outline" @click="handleRetry">
           重新查询
+        </UiButton>
+      </div>
+    </div>
+
+    <!-- 关键词搜索结果 -->
+    <div v-else-if="keywordResults" class="space-y-4">
+      <div class="bg-white rounded-lg border border-gray-200 p-4 flex flex-wrap items-center justify-between gap-2">
+        <div class="text-sm text-gray-700">
+          「<strong>{{ keywordResults.keyword }}</strong>」共 {{ keywordResults.totals }} 个结果，
+          已显示 {{ keywordResults.items.length }} 个
+        </div>
+        <div class="text-xs text-gray-500">
+          第 {{ keywordResults.page }} / {{ keywordResults.pageTotal }} 页
+        </div>
+      </div>
+
+      <div v-if="keywordResults.items.length" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+        <div
+          v-for="item in keywordResults.items"
+          :key="item.productNo || item.productId"
+          class="bg-white rounded-lg border border-gray-200 p-2 cursor-pointer hover:shadow-md hover:border-blue-300 transition-all"
+          @click="handleKeywordItemClick(item)"
+        >
+          <div class="aspect-square bg-gray-100 rounded overflow-hidden">
+            <img
+              v-if="item.image"
+              :src="item.image"
+              :alt="item.name"
+              class="w-full h-full object-cover"
+              loading="lazy"
+            />
+          </div>
+          <p class="mt-2 text-xs font-medium text-gray-900 line-clamp-2" :title="item.name">
+            {{ item.name }}
+          </p>
+          <p class="mt-1 text-xs text-gray-400 truncate">
+            {{ item.brandName }} · 货号 {{ item.productNo }}
+          </p>
+          <p class="mt-1 text-sm font-bold text-red-600">
+            {{ item.price !== undefined ? '¥' + item.price.toFixed(2) : '价格到详情页查看' }}
+          </p>
+        </div>
+      </div>
+      <div v-else class="bg-white rounded-lg border border-gray-200 p-8 text-center text-sm text-gray-500">
+        没有搜索到相关商品
+      </div>
+
+      <div v-if="keywordResults.page < keywordResults.pageTotal" class="flex justify-center">
+        <UiButton
+          variant="outline"
+          :loading="isLoadingMore"
+          :disabled="isLoadingMore"
+          @click="loadMoreKeywordResults"
+        >
+          加载更多
         </UiButton>
       </div>
     </div>
@@ -207,7 +268,7 @@
         </div>
         <h3 class="text-lg font-medium text-gray-900 mb-2">开始查询</h3>
         <p class="text-gray-500 max-w-sm">
-          在上方输入框中输入商品 ID 或货号，点击查询按钮获取库存信息
+          输入商品 ID / 货号查库存，或输入文字关键词搜索商品
         </p>
       </div>
     </div>
@@ -216,9 +277,10 @@
     <div class="mt-6 p-4 bg-blue-50 rounded-lg">
       <h4 class="text-sm font-medium text-blue-800 mb-2">使用说明</h4>
       <ul class="text-sm text-blue-700 list-disc list-inside space-y-1">
-        <li>支持输入单个或多个商品 ID 进行查询，多个 ID 用逗号分隔</li>
+        <li>纯数字（商品 ID / 货号）按原有方式查询库存，多个用逗号分隔可批量查询</li>
+        <li>输入含文字的关键词会搜索商品列表，点击商品进详情页查看实时库存与价格</li>
+        <li>关键词搜索不带登录信息，列表不展示价格，点进详情页查看</li>
         <li>批量查询时，会显示成功和失败的商品列表及统计信息</li>
-        <li>查询结果显示商品基本信息和库存状态</li>
         <li>点击商品卡片或「查看 SKU 详情」可查看所有颜色尺码的库存</li>
         <li>到货监控、价格监控统一在商品详情页创建</li>
       </ul>
@@ -227,6 +289,10 @@
 </template>
 
 <script setup lang="ts">
+import type { ApiResponse } from '@/types'
+import type { KeywordSearchItem, KeywordSearchResult } from '@core/types'
+import { isNumericProductQuery } from '@core/utils/product-query'
+
 // 页面元信息
 definePageMeta({
   title: '库存查询',
@@ -243,36 +309,115 @@ const {
   goToProductDetail,
 } = useStock()
 
+const toast = useToast()
+
 // 搜索关键词
 const searchQuery = ref('')
+const isNumericQuery = computed(() => isNumericProductQuery(searchQuery.value))
 
-// 搜索处理
+// 关键词搜索状态
+const keywordResults = ref<KeywordSearchResult | null>(null)
+const isSearchingKeyword = ref(false)
+const isLoadingMore = ref(false)
+const keywordError = ref<string | null>(null)
+
+/** 上次的搜索模式，供「重新查询」复用 */
+const lastSearchMode = ref<'stock' | 'keyword'>('stock')
+const lastKeyword = ref('')
+
+/** 切换搜索模式时清空两类结果，避免旧结果残留 */
+const clearResults = () => {
+  stockResult.value = null
+  batchStockResults.value = null
+  stockError.value = null
+  keywordResults.value = null
+  keywordError.value = null
+}
+
+/** 调用关键词搜索接口；append=true 时把下一页追加到现有列表 */
+const searchByKeyword = async (keyword: string, page: number, append: boolean) => {
+  if (append) isLoadingMore.value = true
+  else isSearchingKeyword.value = true
+  keywordError.value = null
+
+  try {
+    const response = await $fetch<ApiResponse<KeywordSearchResult>>('/api/stock/search', {
+      method: 'POST',
+      body: { keyword, page },
+    })
+
+    if (!response.success || !response.data) {
+      throw new Error(response.error?.message || '搜索失败')
+    }
+
+    const data = response.data
+    keywordResults.value =
+      append && keywordResults.value
+        ? { ...data, items: [...keywordResults.value.items, ...data.items] }
+        : data
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '网络请求失败'
+    keywordError.value = message
+    toast.error(message)
+  } finally {
+    isSearchingKeyword.value = false
+    isLoadingMore.value = false
+  }
+}
+
+// 搜索处理：纯数字走原有库存查询，其余走关键词搜索
 const handleSearch = async () => {
   const query = searchQuery.value.trim()
-  if (!query) {
+  if (!query || isCheckingStock.value || isSearchingKeyword.value || isLoadingMore.value) {
     return
   }
 
-  // 检查是否是批量查询（包含逗号）
-  const productIds = query.split(/[,，]/).map(id => id.trim()).filter(id => id)
-
-  if (productIds.length > 1) {
-    // 批量查询
-    await checkStockBatch(productIds)
+  if (isNumericProductQuery(query)) {
+    lastSearchMode.value = 'stock'
+    clearResults()
+    const productIds = query.split(/[,，]/).map(id => id.trim()).filter(id => id)
+    if (productIds.length > 1) {
+      await checkStockBatch(productIds)
+    } else {
+      await checkStock(productIds[0])
+    }
   } else {
-    // 单个查询
-    await checkStock(productIds[0])
+    lastSearchMode.value = 'keyword'
+    lastKeyword.value = query
+    clearResults()
+    await searchByKeyword(query, 1, false)
   }
+}
+
+// 加载下一页
+const loadMoreKeywordResults = async () => {
+  const current = keywordResults.value
+  if (!current || isLoadingMore.value || isSearchingKeyword.value) return
+  const nextPage = current.page + 1
+  if (current.pageTotal && nextPage > current.pageTotal) return
+  await searchByKeyword(current.keyword, nextPage, true)
 }
 
 // 重试
 const handleRetry = () => {
-  handleSearch()
+  if (lastSearchMode.value === 'keyword' && lastKeyword.value) {
+    clearResults()
+    void searchByKeyword(lastKeyword.value, 1, false)
+  } else {
+    void handleSearch()
+  }
 }
 
-// 点击商品卡片
+// 点击商品卡片（库存查询结果）
 const handleProductClick = (item: any) => {
   if (item?.productNo) {
+    goToProductDetail(item.productNo)
+  }
+}
+
+// 点击关键词搜索结果卡片
+const handleKeywordItemClick = (item: KeywordSearchItem) => {
+  if (item.productNo) {
     goToProductDetail(item.productNo)
   }
 }

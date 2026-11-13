@@ -18,6 +18,8 @@ import type {
   YishouGoodsData,
   YishouTabGoodsData,
   YishouAddress,
+  KeywordSearchItem,
+  KeywordSearchResult,
 } from '../../types';
 import { GOODS_URL_PREFIX } from './endpoints';
 
@@ -415,5 +417,73 @@ export const mapOrderListItem = (raw: YishouOrderRaw): OrderListItem => {
     ...(cancelExpireAt ? { cancelExpireAt } : {}),
     message: raw.order_msg_text ?? '',
     items,
+  };
+};
+
+// ==================== 关键词搜索 ====================
+
+/** 关键词搜索返回的原始商品 */
+export interface YishouSearchGoodsRaw {
+  goods_id?: string;
+  goods_no?: string;
+  goods_name?: string;
+  goods_img?: string;
+  goods_thumb?: string;
+  brand_name?: string;
+  cat_name?: string;
+  shop_price?: string;
+  sales?: string | number;
+  is_on_sale?: string;
+}
+
+/** 关键词搜索返回的 data */
+export interface YishouKeywordSearchData {
+  goods_list?: YishouSearchGoodsRaw[];
+  page_total?: string | number;
+  totals?: string | number;
+}
+
+/** 把 "539" / 539 / "" 统一成非负整数，非法值归 0 */
+const toCount = (value: string | number | undefined): number => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 0;
+};
+
+/**
+ * 关键词搜索响应 → 领域模型
+ *
+ * 匿名接口把价格写成 "??.??"（toOptionalNumber 会解析成 NaN → undefined），
+ * 这里归一成「没有 price」，由前端引导进详情页查看，避免展示 0 或假价格。
+ */
+export const mapKeywordSearchResult = (
+  data: YishouKeywordSearchData | undefined,
+  keyword: string,
+  page: number
+): KeywordSearchResult => {
+  const items: KeywordSearchItem[] = (data?.goods_list ?? []).map(raw => {
+    const productId = String(raw.goods_id ?? '');
+    const price = toOptionalNumber(raw.shop_price);
+    const sales = toOptionalNumber(raw.sales);
+
+    return {
+      productId,
+      productNo: String(raw.goods_no ?? ''),
+      name: String(raw.goods_name ?? ''),
+      image: String(raw.goods_img || raw.goods_thumb || ''),
+      brandName: String(raw.brand_name ?? ''),
+      categoryName: String(raw.cat_name ?? ''),
+      ...(price !== undefined && price > 0 ? { price } : {}),
+      ...(sales !== undefined ? { sales } : {}),
+      productUrl: goodsUrl(productId),
+      onSale: String(raw.is_on_sale ?? '') === '1',
+    };
+  });
+
+  return {
+    keyword,
+    items,
+    page,
+    pageTotal: toCount(data?.page_total),
+    totals: toCount(data?.totals),
   };
 };

@@ -12,6 +12,7 @@ import type {
   OrderStatusTab,
   RenewOrderResult,
   WaitPayConfirmData,
+  KeywordSearchResult,
 } from '../types';
 
 /**
@@ -62,6 +63,13 @@ export interface PlatformAdapter {
    * 不是所有平台都有订单能力：未实现时调用方应提示「当前平台不支持」。
    */
   getOrderList?(page?: number, pageSize?: number, status?: OrderStatusTab): Promise<OrderListResult>;
+
+  /**
+   * 关键词搜索商品（匿名可用；不是所有平台都支持）
+   *
+   * 未实现时调用方应提示「当前平台不支持」，不要混进必须的库存查询能力。
+   */
+  searchByKeyword?(keyword: string, page?: number): Promise<KeywordSearchResult>;
 }
 
 /**

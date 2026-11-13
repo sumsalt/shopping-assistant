@@ -21,6 +21,7 @@ import type {
   YishouCollectionGoodsData,
   YishouGoodsData,
   YishouTabGoodsData,
+  KeywordSearchResult,
 } from '../../types';
 import { BaseAdapter } from '../base-adapter';
 import type { AdapterConfig } from '../types';
@@ -30,10 +31,12 @@ import { YishouOrderApi } from './order-api';
 import {
   mapCartDetailToSkuResult,
   mapCollectionItemToResult,
+  mapKeywordSearchResult,
   mapTabItemToResult,
   mapToPriceSnapshot,
   mapToStockResult,
 } from './mappers';
+import type { YishouKeywordSearchData } from './mappers';
 
 /** 商品不存在：统一文案，调用方直接展示 */
 const notFound = (id: string): StockCheckError =>
@@ -159,6 +162,31 @@ export class YishouAdapter extends BaseAdapter {
       })
       .then(data => splitByStock((data?.list || []).map(mapTabItemToResult)))
       .catch(withErrorContext('获取 Tab 商品列表失败'));
+  }
+
+  /**
+   * 关键词搜索商品列表（匿名、不带登录信息）
+   *
+   * 实测匿名可正常返回 40 条/页，但 shop_price 会是 "??.??"（价格被隐藏），
+   * 埋点 ID / sort / special_id 留空也能通；真实价格进商品详情页查看。
+   */
+  async searchByKeyword(keyword: string, page: number = 1): Promise<KeywordSearchResult> {
+    const index = Math.max(1, Math.floor(page) || 1);
+
+    return this.client
+      .post<YishouKeywordSearchData>(EP.KEYWORD_SEARCH, {
+        app_code: '0',
+        app_interface: 'search_result',
+        keyword,
+        pageindex: `${index}`,
+        sort: '',
+        special_id: '',
+        // 抓包里是 uid_毫秒 的埋点 ID；匿名无 uid，实测留空也能正常返回
+        source_event_id: '',
+        source_search_event_id: '',
+      })
+      .then(data => mapKeywordSearchResult(data, keyword, index))
+      .catch(withErrorContext('关键词搜索失败'));
   }
 
   /** 获取商品 SKU 列表 */

@@ -814,6 +814,40 @@ export interface AutoOrderResult {
 }
 
 /**
+ * 关键词搜索结果中的商品
+ *
+ * 匿名搜索接口不返回真实价格（shop_price = "??.??"），price 为空时
+ * 前端应引导用户进商品详情页查看，而不是展示 0 或占位数字。
+ */
+export interface KeywordSearchItem {
+  /** 商品 ID（goods_id） */
+  productId: string;
+  /** 商品货号（goods_no），用于跳站内详情页 */
+  productNo: string;
+  name: string;
+  image: string;
+  brandName: string;
+  categoryName: string;
+  /** 匿名接口无真实价格时为 undefined */
+  price?: number;
+  sales?: number;
+  productUrl: string;
+  onSale: boolean;
+}
+
+/** 关键词搜索结果（一页，默认 40 条） */
+export interface KeywordSearchResult {
+  keyword: string;
+  items: KeywordSearchItem[];
+  /** 当前页码，从 1 开始 */
+  page: number;
+  /** 总页数（page_total） */
+  pageTotal: number;
+  /** 总商品数（totals） */
+  totals: number;
+}
+
+/**
  * 库存查询错误
  */
 export class StockCheckError extends Error {
