@@ -674,7 +674,7 @@ export type OrderStatusTab = 'all' | 'wait_pay' | 'wait_shipping' | 'wait_comfir
 export interface OrderListResult {
   /** 订单（一手按时间倒序返回） */
   items: OrderListItem[];
-  /** 当前页码，从 1 开始（一手接口是 0 起，适配器内部已换算） */
+  /** 当前页码，从 1 开始（一手用记录偏移量 offset，适配器内部按 pagesize 换算） */
   page: number;
   /** 本次请求的每页条数（一手上限 10） */
   pageSize: number;

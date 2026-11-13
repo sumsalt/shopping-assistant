@@ -122,8 +122,13 @@ export class YishouOrderApi {
   /**
    * 订单列表
    *
-   * 三个实测细节：参数名是 `pageidx`（不是 pageindex，写错直接 500）、0 起、
-   * 不传 pageidx 时 data 是裸数组。没有总数，只能靠「本页是否满页」判断。
+   * 实测细节：
+   *   - 参数名是 `pageidx`（不是 pageindex，写错直接 500）。
+   *   - **`pageidx` 是「记录偏移量 offset」，不是页码**：传 0 取第 0~9 条，
+   *     传 1 取第 1~10 条（只前移 1 条，会和第一页重复 9 条）。
+   *     正确翻页步长是 `pagesize`，即对外第 N 页传 `(N-1) * size`。
+   *   - 响应里的 `pageidx` = 本次 offset + 本页条数，是下一页游标（本项目仍按页码建模）。
+   *   - 不传 pageidx 时 data 是裸数组；没有总数，只能靠「本页是否满页」判断 hasMore。
    */
   async getOrderList(
     page: number = 1,
@@ -141,7 +146,8 @@ export class YishouOrderApi {
 
     const data = await this.client.post<unknown>(EP.ORDER_LIST, {
       order_status: tab,
-      pageidx: `${index - 1}`,
+      // 一手把 pageidx 当记录偏移量：第 N 页从第 (N-1)*size 条开始取
+      pageidx: `${(index - 1) * size}`,
       pagesize: `${size}`,
     });
 

@@ -2,7 +2,8 @@
  * 一手适配器 - 订单列表
  *
  * 只测「请求参数 + 映射」。三个最容易写错的点都在这里：
- *   - 参数名是 pageidx（不是 pageindex），且 **0 起**
+ *   - 参数名是 pageidx（不是 pageindex），且是 **记录偏移量 offset**（步长 = pagesize），
+ *     不是页码；传 1 只会前移 1 条，导致加载更多重复第一页
  *   - 传了 pageidx 返回 `{list,...}`，不传是裸数组
  *   - 没有总数，hasMore 只能按本页是否满页判断
  */
@@ -89,17 +90,31 @@ describe('YishouAdapter 订单列表', () => {
     mocks.httpPost.mockReset()
   })
 
-  it('用 pageidx（0 起）请求，并把每页条数收敛到 10', async () => {
+  it('pageidx 是记录偏移量：第 N 页传 (N-1)*size，并把每页条数收敛到 10', async () => {
     mocks.httpPost.mockResolvedValue({ code: '200', msg: 'success', data: { list: [order()] } })
 
     const adapter = new YishouAdapter(config)
+    // pagesize 传 50 会被收敛到 10；对外第 2 页的 offset 应为 (2-1)*10 = 10
     await adapter.getOrderList(2, 50)
 
-    // 一手是 0 起：对外第 2 页 = pageidx=1
-    expect(lastBody().pageidx).toBe('1')
+    expect(lastBody().pageidx).toBe('10')
     expect(lastBody().pagesize).toBe('10')
     // 写错成 pageindex 会直接 500，这里守住参数名
     expect(lastBody().pageindex).toBeUndefined()
+  })
+
+  it('连续翻页按 pagesize 递增，不会重复前一页（pageidx 不是页码）', async () => {
+    mocks.httpPost.mockResolvedValue({ code: '200', msg: 'success', data: { list: [] } })
+
+    const adapter = new YishouAdapter(config)
+    const offsets: string[] = []
+    for (const page of [1, 2, 3, 4]) {
+      await adapter.getOrderList(page, 10)
+      offsets.push(lastBody().pageidx)
+    }
+
+    // 0 / 10 / 20 / 30：每页正好跨过一整页，不会像页码那样只挪 1 条
+    expect(offsets).toEqual(['0', '10', '20', '30'])
   })
 
   it('默认 order_status=all，显式 tab 原样回传', async () => {

@@ -329,14 +329,25 @@ interface RequestProfile {
 ### 订单列表（只读）
 
 - 接口：`POST /order/get_order_list`，业务参数 `order_status` / `pageidx` / `pagesize`。
-- 参数名是 **`pageidx`**（不是 `pageindex`），且 **从 0 开始**；写成 `pageindex`
-  会直接返回 `500 server error`，这是实测踩过的坑。对外仍暴露 1 起的页码，适配器内部换算。
+- 参数名是 **`pageidx`**（不是 `pageindex`），写成 `pageindex` 会直接返回
+  `500 server error`，这是实测踩过的坑。
+- **`pageidx` 是「记录偏移量 offset」，不是页码**（用真实账号 Android 通道实证）：
+  `pageidx=0` 取第 0~9 条，`pageidx=1` 取第 1~10 条——只前移 1 条、与第一页重复 9 条。
+  早期实现把 `pageidx` 当页码写成 `页码-1`，导致「加载更多」重复第一页，
+  自动续期翻页也只挪 1 条。正确翻页步长是 `pagesize`：**对外第 N 页传 `(N-1) * size`**。
+- 响应里的 `pageidx` = 本次 offset + 本页条数（下一页游标），但本项目仍按 1 起页码建模，
+  适配器内部换算，前端 `loadMore` 只需 `currentPage + 1`。
 - `order_status` 只有 5 个合法值：`all` / `wait_pay` / `wait_shipping` /
-  `wait_comfirm`（上游拼写错误，必须照抄）/ `finish`；传非法值不报错，会静默回退成 `all`。
+  `wait_comfirm`（上游拼写错误，必须照抄）/ `finish`；传非法值（含正确拼写的
+  `wait_confirm`、`tab`、空值、不传）不报错，会**静默回退成 `all`**。
+  代码里的 `tab` 只是「订单状态标签页」这一概念的变量名 / 类型名 `OrderStatusTab` /
+  常量名 `ORDER_STATUS_TABS`，**不是 `order_status` 的枚举值**。
 - 返回结构取决于是否传 `pageidx`：传了是 `{ list, pageidx, current_timestamp }`，
   不传是裸数组，适配器两种都兼容。
 - 一手**每页硬上限 10 条**（传 20 / 50 也只回 10 条），且**不返回总数**，
   所以 `hasMore` 只能按「本页是否满页」判断；翻到最后一页会多一次空请求，属正常。
+- 自动续期 `scanWaitPayOrders` 固定传 `order_status=wait_pay`，按 `page=1..20`
+  逐页拉取（每页 10 条，最多 200 单），满页才继续；offset 语义修复后翻页不再重复。
 - 订单状态直接用一手给的 `order_status_name`，不维护状态码映射
   （状态码会变，文案不会）。
 - 商品规格在 `attribute` 里是「颜色 → 尺码 → 件数」的嵌套 JSON，

@@ -139,7 +139,13 @@ const isAuthError = (error: unknown): boolean => {
 const errorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
 
-/** 翻页拉取全部待支付订单，直到不满页 / 到达上限 */
+/**
+ * 翻页拉取全部待支付订单，直到不满页 / 到达上限
+ *
+ * 固定传 `wait_pay` 让服务端只回待支付订单；page 每轮 +1，由 getOrderList
+ * 换算成 `pageidx = (page-1) * RENEW_PAGE_SIZE` 的记录偏移量，
+ * 因此 >10 笔待支付订单也能逐页覆盖、不会重复第一页。
+ */
 const scanWaitPayOrders = async (
   adapter: RenewOrderAdapter,
   maxPages: number,
