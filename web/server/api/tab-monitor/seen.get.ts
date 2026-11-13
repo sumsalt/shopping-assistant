@@ -8,6 +8,7 @@
 
 import type { TabSeenProduct } from '@core'
 import { tabService } from '../../tasks/kinds'
+import { filterVisibleSeen } from '../../tasks/kinds/tab-seen'
 import { TaskApiError } from '../../tasks/engine/types'
 import { createSuccessResponse, createErrorResponse, ErrorCode } from '../../utils/response'
 import { getCurrentUser } from '../../utils/session'
@@ -56,11 +57,11 @@ export default defineEventHandler(async (event) => {
     })
 
     // 店铺黑名单：已经记录过的商品也要隐藏（取消黑名单后会自动恢复显示）
-    const blacklisted = new Set(listBlacklistedSupplyIds(currentUser.username))
-    const visibleProducts =
-      blacklisted.size > 0
-        ? filledProducts.filter(item => !item.supplyId || !blacklisted.has(item.supplyId))
-        : filledProducts
+    // 与卡片上的统计共用 filterVisibleSeen，保证外层数字与弹窗总数一致
+    const visibleProducts = filterVisibleSeen(
+      filledProducts,
+      listBlacklistedSupplyIds(currentUser.username)
+    )
 
     // 按首次发现时间倒序（同一轮发现的保持原有顺序）
     const sorted = [...visibleProducts].sort(

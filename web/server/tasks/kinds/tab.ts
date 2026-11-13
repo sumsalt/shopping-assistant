@@ -18,6 +18,7 @@ import { ErrorCode } from '../../utils/response'
 import { listBlacklistedSupplyIds } from '../../utils/shopBlacklistStore'
 import { TaskApiError, capEvents, makeEvent } from '../engine/types'
 import type { TaskKindDefinition, TaskRecordBase, TaskRunContext } from '../engine/types'
+import { countVisibleSeen } from './tab-seen'
 import type { TabTaskState } from './state'
 
 const KIND: TaskKind = 'tab'
@@ -186,7 +187,12 @@ export const tabDefinition: TaskKindDefinition<TabTaskState> = {
 
   project(record, options = {}) {
     const state = record.state
-    const seenCount = state.seenProducts?.length ?? state.seenProductIds?.length ?? 0
+    const seenProducts = state.seenProducts ?? []
+    // 与「累计商品」弹窗同一口径：先记录后拉黑的商品不再计数
+    const seenCount =
+      seenProducts.length > 0
+        ? countVisibleSeen(seenProducts, listBlacklistedSupplyIds(record.userId))
+        : (state.seenProductIds?.length ?? 0)
     const events = options.full ? state.events : state.events.slice(0, LIST_EVENT_LIMIT)
 
     return {

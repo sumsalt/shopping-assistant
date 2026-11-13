@@ -1,10 +1,21 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { priceDefinition } from './price'
 import { stockDefinition } from './stock'
 import { tabDefinition } from './tab'
 import { renewDefinition } from './renew'
 import type { TaskRecordBase } from '../engine/types'
 import type { PriceTaskState, RenewTaskState, StockTaskState, TabTaskState } from './state'
+
+/** 黑名单在测试里由用例注入，默认空 */
+const blacklist = vi.hoisted(() => ({ ids: [] as string[] }))
+
+vi.mock('../../utils/shopBlacklistStore', () => ({
+  listBlacklistedSupplyIds: () => blacklist.ids,
+}))
+
+afterEach(() => {
+  blacklist.ids = []
+})
 
 const base = (overrides: Partial<TaskRecordBase<any>> = {}) => ({
   id: 'task_1',
@@ -86,6 +97,30 @@ describe('任务视图投影', () => {
     expect(summary.target).toMatchObject({ type: 'tab', name: '女装' })
     expect(summary.badges[0].text).toBe('逐轮对比')
     expect(summary.stats.find(s => s.key === 'seen')?.value).toBe(1)
+  })
+
+  it('tab：拉黑店铺后统计数与「累计商品」口径一致', () => {
+    blacklist.ids = ['s1']
+    const seen = (productId: string, supplyId?: string) => ({
+      productId,
+      productName: productId.toUpperCase(),
+      price: 1,
+      firstSeenAt: '2026-01-01T00:00:00.000Z',
+      ...(supplyId ? { supplyId } : {}),
+    })
+    const state: TabTaskState = {
+      tab: { id: '146453', name: '女装' },
+      config: { mode: 'accumulate', interval: 300, duration: 10800 },
+      checkCount: 1,
+      detectedCount: 0,
+      currentTotal: 10,
+      seenProducts: [seen('a', 's1'), seen('b', 's2'), seen('c')],
+      events: [],
+    }
+
+    const summary = tabDefinition.project(base({ kind: 'tab', state }))
+    // s1 被拉黑 → 只剩 b、c；没有 supplyId 的老记录无法判定，保留
+    expect(summary.stats.find(s => s.key === 'seen')?.value).toBe(2)
   })
 
   it('renew：账号目标与续期事件', () => {
