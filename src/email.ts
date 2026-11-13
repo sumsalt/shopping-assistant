@@ -5,6 +5,7 @@
 import { createTransport } from 'nodemailer';
 import type { SentMessageInfo, Transporter } from 'nodemailer';
 import type { AutoOrderItem } from './types';
+import { buildYishouProductLink } from './yishou-deeplink';
 
 /**
  * 邮件配置
@@ -450,6 +451,8 @@ interface TabMailProduct {
   productName: string;
   price: number;
   productUrl: string;
+  /** 商品货号（一手 goods_no，用于拼 App 深链唤起一手） */
+  productNo?: string;
   productImage: string;
   /** 店铺名称（一手 brand_name） */
   brandName?: string;
@@ -519,8 +522,10 @@ function renderTabProductGrid(products: TabMailProduct[], removed = false): stri
 
 function tabProductCell(p: TabMailProduct, removed: boolean): string {
   const imgStyle = removed ? 'opacity:0.6;' : '';
+  // 点击唤起一手 App（与页面手机端同一套深链），而非跳 H5 网页
+  const appLink = buildYishouProductLink(p.productId, p.productNo);
   return `
-    <a href="${p.productUrl}" target="_blank" rel="noopener noreferrer" style="display:block;text-decoration:none;background:#f9fafb;border:1px solid #f3f4f6;border-radius:12px;overflow:hidden;">
+    <a href="${appLink}" target="_blank" rel="noopener noreferrer" style="display:block;text-decoration:none;background:#f9fafb;border:1px solid #f3f4f6;border-radius:12px;overflow:hidden;">
       <img src="${p.productImage}" alt="${p.productName}" width="100%" style="width:100%;aspect-ratio:3/4;object-fit:cover;display:block;${imgStyle}" />
       <div style="padding:8px 10px;">
         <div style="font-size:12px;font-weight:600;color:#1f2937;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${p.productName}</div>
@@ -535,21 +540,21 @@ function tabProductCell(p: TabMailProduct, removed: boolean): string {
 /**
  * Gmail 等支持的邮件结构化操作（schema.org EmailMessage + ViewAction）。
  * 让收件人在邮件里直接看到可点击的跳转操作；发件域名需通过 SPF/DKIM/DMARC 且注册才会显示。
- * 跳转到首个新商品（对比模式回退到首个下架商品）的一手链接。
+ * 跳转到首个新商品（对比模式回退到首个下架商品）的一手 App 深链。
  */
 function tabEmailSchema(info: TabAccumulateMailInfo | TabDiffMailInfo, tabName: string): string {
   const first =
     info.mode === 'diff'
       ? info.newProducts[0] ?? info.removedProducts[0]
       : info.newProducts[0];
-  if (!first || !first.productUrl) return '';
+  if (!first) return '';
   const data = {
     '@context': 'https://schema.org',
     '@type': 'EmailMessage',
     action: {
       '@type': 'ViewAction',
       name: '在手一查看商品',
-      url: first.productUrl,
+      url: buildYishouProductLink(first.productId, first.productNo),
     },
     description: `${tabName} 有商品更新`,
   };

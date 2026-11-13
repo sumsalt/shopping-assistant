@@ -10,7 +10,7 @@ import {
   buildYishouDeepLink,
   buildYishouProductLink,
   YISHOU_ROUTES,
-} from '../web/utils/yishou-deeplink'
+} from './yishou-deeplink'
 
 describe('buildYishouDeepLink', () => {
   it('scheme 固定为 yishou://fmkj/openyishou，extra 做 percent 编码', () => {
