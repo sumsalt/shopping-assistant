@@ -202,9 +202,14 @@
           </div>
         </div>
 
-        <!-- 商品信息（一个任务只监控一个商品） -->
+        <!-- 商品信息（一个任务只监控一个商品）：有货号时可点击跳商品详情页 -->
         <div class="border-t border-gray-100 p-4">
-          <div class="flex items-center gap-3">
+          <div
+            class="flex items-center gap-3 group"
+            :class="task.product.productNo ? 'cursor-pointer' : ''"
+            :title="task.product.productNo ? '点击查看商品详情' : ''"
+            @click="goToProductDetail(task.product.productNo)"
+          >
             <div class="w-16 h-16 flex-shrink-0 rounded-lg overflow-hidden bg-gray-100">
               <img
                 v-if="task.product.productImage"
@@ -224,11 +229,21 @@
               </div>
             </div>
             <div class="min-w-0">
-              <h3 class="text-sm font-medium text-gray-900 truncate" :title="task.product.productName">
+              <h3
+                class="text-sm font-medium truncate"
+                :class="task.product.productNo ? 'text-gray-900 group-hover:text-blue-600' : 'text-gray-900'"
+                :title="task.product.productName"
+              >
                 {{ task.product.productName }}
               </h3>
-              <p class="text-xs text-gray-500 mt-1">
-                ID: {{ task.product.productId }}
+              <p class="text-xs text-gray-500 mt-1 flex items-center gap-2">
+                <span>ID: {{ task.product.productId }}</span>
+                <span v-if="task.product.productNo" class="text-blue-600 inline-flex items-center gap-0.5">
+                  查看详情
+                  <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                  </svg>
+                </span>
               </p>
             </div>
           </div>
@@ -287,6 +302,17 @@ const {
 
 // 使用确认弹窗
 const { danger: confirmDelete, warning: confirmRestart } = useConfirmDialog()
+
+/**
+ * 跳到商品详情页
+ *
+ * 只有创建时落库了货号的新任务能跳；历史任务没有货号，简单降级为不可点
+ * （不做「商品 ID → 货号」的实时解析，避免为老数据引入额外请求与复杂度）。
+ */
+const goToProductDetail = (productNo?: string) => {
+  if (!productNo) return
+  navigateTo(`/stock/${encodeURIComponent(productNo)}`)
+}
 
 // 正在删除的任务 ID 集合
 const deletingTaskIds = ref<Set<string>>(new Set())

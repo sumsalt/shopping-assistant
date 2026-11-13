@@ -142,6 +142,8 @@ export const usePriceMonitor = () => {
           productId: product.productId,
           productName: product.productName,
           productImage: product.productImage,
+          // 落库货号，列表页据此跳转商品详情页（历史任务无货号则降级为不可跳）
+          ...(product.productNo ? { productNo: product.productNo } : {}),
         },
         config: {
           interval,

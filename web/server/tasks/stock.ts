@@ -24,6 +24,8 @@ export interface StockProductInfo {
   productId: string
   productName: string
   productImage?: string
+  /** 商品货号（列表页跳转商品详情页用）；历史任务无此字段，降级为不可跳 */
+  productNo?: string
 }
 
 export interface StockTaskRecord extends StoredTaskBase {

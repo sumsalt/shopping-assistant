@@ -114,7 +114,12 @@
 
           <!-- 商品当前价格（一个任务只监控一个商品） -->
           <div class="flex items-center justify-between gap-3 p-2 bg-gray-50 rounded-lg">
-            <div class="flex items-center gap-3 min-w-0">
+            <div
+              class="flex items-center gap-3 min-w-0 group"
+              :class="task.product.productNo ? 'cursor-pointer' : ''"
+              :title="task.product.productNo ? '点击查看商品详情' : ''"
+              @click="goToProductDetail(task.product.productNo)"
+            >
               <div class="w-10 h-10 flex-shrink-0 rounded overflow-hidden bg-gray-100">
                 <img
                   v-if="task.product.productImage"
@@ -129,11 +134,20 @@
                 </div>
               </div>
               <div class="min-w-0">
-                <p class="text-sm font-medium text-gray-900 truncate">
+                <p
+                  class="text-sm font-medium truncate"
+                  :class="task.product.productNo ? 'text-gray-900 group-hover:text-blue-600' : 'text-gray-900'"
+                >
                   {{ task.product.productName || task.snapshot?.productName || task.product.productId }}
                 </p>
-                <p class="text-xs text-gray-500">
-                  ID：{{ task.product.productId }}
+                <p class="text-xs text-gray-500 flex items-center gap-2">
+                  <span>ID：{{ task.product.productId }}</span>
+                  <span v-if="task.product.productNo" class="text-blue-600 inline-flex items-center gap-0.5">
+                    查看详情
+                    <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                    </svg>
+                  </span>
                 </p>
               </div>
             </div>
@@ -332,6 +346,17 @@ definePageMeta({
 })
 
 const confirmDialog = useConfirmDialog()
+
+/**
+ * 跳到商品详情页
+ *
+ * 只有创建时落库了货号的新任务能跳；历史任务没有货号，简单降级为不可点
+ * （不做「商品 ID → 货号」的实时解析，避免为老数据引入额外请求与复杂度）。
+ */
+const goToProductDetail = (productNo?: string) => {
+  if (!productNo) return
+  navigateTo(`/stock/${encodeURIComponent(productNo)}`)
+}
 
 const {
   tasks,

@@ -68,7 +68,7 @@ export const useMonitor = () => {
    * 创建监控任务（一个任务只监控一个商品）
    */
   const createMonitorTask = async (
-    product: { productId: string; productName: string; productImage?: string },
+    product: { productId: string; productName: string; productImage?: string; productNo?: string },
     config?: MonitorConfig
   ): Promise<string | null> => {
     // 确保用户已登录

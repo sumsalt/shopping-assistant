@@ -226,6 +226,11 @@ stock.ts / tab.ts / price.ts / renew.ts   只实现上面两个接口
 2. 进度更新用 `registry.touch(record)`（1 秒节流落盘），状态变更用 `registry.add` 或 `launch` 的收尾逻辑。
 3. 业务失败抛 `TaskApiError(code, message)`，不要自己拼 `createErrorResponse`。
 4. 落盘 payload 形状不能随意改：老任务要靠它续跑。新增字段必须可选、有默认值。
+5. **商品货号 `product.productNo` 用于列表页跳商品详情页**（到货 / 价格两类任务）。
+   详情页创建任务时前端会带货号，服务端创建时落库，`listView`/`statusView` 直接整体下发
+   `product` 对象即可，无需单独投影。价格任务另有用 `initialSnapshot.productNo`（`goods_no`）兜底。
+   **历史任务没有货号，前端简单降级为不可点、不显示「查看详情」，不做实时解析或回填**——
+   与 Tab 监控 `seenDetailPath` 的降级口径一致。
 
 ## 四、账号与凭证
 

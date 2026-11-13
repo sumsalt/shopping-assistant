@@ -19,6 +19,8 @@ export interface MonitorTaskItem {
     productId: string
     productName: string
     productImage?: string
+    /** 商品货号，存在时可跳转商品详情页；历史任务缺失则降级为不可跳 */
+    productNo?: string
   }
   status: 'running' | 'stopped' | 'completed'
   interval: number

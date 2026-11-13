@@ -463,6 +463,8 @@ const handleSubmit = async () => {
       productId: props.product.productId,
       productName: props.product.productName || '',
       productImage: props.product.productImage,
+      // 落库货号，列表页据此跳转商品详情页（历史任务无货号则降级为不可跳）
+      ...(props.product.productNo ? { productNo: props.product.productNo } : {}),
     },
     config
   )

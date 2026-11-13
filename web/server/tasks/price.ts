@@ -32,6 +32,8 @@ export interface PriceProductInfo {
   productId: string
   productName?: string
   productImage?: string
+  /** 商品货号（列表页跳转商品详情页用）；历史任务无此字段，降级为不可跳 */
+  productNo?: string
 }
 
 /** 最近一次快照（用于列表展示与续跑基线） */
@@ -286,6 +288,10 @@ export const priceDefinition: TaskDefinition<PriceTaskRecord> = {
         productId,
         productName: product.productName || initialSnapshot.productName,
         productImage: product.productImage || initialSnapshot.productImage,
+        // 详情页创建时会带货号，落库后供列表页跳转；缺失则回退基线里的 goods_no
+        ...(product.productNo || initialSnapshot.productNo
+          ? { productNo: product.productNo || initialSnapshot.productNo }
+          : {}),
       },
       config,
       checkCount: 0,
