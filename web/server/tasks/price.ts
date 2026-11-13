@@ -421,6 +421,7 @@ export const priceDefinition: TaskDefinition<PriceTaskRecord> = {
       order: task.order ?? null,
       snapshot: task.snapshot,
       changes: task.changes,
+      couponChanges: task.couponChanges ?? [],
     }
   },
 
@@ -443,6 +444,7 @@ export const priceDefinition: TaskDefinition<PriceTaskRecord> = {
       order: task.order ?? null,
       snapshot: task.snapshot,
       changes: task.changes,
+      couponChanges: task.couponChanges ?? [],
     }
   },
 

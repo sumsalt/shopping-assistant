@@ -89,8 +89,15 @@
               <span class="text-blue-600">次检测</span>
             </div>
             <div class="flex items-center gap-1.5 px-3 py-1.5 bg-orange-50 rounded-lg border border-orange-100">
-              <span class="text-orange-700 font-medium">{{ task.detectedCount }}</span>
+              <span class="text-orange-700 font-medium">{{ (task.changes?.length ?? 0) }}</span>
               <span class="text-orange-600">次价格变化</span>
+            </div>
+            <div
+              v-if="(task.couponChanges?.length ?? 0) > 0"
+              class="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 rounded-lg border border-amber-100"
+            >
+              <span class="text-amber-700 font-medium">{{ (task.couponChanges?.length ?? 0) }}</span>
+              <span class="text-amber-600">次优惠变化</span>
             </div>
             <div
               v-if="task.status === 'running'"
