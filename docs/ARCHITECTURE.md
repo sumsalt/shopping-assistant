@@ -344,8 +344,14 @@ interface RequestProfile {
   常量名 `ORDER_STATUS_TABS`，**不是 `order_status` 的枚举值**。
 - 返回结构取决于是否传 `pageidx`：传了是 `{ list, pageidx, current_timestamp }`，
   不传是裸数组，适配器两种都兼容。
-- 一手**每页硬上限 10 条**（传 20 / 50 也只回 10 条），且**不返回总数**，
-  所以 `hasMore` 只能按「本页是否满页」判断；翻到最后一页会多一次空请求，属正常。
+- 一手**完全忽略 `pagesize`**：实测传 `3` / `5` / `10` / `20` 都固定返回 **10 条**，
+  且**不返回总数**。因此适配器把 `size` 锁死为常量 `ORDER_LIST_PAGE_SIZE = 10`——
+  offset 步长、`pagesize` 请求值、`hasMore` 的满页判定三者必须用同一个 10，
+  否则按入参 size 算 offset 会与服务端实际条数不符、重新出现「加载更多重复」。
+  `hasMore` 按「本页是否满 10 条」判断；翻到最后一页会多一次空请求，属正常。
+- 调用口径：订单页 `/api/orders` 不传 `pageSize`（服务端直接用 10）、
+  自动续期固定传 `RENEW_PAGE_SIZE = 10`；收藏夹 / Tab 商品列表的 `page_size = 20`
+  是另外两个接口，与订单列表无关。
 - 自动续期 `scanWaitPayOrders` 固定传 `order_status=wait_pay`，按 `page=1..20`
   逐页拉取（每页 10 条，最多 200 单），满页才继续；offset 语义修复后翻页不再重复。
 - 订单状态直接用一手给的 `order_status_name`，不维护状态码映射

@@ -128,6 +128,8 @@ export class YishouOrderApi {
    *     传 1 取第 1~10 条（只前移 1 条，会和第一页重复 9 条）。
    *     正确翻页步长是 `pagesize`，即对外第 N 页传 `(N-1) * size`。
    *   - 响应里的 `pageidx` = 本次 offset + 本页条数，是下一页游标（本项目仍按页码建模）。
+   *   - **服务端完全忽略 `pagesize`**：实测传 3 / 5 / 10 / 20 都固定返回 10 条，
+   *     因此步长必须锁死为 10，不能用调用方传入的 size 算 offset（否则会重复）。
    *   - 不传 pageidx 时 data 是裸数组；没有总数，只能靠「本页是否满页」判断 hasMore。
    */
   async getOrderList(
@@ -138,10 +140,10 @@ export class YishouOrderApi {
     this.client.requireAuth(ORDER_LIST_AUTH_MESSAGE);
 
     const index = Math.max(1, Math.floor(page) || 1);
-    const size = Math.min(
-      Math.max(1, Math.floor(pageSize) || ORDER_LIST_PAGE_SIZE),
-      ORDER_LIST_PAGE_SIZE
-    );
+    // pageSize 保留在签名里只为兼容既有调用方；服务端忽略该参数、固定回 10 条，
+    // 所以 offset 步长、pagesize 请求值、hasMore 判定都必须用同一个常量。
+    void pageSize;
+    const size = ORDER_LIST_PAGE_SIZE;
     const tab = normalizeOrderStatus(status);
 
     const data = await this.client.post<unknown>(EP.ORDER_LIST, {

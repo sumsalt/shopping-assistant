@@ -90,17 +90,33 @@ describe('YishouAdapter 订单列表', () => {
     mocks.httpPost.mockReset()
   })
 
-  it('pageidx 是记录偏移量：第 N 页传 (N-1)*size，并把每页条数收敛到 10', async () => {
+  it('pageidx 是记录偏移量：第 N 页传 (N-1)*10，且 pagesize 恒为 10', async () => {
     mocks.httpPost.mockResolvedValue({ code: '200', msg: 'success', data: { list: [order()] } })
 
     const adapter = new YishouAdapter(config)
-    // pagesize 传 50 会被收敛到 10；对外第 2 页的 offset 应为 (2-1)*10 = 10
-    await adapter.getOrderList(2, 50)
-
-    expect(lastBody().pageidx).toBe('10')
-    expect(lastBody().pagesize).toBe('10')
+    // 服务端忽略 pagesize（实测 3/5/20 都固定回 10 条），所以无论入参传 50 还是 3，
+    // 步长与 pagesize 都必须锁死为 10，否则 offset 与服务端实际条数不符、重新重复。
+    for (const requested of [50, 5, 3]) {
+      await adapter.getOrderList(2, requested)
+      expect(lastBody().pageidx).toBe('10')
+      expect(lastBody().pagesize).toBe('10')
+    }
     // 写错成 pageindex 会直接 500，这里守住参数名
     expect(lastBody().pageindex).toBeUndefined()
+  })
+
+  it('返回的 pageSize 恒为 10，hasMore 按 10 条满页判定', async () => {
+    mocks.httpPost.mockResolvedValue({
+      code: '200',
+      msg: 'success',
+      data: { list: Array.from({ length: 10 }, () => order()) },
+    })
+
+    const adapter = new YishouAdapter(config)
+    const result = await adapter.getOrderList(2, 5)
+
+    expect(result.pageSize).toBe(10)
+    expect(result.hasMore).toBe(true)
   })
 
   it('连续翻页按 pagesize 递增，不会重复前一页（pageidx 不是页码）', async () => {

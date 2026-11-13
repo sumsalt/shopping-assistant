@@ -30,11 +30,8 @@ export default defineEventHandler(async (event) => {
 
     const query = getQuery(event)
     const page = parseInt(query.page as string) || 1
-    /** 一手服务端硬限制每页 10 条，传更大也只返回 10 条，这里直接收敛 */
-    const pageSize = Math.min(
-      Math.max(parseInt(query.pageSize as string) || ORDER_LIST_PAGE_SIZE, 1),
-      ORDER_LIST_PAGE_SIZE
-    )
+    /** 一手服务端忽略 pagesize、固定返回 10 条（实测 3/5/20 均回 10 条），直接锁死 */
+    const pageSize = ORDER_LIST_PAGE_SIZE
     /** 指定账号 ID：临时查看该账号的订单，不改变「当前账号」 */
     const accountId = typeof query.accountId === 'string' ? query.accountId.trim() : ''
     /** 状态 tab：非法值收敛成「全部」，避免把用户的手误变成空列表 */
