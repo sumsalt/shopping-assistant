@@ -65,3 +65,13 @@ export const formatExpire = (expireAt?: number): string => {
   const pad = (value: number) => String(value).padStart(2, '0')
   return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
+
+/** 剩余秒数 → 倒计时：02:34 / 1:02:03；已过期返回「已超时」 */
+export const formatRemaining = (seconds: number): string => {
+  if (seconds <= 0) return '已超时'
+  const pad = (value: number) => String(value).padStart(2, '0')
+  const hours = Math.floor(seconds / 3600)
+  const minutes = Math.floor((seconds % 3600) / 60)
+  const rest = Math.floor(seconds % 60)
+  return hours > 0 ? `${hours}:${pad(minutes)}:${pad(rest)}` : `${pad(minutes)}:${pad(rest)}`
+}

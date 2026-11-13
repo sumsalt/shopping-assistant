@@ -5,7 +5,7 @@
       description="每分钟扫描账号下的待支付订单，自动为支付有效期不足 5 分钟的订单刷新有效期"
     >
       <template #actions>
-        <UiButton variant="outline" size="sm" :disabled="isLoading" @click="fetchTasks">
+        <UiButton variant="outline" size="sm" :disabled="isLoading" @click="fetchTasks()">
           刷新
         </UiButton>
         <UiButton size="sm" @click="showCreateDialog = true">
@@ -29,7 +29,7 @@
       <div class="flex flex-col items-center justify-center text-center">
         <h3 class="text-lg font-medium text-gray-900 mb-2">加载失败</h3>
         <p class="text-gray-500 mb-4">{{ error }}</p>
-        <UiButton variant="outline" @click="fetchTasks">重新加载</UiButton>
+        <UiButton variant="outline" @click="fetchTasks()">重新加载</UiButton>
       </div>
     </div>
 
@@ -70,17 +70,18 @@
       </ul>
     </div>
 
-    <OrderRenewDialog v-model:open="showCreateDialog" @created="fetchTasks" />
+    <OrderRenewDialog v-model:open="showCreateDialog" @created="fetchTasks()" />
   </div>
 </template>
 
 <script setup lang="ts">
+import { taskEndpoint } from '@/utils/taskApi'
 import type { TaskSummary } from '@core/contract'
 
 definePageMeta({ title: '订单续期' })
 
 const { tasks, isLoading, error, busyId, fetchTasks, remove, restart } =
-  useTaskList('/api/order-renew')
+  useTaskList(taskEndpoint('renew'))
 
 const confirmDialog = useConfirmDialog()
 const showCreateDialog = ref(false)

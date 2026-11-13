@@ -5,7 +5,7 @@
       description="监控 Tab 商品列表，累计发现新商品后邮件提醒"
     >
       <template #actions>
-        <UiButton variant="outline" size="sm" :disabled="isLoading" @click="fetchTasks">
+        <UiButton variant="outline" size="sm" :disabled="isLoading" @click="fetchTasks()">
           刷新
         </UiButton>
         <UiButton size="sm" @click="showAddDialog = true">新增监控</UiButton>
@@ -26,7 +26,7 @@
       <div class="flex flex-col items-center justify-center text-center">
         <h3 class="text-lg font-medium text-gray-900 mb-2">加载失败</h3>
         <p class="text-gray-500 mb-4">{{ error }}</p>
-        <UiButton variant="outline" @click="fetchTasks">重新加载</UiButton>
+        <UiButton variant="outline" @click="fetchTasks()">重新加载</UiButton>
       </div>
     </div>
 
@@ -192,13 +192,14 @@
 </template>
 
 <script setup lang="ts">
+import { taskEndpoint } from '@/utils/taskApi'
 import type { TaskSummary } from '@core/contract'
 import type { TabSeenProductItem } from '@/composables/useTabSeen'
 
 definePageMeta({ title: 'Tab 监控任务' })
 
 const { tasks, isLoading, error, busyId, fetchTasks, remove, restart } =
-  useTaskList('/api/tab-monitor')
+  useTaskList(taskEndpoint('tab'))
 const { fetchSeenProducts } = useTabSeen()
 const { isMobileViewport, openYishouProduct } = useYishouApp()
 const { danger: confirmDelete, warning: confirmRestart, confirm: confirmSeenBlacklist } =

@@ -5,7 +5,7 @@
       description="监控登录态下的商品拿货价，价格与优惠券变化时发送邮件提醒；任务在商品详情页创建"
     >
       <template #actions>
-        <UiButton variant="outline" size="sm" :disabled="isLoading" @click="fetchTasks">
+        <UiButton variant="outline" size="sm" :disabled="isLoading" @click="fetchTasks()">
           刷新
         </UiButton>
       </template>
@@ -23,7 +23,7 @@
       <div class="flex flex-col items-center justify-center text-center">
         <h3 class="text-lg font-medium text-gray-900 mb-2">加载失败</h3>
         <p class="text-gray-500 mb-4">{{ error }}</p>
-        <UiButton variant="outline" @click="fetchTasks">重新加载</UiButton>
+        <UiButton variant="outline" @click="fetchTasks()">重新加载</UiButton>
       </div>
     </div>
 
@@ -69,12 +69,13 @@
 </template>
 
 <script setup lang="ts">
+import { taskEndpoint } from '@/utils/taskApi'
 import type { TaskSummary } from '@core/contract'
 
 definePageMeta({ title: '价格监控' })
 
 const { tasks, isLoading, error, busyId, fetchTasks, remove, restart } =
-  useTaskList('/api/price-monitor')
+  useTaskList(taskEndpoint('price'))
 
 const { danger: confirmDelete } = useConfirmDialog()
 

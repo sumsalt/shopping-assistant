@@ -110,6 +110,13 @@
             <UiBadge :variant="statusVariant(order.statusName)" size="sm">
               {{ order.statusName || '未知状态' }}
             </UiBadge>
+            <!-- 待付款订单：按支付截止时间实时倒数 -->
+            <span
+              v-if="remainingSeconds(order.cancelExpireAt) !== null"
+              :class="['text-xs tabular-nums', remainingClass(remainingSeconds(order.cancelExpireAt) || 0)]"
+            >
+              {{ remainingLabel(order.cancelExpireAt) }}
+            </span>
           </div>
           <span class="ml-auto shrink-0 text-xs text-gray-500">{{ formatOrderTime(order.addTime) }}</span>
         </header>
@@ -203,6 +210,7 @@
 <script setup lang="ts">
 import type { OrderStatusTab } from '@core'
 import { accountDisplayName } from '@/utils/accountName'
+import { formatRemaining } from '@/utils/taskFormat'
 
 definePageMeta({
   title: '订单',
@@ -265,4 +273,43 @@ watch(accountId, () => {
 watch(status, () => {
   refresh()
 })
+
+/**
+ * 支付倒计时
+ *
+ * 一手只在待付款订单上给 cancelExpireAt（毫秒时间戳），列表里其它状态没有，
+ * 所以有值就说明这单还没付款。秒级刷新一个 now，所有订单共用。
+ */
+const now = ref(Date.now())
+let ticker: ReturnType<typeof setInterval> | null = null
+
+onMounted(() => {
+  ticker = setInterval(() => {
+    now.value = Date.now()
+  }, 1000)
+})
+
+onBeforeUnmount(() => {
+  if (ticker) clearInterval(ticker)
+})
+
+/** 剩余秒数；没有截止时间返回 null（不显示） */
+const remainingSeconds = (expireAt?: number): number | null => {
+  if (!expireAt) return null
+  return Math.ceil((expireAt - now.value) / 1000)
+}
+
+const remainingLabel = (expireAt?: number): string => {
+  const seconds = remainingSeconds(expireAt)
+  if (seconds === null) return ''
+  return seconds > 0 ? `支付剩余 ${formatRemaining(seconds)}` : '支付已超时'
+}
+
+/** 剩余不足 5 分钟标红（与续期窗口一致），不足 30 分钟标黄 */
+const remainingClass = (seconds: number): string => {
+  if (seconds <= 0) return 'text-gray-400'
+  if (seconds <= 5 * 60) return 'text-red-600 font-medium'
+  if (seconds <= 30 * 60) return 'text-amber-600'
+  return 'text-gray-500'
+}
 </script>

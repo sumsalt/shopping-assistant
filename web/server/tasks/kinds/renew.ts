@@ -238,6 +238,7 @@ export const renewDefinition: TaskKindDefinition<RenewTaskState> = {
         source: state.source,
       },
       events,
+      eventCount: state.events.length,
       order: null,
       notice: null,
       ...(state.lastError ? { lastError: state.lastError } : {}),

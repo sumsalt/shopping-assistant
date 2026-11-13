@@ -78,10 +78,29 @@
         </p>
       </div>
 
-      <!-- 最近事件 -->
-      <div v-if="task.events.length" class="mt-4 pt-4 border-t border-gray-100">
-        <p class="text-sm font-medium text-gray-700 mb-2">最近记录</p>
-        <TaskEventList :events="task.events" />
+      <!-- 记录：列表默认最近 5 条，总量超过时可按需展开 -->
+      <div v-if="task.events.length || task.eventCount" class="mt-4 pt-4 border-t border-gray-100">
+        <div class="flex items-center justify-between gap-2 mb-2">
+          <p class="text-sm font-medium text-gray-700">
+            最近记录
+            <span v-if="task.eventCount > task.events.length" class="ml-1 text-xs font-normal text-gray-400">
+              共 {{ task.eventCount }} 条
+            </span>
+          </p>
+          <button
+            v-if="task.eventCount > task.events.length || expanded"
+            type="button"
+            class="shrink-0 text-xs text-blue-600 hover:text-blue-700 disabled:text-gray-400"
+            :disabled="isLoadingEvents"
+            @click="toggleEvents"
+          >
+            {{ isLoadingEvents ? '加载中…' : expanded ? '收起' : `查看全部 ${task.eventCount} 条` }}
+          </button>
+        </div>
+        <TaskEventList :events="shownEvents" />
+        <p v-if="expanded && allEvents && allEvents.length < task.eventCount" class="mt-2 text-xs text-gray-400">
+          仅保留最近 {{ allEvents.length }} 条，更早的记录已被清理
+        </p>
       </div>
 
       <!-- 操作 -->
@@ -111,7 +130,7 @@
 </template>
 
 <script setup lang="ts">
-import type { TaskKind, TaskSummary, Tone } from '@core/contract'
+import type { TaskEvent, TaskKind, TaskSummary, Tone } from '@core/contract'
 import {
   formatAmount,
   formatDuration,
@@ -120,6 +139,8 @@ import {
   getStatusColor,
   getStatusText,
 } from '@/utils/taskFormat'
+import { fetchTaskDetail } from '@/utils/taskApi'
+import { useToast } from '@/composables/useToast'
 
 const props = defineProps<{
   task: TaskSummary
@@ -130,6 +151,53 @@ const emit = defineEmits<{
   restart: [task: TaskSummary]
   delete: [task: TaskSummary]
 }>()
+
+const toast = useToast()
+
+/** 展开后的全量事件（null 表示还没拉过） */
+const allEvents = ref<TaskEvent[] | null>(null)
+const expanded = ref(false)
+const isLoadingEvents = ref(false)
+
+const shownEvents = computed(() =>
+  expanded.value && allEvents.value ? allEvents.value : props.task.events
+)
+
+const toggleEvents = async (): Promise<void> => {
+  if (expanded.value) {
+    expanded.value = false
+    return
+  }
+  if (allEvents.value) {
+    expanded.value = true
+    return
+  }
+  await loadEvents()
+}
+
+/** 拉全量事件；失败时保持收起，避免显示半截数据 */
+const loadEvents = async (): Promise<void> => {
+  isLoadingEvents.value = true
+  try {
+    const detail = await fetchTaskDetail(props.task.kind, props.task.id)
+    allEvents.value = detail.events
+    expanded.value = true
+  } catch (error) {
+    expanded.value = false
+    toast.error(error instanceof Error ? error.message : '读取记录失败')
+  } finally {
+    isLoadingEvents.value = false
+  }
+}
+
+// 轮询更新后事件可能变多：已展开就重新拉一次，未展开则丢弃缓存
+watch(
+  () => props.task.eventCount,
+  async () => {
+    allEvents.value = null
+    if (expanded.value) await loadEvents()
+  }
+)
 
 const KIND_LABEL: Record<TaskKind, string> = {
   stock: '到货监控',
