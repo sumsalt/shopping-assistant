@@ -198,8 +198,20 @@ export const renewDefinition: TaskKindDefinition<RenewTaskState> = {
           key: 'finished',
           label: '单已结束',
           value: state.finishedCount,
-          tone: state.finishedCount > 0 ? 'neutral' : 'neutral',
+          tone: state.finishedCount > 0 ? 'warning' : 'neutral',
         },
+        ...(state.lastScanAt
+          ? [
+              {
+                key: 'lastScan',
+                label: '最近扫描',
+                value: new Date(state.lastScanAt).toLocaleTimeString('zh-CN', {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                }),
+              },
+            ]
+          : []),
       ],
       config: {
         duration: state.config.duration,

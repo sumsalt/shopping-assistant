@@ -8,7 +8,7 @@
  * 具体逻辑都在 TaskService.restoreAll，这里只做遍历与退出刷盘。
  */
 
-import { closeTaskStore } from '../utils/taskStore'
+import { closeDb } from '../utils/db'
 import { flushTasks } from '../tasks/engine/store'
 import { taskServices } from '../tasks/kinds'
 
@@ -52,7 +52,7 @@ export default defineNitroPlugin(() => {
   const flush = () => {
     try {
       flushTasks()
-      closeTaskStore()
+      closeDb()
     } catch {
       // 忽略退出异常
     }

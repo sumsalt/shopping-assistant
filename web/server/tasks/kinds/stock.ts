@@ -204,7 +204,6 @@ export const stockDefinition: TaskKindDefinition<StockTaskState> = {
         subtitle: `ID：${state.product.productId}`,
       },
       badges: [
-        { text: `每 ${state.config.interval} 秒检测`, tone: 'neutral' },
         ...(state.config.skus?.length
           ? [{ text: `限定 ${state.config.skus.length} 个规格`, tone: 'info' as Tone }]
           : []),

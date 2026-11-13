@@ -278,7 +278,7 @@ import {
   STOCK_MONITOR_DURATION_OPTIONS,
   buildStockMonitorConfig,
 } from '@/utils/stockMonitorConfig'
-import { toBoolean, stageText, maskMobile, type AddressItem, type PrecheckResult, type SkuOption } from '@/utils/autoOrder'
+import { toBoolean, stageText, maskMobile } from '@/utils/autoOrder'
 interface StockMonitorProduct {
   productId: string
   productName?: string
@@ -295,27 +295,39 @@ const emit = defineEmits<{
   created: [taskId: string]
 }>()
 
-const configStore = useConfigStore()
 const { createMonitorTask, isLoading } = useMonitor()
 const toast = useToast()
 
 const durationOptions = STOCK_MONITOR_DURATION_OPTIONS
-const autoOrderEnabled = ref(false)
-const num = ref(1)
 const duration = ref<number>(DEFAULT_STOCK_MONITOR_DURATION)
-const payTool = ref<'1' | '4'>('4')
-const addresses = ref<AddressItem[]>([])
-const addressId = ref('')
-const isLoadingAddress = ref(false)
-const addressError = ref('')
-const isChecking = ref(false)
-const precheck = ref<PrecheckResult | null>(null)
-const skus = ref<SkuOption[]>([])
-const selectedSkus = ref<string[]>([])
-const isLoadingSkus = ref(false)
-const skuError = ref('')
 
-const hasCredential = computed(() => Boolean(configStore.activeAccount?.hasCredential))
+/** 自动下单的共享表单逻辑（与价格监控同一份） */
+const {
+  hasCredential,
+  autoOrderEnabled,
+  num,
+  payTool,
+  addresses,
+  addressId,
+  isLoadingAddress,
+  addressError,
+  skus,
+  selectedSkus,
+  isLoadingSkus,
+  skuError,
+  isChecking,
+  precheck,
+  loadAddresses,
+  selectAllSkus,
+  handlePrecheck,
+  reset: resetAutoOrder,
+  onProductChange,
+} = useAutoOrderForm({
+  resolveProductNo: () => props.product?.productNo || '',
+  resolveProductId: () => props.product?.productId,
+  // 到货监控的规格同时也是提醒条件，打开弹窗就要能选
+  skusOnOpen: true,
+})
 
 /** 普通监控不要求登录态与货号；开启自动下单则两者都必须具备 */
 const canSubmit = computed(
@@ -323,126 +335,6 @@ const canSubmit = computed(
     !isLoading.value &&
     (!autoOrderEnabled.value || (hasCredential.value && Boolean(props.product?.productNo)))
 )
-
-/**
- * 读取规格列表
- *
- * 规格查询走服务端的匿名快照即可（与到货检测同一口径），
- * 所以纯邮件提醒的用户也能选规格；有登录态时接口会自动带上凭证。
- */
-const loadSkus = async () => {
-  const productNo = props.product?.productNo
-  // 规格明细接口拒绝匿名：没有登录态就不发请求，直接按「全部规格」处理
-  if (!productNo || !hasCredential.value || isLoadingSkus.value) {
-    return
-  }
-
-  isLoadingSkus.value = true
-  skuError.value = ''
-
-  try {
-    const response = await $fetch<{
-      success: boolean
-      data?: {
-        skuList?: Array<{ skuId: string; color?: string; size?: string; saleStock?: number }>
-      }
-      error?: { message: string }
-    }>(`/api/stock/skus/${productNo}`)
-
-    if (response.success && response.data?.skuList) {
-      skus.value = response.data.skuList.map(item => ({
-        skuId: item.skuId,
-        label: [item.color, item.size].filter(Boolean).join(' / ') || item.skuId,
-        saleStock: item.saleStock ?? 0,
-      }))
-    } else {
-      skuError.value = response.error?.message || '读取规格失败'
-    }
-  } catch (error) {
-    skuError.value = error instanceof Error ? error.message : '读取规格失败'
-  } finally {
-    isLoadingSkus.value = false
-  }
-}
-
-const selectAllSkus = () => {
-  selectedSkus.value = skus.value.map(item => item.skuId)
-}
-
-const loadAddresses = async () => {
-  if (!hasCredential.value) {
-    return
-  }
-
-  isLoadingAddress.value = true
-  addressError.value = ''
-
-  try {
-    const response = await $fetch<{
-      success: boolean
-      data?: { addresses: AddressItem[] }
-      error?: { message: string }
-    }>('/api/order/addresses', { method: 'POST' })
-
-    if (response.success && response.data) {
-      addresses.value = response.data.addresses
-      if (!addressId.value && addresses.value.length > 0) {
-        addressId.value = addresses.value[0].addressId
-      }
-    } else {
-      addressError.value = response.error?.message || '读取地址失败'
-    }
-  } catch (error) {
-    addressError.value = error instanceof Error ? error.message : '读取地址失败'
-  } finally {
-    isLoadingAddress.value = false
-  }
-}
-
-const handlePrecheck = async () => {
-  if (!props.product?.productNo) {
-    toast.warning('缺少商品货号，无法预检')
-    return
-  }
-
-  if (!hasCredential.value) {
-    toast.warning('请先在账号管理中选择带登录态的账号')
-    return
-  }
-
-  isChecking.value = true
-  precheck.value = null
-
-  try {
-    const response = await $fetch<{
-      success: boolean
-      data?: PrecheckResult
-      error?: { message: string }
-    }>('/api/order/precheck', {
-      method: 'POST',
-      body: {
-        goodsId: props.product.productId,
-        goodsNo: props.product.productNo,
-        num: num.value,
-        addressId: addressId.value || undefined,
-        skus: selectedSkus.value,
-      },
-    })
-
-    if (response.success && response.data) {
-      precheck.value = response.data
-      if (response.data.success) {
-        toast.success('预检通过，可以创建任务')
-      }
-    } else {
-      toast.error(response.error?.message || '预检失败')
-    }
-  } catch (error) {
-    toast.error(error instanceof Error ? error.message : '预检失败')
-  } finally {
-    isChecking.value = false
-  }
-}
 
 const handleSubmit = async () => {
   if (!props.product) {
@@ -486,52 +378,19 @@ const handleOpenChange = (value: boolean) => {
 // 每次打开回到安全的默认：只发提醒、不自动下单，规格回到「全部」
 watch(
   () => props.open,
-  (open) => {
+  open => {
     if (open) {
-      autoOrderEnabled.value = false
-      precheck.value = null
-      selectedSkus.value = []
-      skus.value = []
-      skuError.value = ''
-      loadSkus()
+      resetAutoOrder()
     }
   }
 )
 
-// 只有开启自动下单且有登录态时，才去拉地址，避免普通监控白白请求一手
-watch(autoOrderEnabled, (enabled) => {
-  precheck.value = null
-  if (enabled && hasCredential.value && addresses.value.length === 0) {
-    loadAddresses()
-  }
-})
-
-// 登录态没了就没法选规格：清掉已选，避免提交一个必然失败的任务
-watch(hasCredential, (value) => {
-  if (!value) {
-    selectedSkus.value = []
-    skus.value = []
-    skuError.value = ''
-    return
-  }
-  if (props.open) {
-    loadSkus()
-    // 配置晚到时开关可能已经打开，补拉一次地址
-    if (autoOrderEnabled.value && addresses.value.length === 0) {
-      loadAddresses()
-    }
-  }
-})
-
+// 换商品：旧规格与预检结果全部作废
 watch(
   () => props.product?.productId,
   () => {
-    precheck.value = null
-    selectedSkus.value = []
-    skus.value = []
-    skuError.value = ''
     if (props.open) {
-      loadSkus()
+      onProductChange()
     }
   }
 )

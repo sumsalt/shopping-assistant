@@ -324,7 +324,7 @@
           variant="outline"
           class="flex-1"
           :loading="isChecking"
-          :disabled="isLoading || isChecking || !productNo"
+          :disabled="isLoading || isChecking || !product?.productNo"
           @click="handlePrecheck"
         >
           预检
@@ -333,7 +333,7 @@
           variant="primary"
           class="flex-1"
           :loading="isLoading"
-          :disabled="isLoading || !hasCredential || (autoOrderEnabled && !productNo)"
+          :disabled="isLoading || !hasCredential || (autoOrderEnabled && !product?.productNo)"
           @click="handleSubmit"
         >
           {{ isLoading ? '创建中' : '开始监控' }}
@@ -352,7 +352,8 @@ import {
   type PriceAutoOrderOptions,
   type PriceNotifyOn,
 } from '~/composables/usePriceMonitor'
-import { toBoolean, stageText, maskMobile, type AddressItem, type PrecheckResult, type SkuOption } from '@/utils/autoOrder'
+
+import { toBoolean, maskMobile, stageText } from '@/utils/autoOrder'
 
 // 组件属性
 interface Props {
@@ -371,7 +372,6 @@ const emit = defineEmits<{
   created: [taskId: string]
 }>()
 
-const configStore = useConfigStore()
 const toast = useToast()
 const { createPriceMonitorTask, isLoading } = usePriceMonitor()
 const { checkStock } = useStock()
@@ -387,160 +387,63 @@ const minPriceDeltaInput = ref('0.01')
 
 const intervalError = ref('')
 
-// 价格到点自动下单
-const autoOrderEnabled = ref(false)
-/** 触发方式：目标价（price）/ 折扣（discount） */
-const autoOrderMode = ref<'price' | 'discount'>('price')
-const targetPriceInput = ref('')
-const targetPriceError = ref('')
-const targetDiscountInput = ref('')
-const targetDiscountError = ref('')
-const num = ref(1)
-const payTool = ref<'1' | '4'>('4')
-const productNo = ref('')
-const addresses = ref<AddressItem[]>([])
-const addressId = ref('')
-const isLoadingAddress = ref(false)
-const addressError = ref('')
-const skus = ref<SkuOption[]>([])
-const selectedSkus = ref<string[]>([])
-const isLoadingSkus = ref(false)
-const skuError = ref('')
-const isChecking = ref(false)
-const precheck = ref<PrecheckResult | null>(null)
-
 /**
- * 取商品货号
+ * 商品货号
  *
- * 下单链路要用货号查 SKU。外部传入的商品可能只有 ID，这里按需查一次。
+ * 价格监控本身不需要货号，只有自动下单与预检要用，所以按需查一次并缓存。
  */
-const ensureProductNo = async (): Promise<string> => {
-  if (productNo.value) {
-    return productNo.value
+const productNoCache = ref('')
+const resolveProductNo = async (): Promise<string> => {
+  if (productNoCache.value) {
+    return productNoCache.value
   }
   if (props.product?.productNo) {
-    productNo.value = props.product.productNo
-    return productNo.value
+    productNoCache.value = props.product.productNo
+    return productNoCache.value
   }
 
-  const productId = displayProduct.value?.productId
+  const productId = props.product?.productId
   if (!productId) {
     return ''
   }
 
   const result = await checkStock(productId)
-  productNo.value = result?.productNo || ''
-  return productNo.value
+  productNoCache.value = result?.productNo || ''
+  return productNoCache.value
 }
 
-/** 读取规格列表（下单用，价格监控本身不需要） */
-const loadSkus = async (no: string) => {
-  if (!no || isLoadingSkus.value) {
-    return
-  }
-
-  isLoadingSkus.value = true
-  skuError.value = ''
-
-  try {
-    const response = await $fetch<{
-      success: boolean
-      data?: {
-        skuList?: Array<{ skuId: string; color?: string; size?: string; saleStock?: number }>
-      }
-      error?: { message: string }
-    }>(`/api/stock/skus/${no}`)
-
-    if (response.success && response.data?.skuList) {
-      skus.value = response.data.skuList.map(item => ({
-        skuId: item.skuId,
-        label: [item.color, item.size].filter(Boolean).join(' / ') || item.skuId,
-        saleStock: item.saleStock ?? 0,
-      }))
-    } else {
-      skuError.value = response.error?.message || '读取规格失败'
-    }
-  } catch (error) {
-    skuError.value = error instanceof Error ? error.message : '读取规格失败'
-  } finally {
-    isLoadingSkus.value = false
-  }
-}
-
-const selectAllSkus = () => {
-  selectedSkus.value = skus.value.map(item => item.skuId)
-}
-
-const loadAddresses = async () => {
-  if (!hasCredential.value) {
-    return
-  }
-
-  isLoadingAddress.value = true
-  addressError.value = ''
-
-  try {
-    const response = await $fetch<{
-      success: boolean
-      data?: { addresses: AddressItem[] }
-      error?: { message: string }
-    }>('/api/order/addresses', { method: 'POST' })
-
-    if (response.success && response.data) {
-      addresses.value = response.data.addresses
-      if (!addressId.value && addresses.value.length > 0) {
-        addressId.value = addresses.value[0].addressId
-      }
-    } else {
-      addressError.value = response.error?.message || '读取地址失败'
-    }
-  } catch (error) {
-    addressError.value = error instanceof Error ? error.message : '读取地址失败'
-  } finally {
-    isLoadingAddress.value = false
-  }
-}
-
-const handlePrecheck = async () => {
-  const no = await ensureProductNo()
-  if (!no) {
-    toast.warning('缺少商品货号，无法预检')
-    return
-  }
-
-  isChecking.value = true
-  precheck.value = null
-
-  try {
-    const response = await $fetch<{
-      success: boolean
-      data?: PrecheckResult
-      error?: { message: string }
-    }>('/api/order/precheck', {
-      method: 'POST',
-      body: {
-        goodsId: displayProduct.value?.productId,
-        goodsNo: no,
-        num: Math.max(1, Math.floor(Number(num.value) || 1)),
-        addressId: addressId.value || undefined,
-        skus: selectedSkus.value,
-      },
-    })
-
-    if (response.success && response.data) {
-      precheck.value = response.data
-      if (response.data.success) {
-        toast.success('预检通过，可以创建任务')
-      }
-    } else {
-      toast.error(response.error?.message || '预检失败')
-    }
-  } catch (error) {
-    toast.error(error instanceof Error ? error.message : '预检失败')
-  } finally {
-    isChecking.value = false
-  }
-}
+/** 自动下单的共享表单逻辑（与到货监控同一份） */
+const {
+  hasCredential,
+  autoOrderEnabled,
+  autoOrderMode,
+  targetPriceInput,
+  targetPriceError,
+  targetDiscountInput,
+  targetDiscountError,
+  num,
+  payTool,
+  addresses,
+  addressId,
+  isLoadingAddress,
+  addressError,
+  skus,
+  selectedSkus,
+  isLoadingSkus,
+  skuError,
+  isChecking,
+  precheck,
+  loadAddresses,
+  selectAllSkus,
+  handlePrecheck,
+  validateTrigger,
+  selection,
+  reset: resetAutoOrder,
+} = useAutoOrderForm({
+  resolveProductNo,
+  resolveProductId: () => displayProduct.value?.productId,
+  withTrigger: true,
+})
 
 const notifyOptions: Array<{ value: PriceNotifyOn; label: string }> = [
   { value: 'any', label: '涨跌都通知' },
@@ -550,9 +453,6 @@ const notifyOptions: Array<{ value: PriceNotifyOn; label: string }> = [
 
 // 实际要监控的商品（一个任务只监控一个商品）
 const displayProduct = computed(() => props.product)
-
-// 是否已配置登录态（当前账号的抓包快照里带 uid + token）
-const hasCredential = computed(() => Boolean(configStore.activeAccount?.hasCredential))
 
 // 预计检测周期
 const cycleText = computed(() => {
@@ -587,8 +487,6 @@ const handleSubmit = async () => {
 
   const minPriceDelta = Number(minPriceDeltaInput.value)
 
-  targetPriceError.value = ''
-
   /** 价格到点自动下单配置 */
   let autoOrder: PriceAutoOrderOptions | undefined
 
@@ -598,39 +496,23 @@ const handleSubmit = async () => {
       return
     }
 
-    const no = await ensureProductNo()
+    const no = await resolveProductNo()
     if (!no) {
       toast.warning('缺少商品货号，无法自动下单')
       return
     }
 
-    // 按触发方式分别校验
-    let targetPrice: number | undefined
-    let targetDiscount: number | undefined
-
-    if (autoOrderMode.value === 'discount') {
-      targetDiscount = Number(targetDiscountInput.value)
-      if (!Number.isFinite(targetDiscount) || targetDiscount <= 0 || targetDiscount >= 10) {
-        targetDiscountError.value = '折扣需大于 0 且小于 10（例如 2.4 表示 2.4 折）'
-        return
-      }
-    } else {
-      targetPrice = Number(targetPriceInput.value)
-      if (!Number.isFinite(targetPrice) || targetPrice <= 0) {
-        targetPriceError.value = '请输入大于 0 的目标价'
-        return
-      }
+    const trigger = validateTrigger()
+    if (!trigger) {
+      return
     }
 
     autoOrder = {
       enabled: true,
-      triggerMode: autoOrderMode.value,
-      ...(targetPrice !== undefined ? { targetPrice } : {}),
-      ...(targetDiscount !== undefined ? { targetDiscount } : {}),
-      num: Math.max(1, Math.floor(Number(num.value) || 1)),
-      payTool: payTool.value,
-      ...(addressId.value ? { addressId: addressId.value } : {}),
-      ...(selectedSkus.value.length > 0 ? { skus: selectedSkus.value } : {}),
+      triggerMode: trigger.mode,
+      ...(trigger.targetPrice !== undefined ? { targetPrice: trigger.targetPrice } : {}),
+      ...(trigger.targetDiscount !== undefined ? { targetDiscount: trigger.targetDiscount } : {}),
+      ...selection(),
     }
   }
 
@@ -648,10 +530,10 @@ const handleSubmit = async () => {
   }
 }
 
-// 每次打开时重置状态
+// 每次打开时重置状态（自动下单部分交给共享表单复位）
 watch(
   () => props.open,
-  (open) => {
+  open => {
     if (!open) {
       return
     }
@@ -661,64 +543,8 @@ watch(
     notifyOn.value = 'any'
     minPriceDeltaInput.value = '0.01'
     intervalError.value = ''
-    // 默认只发提醒，自动下单要显式打开
-    autoOrderEnabled.value = false
-    autoOrderMode.value = 'price'
-    targetPriceInput.value = ''
-    targetPriceError.value = ''
-    targetDiscountInput.value = ''
-    targetDiscountError.value = ''
-    num.value = 1
-    payTool.value = '4'
-    productNo.value = props.product?.productNo || ''
-    addresses.value = []
-    addressId.value = ''
-    addressError.value = ''
-    skus.value = []
-    selectedSkus.value = []
-    skuError.value = ''
-    precheck.value = null
+    productNoCache.value = props.product?.productNo || ''
+    resetAutoOrder()
   }
 )
-
-// 打开自动下单时才去取规格与地址，纯价格监控不必请求一手
-watch(autoOrderEnabled, async (enabled) => {
-  precheck.value = null
-  if (!enabled || !hasCredential.value) {
-    return
-  }
-
-  const no = await ensureProductNo()
-  if (!no) {
-    skuError.value = '缺少商品货号，无法选择规格'
-    return
-  }
-
-  if (skus.value.length === 0) {
-    loadSkus(no)
-  }
-  if (addresses.value.length === 0) {
-    loadAddresses()
-  }
-})
-
-// 直接刷新后立刻打开开关时，当前账号可能还在拉取中：
-// 配置到达后补加载一次，避免规格/地址一直是空的
-watch(hasCredential, async (value) => {
-  if (!value || !autoOrderEnabled.value) {
-    return
-  }
-
-  const no = await ensureProductNo()
-  if (!no) {
-    return
-  }
-
-  if (skus.value.length === 0) {
-    loadSkus(no)
-  }
-  if (addresses.value.length === 0) {
-    loadAddresses()
-  }
-})
 </script>

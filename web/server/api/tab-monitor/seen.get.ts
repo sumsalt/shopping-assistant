@@ -7,10 +7,10 @@
  */
 
 import type { TabSeenProduct } from '@core'
-import { tabTasks, type TabTaskRecord } from '../../tasks/tab'
+import { tabService } from '../../tasks/kinds'
+import { TaskApiError } from '../../tasks/engine/types'
 import { createSuccessResponse, createErrorResponse, ErrorCode } from '../../utils/response'
 import { getCurrentUser } from '../../utils/session'
-import { listTasks } from '../../utils/taskStore'
 import { listBlacklistedSupplyIds } from '../../utils/shopBlacklistStore'
 
 export default defineEventHandler(async (event) => {
@@ -26,26 +26,18 @@ export default defineEventHandler(async (event) => {
       return createErrorResponse(ErrorCode.INVALID_PARAMS, '任务 ID 不能为空')
     }
 
-    // 优先取内存中的实时任务，进程重启后从数据库取
-    let task: TabTaskRecord | undefined = tabTasks.getLive(taskId)
-    if (!task || task.userId !== currentUser.username) {
-      task = listTasks<TabTaskRecord>('tab', currentUser.username).find(
-        item => item.id === taskId
-      )
-    }
-
-    if (!task || task.userId !== currentUser.username) {
-      return createErrorResponse('NOT_FOUND', '任务不存在')
-    }
+    // 运行中的任务在内存里，重启后由 restoreAll 从数据库装回 registry，这里只需要一份入口
+    const record = tabService.requireOwned(currentUser.username, taskId, '查看')
+    const state = record.state
 
     // 老任务只有 ID 列表，补成没有名称的记录，保证至少能看到记录数
-    const products: TabSeenProduct[] = task.seenProducts?.length
-      ? task.seenProducts
-      : (task.seenProductIds ?? []).map(productId => ({
+    const products: TabSeenProduct[] = state.seenProducts?.length
+      ? state.seenProducts
+      : (state.seenProductIds ?? []).map(productId => ({
           productId,
           productName: '',
           price: 0,
-          firstSeenAt: new Date(task!.createdAt).toISOString(),
+          firstSeenAt: record.createdAt.toISOString(),
         }))
 
     // 老记录没有店铺名：用同一供应商较新记录里的店铺名补齐，避免历史商品显示成「供应商 xxxx」
@@ -95,7 +87,7 @@ export default defineEventHandler(async (event) => {
 
     return createSuccessResponse({
       taskId,
-      tabName: task.tabName,
+      tabName: state.tab.name,
       total: sorted.length,
       offset,
       limit,
@@ -103,6 +95,9 @@ export default defineEventHandler(async (event) => {
       items,
     })
   } catch (error: unknown) {
+    if (error instanceof TaskApiError) {
+      return createErrorResponse(error.code, error.message)
+    }
     console.error('查询 Tab 累计商品失败:', error)
     const errorMessage = error instanceof Error ? error.message : '未知错误'
     return createErrorResponse('UNKNOWN_ERROR', errorMessage)
