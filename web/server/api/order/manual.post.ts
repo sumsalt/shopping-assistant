@@ -44,12 +44,11 @@ export default defineEventHandler(async (event) => {
       return createErrorResponse(ErrorCode.PLATFORM_NOT_SUPPORTED, '当前平台不支持下单')
     }
 
-    // onePerSku：每个有货规格各 1 件；num 作为件数总上限（封顶 5 件）
+    // 统一分配模式：每个有货规格各 1 件；num 作为件数总上限（封顶 5 件）
     const result = await placeAutoOrder(adapter, {
       goodsId,
       goodsNo,
       config: { enabled: true, num: MANUAL_ORDER_MAX_NUM },
-      onePerSku: true,
     })
 
     return createSuccessResponse(result)

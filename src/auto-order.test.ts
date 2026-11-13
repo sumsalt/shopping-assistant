@@ -224,10 +224,15 @@ describe('placeAutoOrder', () => {
     expect(result.uncertain).toBeFalsy()
   })
 
-  it('件数超上限时按 99 处理，非法值按 1 处理', async () => {
+  it('件数超上限时按 99 封顶，非法值按 1 处理', async () => {
     const adapter = createAdapter()
-    await placeAutoOrder(adapter, { ...params, config: { enabled: true, num: 9999 } })
-    expect(prepareArgs(adapter).lines).toEqual([{ sku: '850001', num: 3 }]) // 削到可售 3 件
+    const result = await placeAutoOrder(adapter, {
+      ...params,
+      config: { enabled: true, num: 9999 },
+    })
+    // num 被 normalizeNum 封顶到 99；但实际每规格 1 件，只有 1 个有货规格 → 1 件
+    expect(result.requestedNum).toBe(99)
+    expect(prepareArgs(adapter).lines).toEqual([{ sku: '850001', num: 1 }])
 
     await placeAutoOrder(adapter, { ...params, config: { enabled: true, num: 0 } })
     expect((adapter.prepareCheckout as ReturnType<typeof vi.fn>).mock.calls[1][0].lines).toEqual([
@@ -273,24 +278,25 @@ describe('placeAutoOrder', () => {
     expect(result.skuLabel).toBe('蓝色 / M、蓝色 / L')
   })
 
-  it('要 5 件时按规格顺序分配：3 + 2', async () => {
+  it('要 5 件但只有 2 个有货规格时各 1 件，共 2 件', async () => {
     const adapter = createAdapter({
       getProductSkus: vi.fn().mockResolvedValue(skuResult([3, 4])),
       prepareCheckout: vi.fn().mockResolvedValue(
-        checkoutReady({ items: [{ sku: '850000', num: 3 }, { sku: '850001', num: 2 }], num: 5 })
+        checkoutReady({ items: [{ sku: '850000', num: 1 }, { sku: '850001', num: 1 }], num: 2 })
       ),
     })
     const result = await placeAutoOrder(adapter, { ...params, config: { enabled: true, num: 5 } })
 
     expect(result.success).toBe(true)
     expect(prepareArgs(adapter).lines).toEqual([
-      { sku: '850000', num: 3 },
-      { sku: '850001', num: 2 },
+      { sku: '850000', num: 1 },
+      { sku: '850001', num: 1 },
     ])
-    expect(result.num).toBe(5)
+    expect(result.num).toBe(2)
+    expect(result.numReduced).toBe(true)
   })
 
-  it('一键下单：每个有货规格各 1 件，合计不超过 5 件', async () => {
+  it('每个有货规格各 1 件，合计不超过 5 件', async () => {
     // 7 个都有货的规格，上限 5 → 只铺前 5 个规格、各 1 件
     const adapter = createAdapter({
       getProductSkus: vi.fn().mockResolvedValue(skuResult([2, 3, 1, 1, 4, 2, 1])),
@@ -310,7 +316,6 @@ describe('placeAutoOrder', () => {
     const result = await placeAutoOrder(adapter, {
       ...params,
       config: { enabled: true, num: 5 },
-      onePerSku: true,
     })
 
     expect(result.success).toBe(true)
@@ -326,8 +331,8 @@ describe('placeAutoOrder', () => {
     expect(result.items?.every(item => item.num === 1)).toBe(true)
   })
 
-  it('一键下单：有货规格少于上限时全部各 1 件', async () => {
-    // 3 个规格有货、1 个无货 → 只下 3 个有货规格各 1 件
+  it('有货规格少于上限时全部各 1 件', async () => {
+    // 3 个规格有货、1 个无货 → 只下 2 个有货规格各 1 件
     const adapter = createAdapter({
       getProductSkus: vi.fn().mockResolvedValue(skuResult([1, 0, 2])),
       prepareCheckout: vi.fn().mockResolvedValue(
@@ -343,7 +348,6 @@ describe('placeAutoOrder', () => {
     const result = await placeAutoOrder(adapter, {
       ...params,
       config: { enabled: true, num: 5 },
-      onePerSku: true,
     })
 
     expect(result.success).toBe(true)
@@ -384,21 +388,6 @@ describe('placeAutoOrder', () => {
     expect(result.message).toContain('残留')
     expect(adapter.discardCheckout).toHaveBeenCalled()
     expect(adapter.createOrder).not.toHaveBeenCalled()
-  })
-
-  it('结算把件数削小时按结算件数下单', async () => {
-    const adapter = createAdapter({
-      getProductSkus: vi.fn().mockResolvedValue(skuResult([0, 3])),
-      prepareCheckout: vi.fn().mockResolvedValue(
-        checkoutReady({ items: [{ sku: '850001', num: 2 }], num: 2 })
-      ),
-    })
-    const result = await placeAutoOrder(adapter, { ...params, config: { enabled: true, num: 5 } })
-
-    expect(result.success).toBe(true)
-    expect(prepareArgs(adapter).lines).toEqual([{ sku: '850001', num: 3 }]) // 加购按库存 3 件
-    expect(result.num).toBe(2) // 结算只给 2 件
-    expect(result.numReduced).toBe(true)
   })
 
   it('指定多个规格时只在其中挑选有货的', async () => {
