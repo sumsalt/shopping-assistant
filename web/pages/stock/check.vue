@@ -83,11 +83,13 @@
       </div>
 
       <div v-if="keywordResults.items.length" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-        <div
+        <a
           v-for="item in keywordResults.items"
           :key="item.productNo || item.productId"
-          class="bg-white rounded-lg border border-gray-200 p-2 cursor-pointer hover:shadow-md hover:border-blue-300 transition-all"
-          @click="handleKeywordItemClick(item)"
+          :href="keywordDetailHref(item)"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="block bg-white rounded-lg border border-gray-200 p-2 cursor-pointer hover:shadow-md hover:border-blue-300 transition-all"
         >
           <div class="aspect-square bg-gray-100 rounded overflow-hidden">
             <img
@@ -105,9 +107,9 @@
             {{ item.brandName }} · 货号 {{ item.productNo }}
           </p>
           <p class="mt-1 text-sm font-bold text-red-600">
-            {{ item.price !== undefined ? '¥' + item.price.toFixed(2) : '价格到详情页查看' }}
+            {{ item.price !== undefined ? '¥' + item.price.toFixed(2) : '价格暂不可用' }}
           </p>
-        </div>
+        </a>
       </div>
       <div v-else class="bg-white rounded-lg border border-gray-200 p-8 text-center text-sm text-gray-500">
         没有搜索到相关商品
@@ -279,7 +281,7 @@
       <ul class="text-sm text-blue-700 list-disc list-inside space-y-1">
         <li>纯数字（商品 ID / 货号）按原有方式查询库存，多个用逗号分隔可批量查询</li>
         <li>输入含文字的关键词会搜索商品列表，点击商品进详情页查看实时库存与价格</li>
-        <li>关键词搜索不带登录信息，列表不展示价格，点进详情页查看</li>
+        <li>关键词搜索使用当前账号的登录态，列表展示拿货价；点击卡片在新窗口打开详情页，搜索结果保留在原标签页</li>
         <li>批量查询时，会显示成功和失败的商品列表及统计信息</li>
         <li>点击商品卡片或「查看 SKU 详情」可查看所有颜色尺码的库存</li>
         <li>到货监控、价格监控统一在商品详情页创建</li>
@@ -415,10 +417,7 @@ const handleProductClick = (item: any) => {
   }
 }
 
-// 点击关键词搜索结果卡片
-const handleKeywordItemClick = (item: KeywordSearchItem) => {
-  if (item.productNo) {
-    goToProductDetail(item.productNo)
-  }
-}
+/** 关键词结果卡片用新窗口打开详情，保留原标签页的搜索列表 */
+const keywordDetailHref = (item: KeywordSearchItem): string | undefined =>
+  item.productNo ? `/stock/${encodeURIComponent(item.productNo)}` : undefined
 </script>

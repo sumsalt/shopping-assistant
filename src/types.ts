@@ -816,8 +816,8 @@ export interface AutoOrderResult {
 /**
  * 关键词搜索结果中的商品
  *
- * 匿名搜索接口不返回真实价格（shop_price = "??.??"），price 为空时
- * 前端应引导用户进商品详情页查看，而不是展示 0 或占位数字。
+ * 带登录态时 shop_price 为拿货价；登录态缺失时接口隐藏价格（"??.??"），
+ * price 为空时前端应给兜底文案，而不是展示 0 或占位数字。
  */
 export interface KeywordSearchItem {
   /** 商品 ID（goods_id） */
@@ -828,7 +828,7 @@ export interface KeywordSearchItem {
   image: string;
   brandName: string;
   categoryName: string;
-  /** 匿名接口无真实价格时为 undefined */
+  /** 登录态缺失 / 价格被隐藏时为 undefined */
   price?: number;
   sales?: number;
   productUrl: string;

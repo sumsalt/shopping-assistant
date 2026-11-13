@@ -165,10 +165,11 @@ export class YishouAdapter extends BaseAdapter {
   }
 
   /**
-   * 关键词搜索商品列表（匿名、不带登录信息）
+   * 关键词搜索商品列表
    *
-   * 实测匿名可正常返回 40 条/页，但 shop_price 会是 "??.??"（价格被隐藏），
-   * 埋点 ID / sort / special_id 留空也能通；真实价格进商品详情页查看。
+   * 登录态由 AdapterConfig 决定：带 uid/token 时 shop_price 是拿货价；匿名
+   * 请求会降级成 "??.??"（映射层归一成无价格）。实测 40 条/页，埋点 ID /
+   * sort / special_id 留空也能通。
    */
   async searchByKeyword(keyword: string, page: number = 1): Promise<KeywordSearchResult> {
     const index = Math.max(1, Math.floor(page) || 1);
@@ -181,7 +182,7 @@ export class YishouAdapter extends BaseAdapter {
         pageindex: `${index}`,
         sort: '',
         special_id: '',
-        // 抓包里是 uid_毫秒 的埋点 ID；匿名无 uid，实测留空也能正常返回
+        // 抓包里是 uid_毫秒 的埋点 ID；实测留空也能正常返回
         source_event_id: '',
         source_search_event_id: '',
       })

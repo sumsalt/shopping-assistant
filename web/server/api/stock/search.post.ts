@@ -2,8 +2,9 @@
  * 关键词商品搜索 API
  * POST /api/stock/search
  *
- * 与库存查询一样走匿名配置（剔除 uid/token，**不带登录信息**）。
- * 匿名接口返回商品列表，但 shop_price 为 "??.??"，真实价格需进详情页查看。
+ * 使用当前账号的一手登录态（保留 uid/token）：接口只在登录态下返回真实
+ * shop_price（拿货价），匿名请求会把它降级成 "??.??"。因此要求账号快照
+ * 具备凭证，缺凭证时直接提示，避免静默退化成匿名、列表价格全部隐藏。
  */
 
 import { searchGoodsByKeyword } from '@core'
@@ -29,8 +30,17 @@ export default defineEventHandler(async (event) => {
     return createErrorResponse(ErrorCode.INVALID_PARAMS, '搜索关键词不能为空')
   }
 
-  // 不带登录信息：按当前账号快照剔除 uid/token，走匿名限流桶
-  const { config: adapterConfig } = resolveAdapterConfigForUser(currentUser.username, false)
+  // 带登录态：按当前账号快照保留 uid/token，列表才能拿到真实拿货价
+  const { config: adapterConfig, hasCredential } = resolveAdapterConfigForUser(
+    currentUser.username,
+    true
+  )
+  if (!hasCredential) {
+    return createErrorResponse(
+      ErrorCode.AUTH_REQUIRED,
+      '关键词搜索需要一手登录态，请先在账号管理中选择带登录态的账号'
+    )
+  }
 
   try {
     const result = await searchGoodsByKeyword(

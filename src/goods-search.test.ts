@@ -27,7 +27,7 @@ describe('isNumericProductQuery - 库存查询页搜索分流', () => {
   });
 });
 
-describe('mapKeywordSearchResult - 匿名搜索响应映射', () => {
+describe('mapKeywordSearchResult - 搜索响应映射', () => {
   const raw: YishouKeywordSearchData = {
     goods_list: [
       {
@@ -54,7 +54,7 @@ describe('mapKeywordSearchResult - 匿名搜索响应映射', () => {
     totals: '21538',
   };
 
-  it('匿名价格 "??.??" 归一成无 price，真实价格保留', () => {
+  it('隐藏价格 "??.??" 归一成无 price，真实价格保留', () => {
     const result = mapKeywordSearchResult(raw, '闲觉', 1);
     expect(result.items).toHaveLength(2);
     expect(result.items[0].price).toBeUndefined();

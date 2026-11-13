@@ -452,8 +452,9 @@ const toCount = (value: string | number | undefined): number => {
 /**
  * 关键词搜索响应 → 领域模型
  *
- * 匿名接口把价格写成 "??.??"（toOptionalNumber 会解析成 NaN → undefined），
- * 这里归一成「没有 price」，由前端引导进详情页查看，避免展示 0 或假价格。
+ * 登录态下 shop_price 是拿货价；匿名接口把它写成 "??.??"
+ * （toOptionalNumber 会解析成 NaN → undefined），这里归一成「没有 price」，
+ * 由前端兜底，避免展示 0 或假价格。
  */
 export const mapKeywordSearchResult = (
   data: YishouKeywordSearchData | undefined,

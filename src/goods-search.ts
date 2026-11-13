@@ -4,8 +4,9 @@
  * 库存查询页的第二种搜索：纯数字（商品 ID / 货号，支持逗号批量）走原有
  * checkStock / checkStockBatch；含文字的关键词走一手 Goods/keyword_search。
  *
- * 搜索链路**不带登录信息**：服务端按匿名配置剔除 uid/token，走 1 秒匿名桶。
- * 匿名可返回商品列表，但 shop_price 会降级成 "??.??"，真实价格进详情页查看。
+ * 登录态由调用方通过 AdapterConfig 决定：服务端传当前账号的完整快照（带
+ * uid/token）时，接口返回真实 shop_price（拿货价）；匿名请求会把它降级成
+ * "??.??"，映射层归一成「无价格」，由前端兜底。
  */
 
 import { getAdapter } from './adapters';
@@ -23,7 +24,7 @@ export interface KeywordSearchRequest {
 }
 
 export interface KeywordSearchOptions {
-  /** 匿名适配器配置（不带 uid/token）；不传则用默认 wx 匿名参数 */
+  /** 适配器配置（服务端按当前账号解析，带登录态才能拿到真实价格）；不传则用默认匿名参数 */
   adapterConfig?: AdapterConfig;
 }
 
