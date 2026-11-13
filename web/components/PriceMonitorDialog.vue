@@ -52,20 +52,7 @@
       <!-- 监控时长 -->
       <div>
         <label class="block text-sm font-medium text-gray-700 mb-1">监控时长</label>
-        <select
-          v-model="duration"
-          :disabled="isLoading"
-          class="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-        >
-          <option :value="3600">1 小时</option>
-          <option :value="7200">2 小时</option>
-          <option :value="10800">3 小时</option>
-          <option :value="21600">6 小时</option>
-          <option :value="43200">12 小时</option>
-          <option :value="86400">24 小时</option>
-          <option :value="172800">48 小时</option>
-          <option :value="259200">72 小时</option>
-        </select>
+        <UiSelect v-model="duration" :options="HOUR_DURATION_OPTIONS" :disabled="isLoading" />
       </div>
 
       <!-- 通知条件 -->
@@ -175,14 +162,7 @@
             </div>
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">支付方式</label>
-              <select
-                v-model="payTool"
-                :disabled="isLoading"
-                class="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                <option value="4">微信</option>
-                <option value="1">支付宝</option>
-              </select>
+              <UiSelect v-model="payTool" :options="PAY_TOOL_OPTIONS" :disabled="isLoading" />
             </div>
           </div>
 
@@ -199,16 +179,12 @@
                 {{ isLoadingAddress ? '加载中…' : '刷新' }}
               </button>
             </label>
-            <select
+            <UiSelect
               v-if="addresses.length > 0"
               v-model="addressId"
+              :options="addressOptions"
               :disabled="isLoading"
-              class="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option v-for="item in addresses" :key="item.addressId" :value="item.addressId">
-                {{ item.consignee }} {{ maskMobile(item.mobile) }} · {{ item.area }} {{ item.address }}
-              </option>
-            </select>
+            />
             <p v-else class="text-xs text-gray-500 py-2">
               {{ addressError || '暂未读取到地址，将使用一手账号默认地址' }}
             </p>
@@ -446,6 +422,14 @@ const {
   // 价格监控自动下单默认 5 件（与「一键下单」上限一致）
   defaultNum: 5,
 })
+
+/** 收货地址下拉选项 */
+const addressOptions = computed(() =>
+  addresses.value.map(item => ({
+    value: item.addressId,
+    label: `${item.consignee} ${maskMobile(item.mobile)} · ${item.area} ${item.address}`,
+  }))
+)
 
 const notifyOptions: Array<{ value: PriceNotifyOn; label: string }> = [
   { value: 'any', label: '涨跌都通知' },

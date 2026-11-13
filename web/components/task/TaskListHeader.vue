@@ -2,17 +2,14 @@
   <LayoutPageHeader :title="title" :description="description">
     <template #actions>
       <!-- 状态筛选：下拉形式，与刷新等操作按钮同一行 -->
-      <select
+      <UiSelect
         v-if="total > 0"
-        :value="modelValue"
-        class="rounded-lg border-2 border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+        v-model="statusFilterModel"
+        :options="filterOptions"
+        size="sm"
+        :block="false"
         aria-label="按状态筛选任务"
-        @change="handleFilterChange"
-      >
-        <option v-for="option in options" :key="option.value" :value="option.value">
-          {{ option.label }}（{{ option.count }}）
-        </option>
-      </select>
+      />
       <UiButton variant="outline" size="sm" :disabled="isLoading" @click="emit('refresh')">
         <svg class="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path
@@ -63,7 +60,16 @@ const options = computed(() => [
   })),
 ])
 
-const handleFilterChange = (event: Event) => {
-  emit('update:modelValue', (event.target as HTMLSelectElement).value as TaskStatusFilter)
-}
+/** 下拉选项：数量直接拼进文案，避免额外的角标样式 */
+const filterOptions = computed(() =>
+  options.value.map(option => ({
+    value: option.value,
+    label: `${option.label}（${option.count}）`,
+  }))
+)
+
+const statusFilterModel = computed({
+  get: () => props.modelValue,
+  set: (value: string | number) => emit('update:modelValue', value as TaskStatusFilter),
+})
 </script>

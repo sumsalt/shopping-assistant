@@ -26,15 +26,7 @@
       <!-- 监控时长：普通到货监控与自动下单共用 -->
       <div>
         <label class="block text-sm font-medium text-gray-700 mb-1">监控时长</label>
-        <select
-          v-model.number="duration"
-          :disabled="isLoading"
-          class="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-        >
-          <option v-for="option in durationOptions" :key="option.value" :value="option.value">
-            {{ option.label }}
-          </option>
-        </select>
+        <UiSelect v-model="duration" :options="durationOptions" :disabled="isLoading" />
         <p class="mt-1 text-xs text-gray-400">到时间自动停止；检测到有货会立即结束</p>
       </div>
 
@@ -160,14 +152,7 @@
             </div>
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">支付方式</label>
-              <select
-                v-model="payTool"
-                :disabled="isLoading"
-                class="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                <option value="4">微信</option>
-                <option value="1">支付宝</option>
-              </select>
+              <UiSelect v-model="payTool" :options="PAY_TOOL_OPTIONS" :disabled="isLoading" />
             </div>
           </div>
 
@@ -184,16 +169,12 @@
                 {{ isLoadingAddress ? '加载中…' : '刷新' }}
               </button>
             </label>
-            <select
+            <UiSelect
               v-if="addresses.length > 0"
               v-model="addressId"
+              :options="addressOptions"
               :disabled="isLoading"
-              class="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option v-for="item in addresses" :key="item.addressId" :value="item.addressId">
-                {{ item.consignee }} {{ maskMobile(item.mobile) }} · {{ item.area }} {{ item.address }}
-              </option>
-            </select>
+            />
             <p v-else class="text-xs text-gray-500 py-2">
               {{ addressError || '暂未读取到地址，将使用一手账号默认地址' }}
             </p>
@@ -298,7 +279,10 @@ const emit = defineEmits<{
 const { createMonitorTask, isLoading } = useMonitor()
 const toast = useToast()
 
-const durationOptions = STOCK_MONITOR_DURATION_OPTIONS
+/** 转成可变数组，避免 as const 的字面量类型与 v-model(number) 冲突 */
+const durationOptions: Array<{ value: number; label: string }> = STOCK_MONITOR_DURATION_OPTIONS.map(
+  option => ({ value: option.value, label: option.label })
+)
 const duration = ref<number>(DEFAULT_STOCK_MONITOR_DURATION)
 
 /** 自动下单的共享表单逻辑（与价格监控同一份） */
@@ -330,6 +314,14 @@ const {
   // 与价格监控一致：自动下单默认 5 件（上限与「一键下单」对齐）
   defaultNum: 5,
 })
+
+/** 收货地址下拉选项 */
+const addressOptions = computed(() =>
+  addresses.value.map(item => ({
+    value: item.addressId,
+    label: `${item.consignee} ${maskMobile(item.mobile)} · ${item.area} ${item.address}`,
+  }))
+)
 
 /** 普通监控不要求登录态与货号；开启自动下单则两者都必须具备 */
 const canSubmit = computed(

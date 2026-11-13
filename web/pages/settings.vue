@@ -58,16 +58,11 @@
             <!-- 选择账号 -->
             <label class="block text-sm font-medium text-gray-700 mb-1">从账号列表选择</label>
             <div class="flex flex-col sm:flex-row gap-2">
-              <select
+              <UiSelect
                 v-model="selectedAccountId"
+                :options="accountOptions"
                 :disabled="isLoadingAccounts || isSwitchingAccount"
-                class="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                <option value="">不使用账号（匿名模式）</option>
-                <option v-for="item in accountList" :key="item.id" :value="item.id">
-                  {{ accountDisplayName(item) }}{{ item.uin ? ' · ' + item.uin : '' }}{{ item.requestChannel ? ' · ' + (item.requestChannel === 'app' ? 'App' : '小程序') : '' }}{{ item.hasRequestProfile ? '' : ' · 无抓包信息' }}
-                </option>
-              </select>
+              />
               <UiButton
                 type="button"
                 variant="outline"
@@ -177,6 +172,19 @@ const {
   resetConfig,
   initFormData,
 } = useConfig()
+
+/** 账号下拉选项：第一项是「不使用账号（匿名模式）」 */
+const accountOptions = computed(() => [
+  { value: '', label: '不使用账号（匿名模式）' },
+  ...accountList.value.map(item => ({
+    value: item.id,
+    label:
+      accountDisplayName(item) +
+      (item.uin ? ' · ' + item.uin : '') +
+      (item.requestChannel ? ' · ' + (item.requestChannel === 'app' ? 'App' : '小程序') : '') +
+      (item.hasRequestProfile ? '' : ' · 无抓包信息'),
+  })),
+])
 
 // 服务端状态是否已拉回：未完成前不下「没选账号」的结论，避免刷新时闪一下
 const configStore = useConfigStore()

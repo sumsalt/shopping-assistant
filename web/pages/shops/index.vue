@@ -81,16 +81,14 @@
         </div>
         <div class="flex items-center gap-2 flex-shrink-0">
           <label class="text-xs text-gray-500 whitespace-nowrap" for="shop-sort">排序</label>
-          <select
+          <UiSelect
             id="shop-sort"
             v-model="sortBy"
-            class="px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          >
-            <option value="updated">最近更新</option>
-            <option value="rating-desc">星级从高到低</option>
-            <option value="rating-asc">星级从低到高</option>
-            <option value="name">店铺名称</option>
-          </select>
+            :options="SORT_OPTIONS"
+            size="sm"
+            :block="false"
+            aria-label="排序方式"
+          />
         </div>
       </div>
 
@@ -350,6 +348,17 @@ const searchKeyword = ref('')
 const ratingFilter = ref(0)
 /** 排序方式 */
 const sortBy = ref<'updated' | 'rating-desc' | 'rating-asc' | 'name'>('updated')
+
+/** 排序下拉选项 */
+const SORT_OPTIONS: Array<{
+  value: 'updated' | 'rating-desc' | 'rating-asc' | 'name'
+  label: string
+}> = [
+  { value: 'updated', label: '最近更新' },
+  { value: 'rating-desc', label: '星级从高到低' },
+  { value: 'rating-asc', label: '星级从低到高' },
+  { value: 'name', label: '店铺名称' },
+]
 
 /** 筛选条选项 */
 const ratingOptions = computed(() => [

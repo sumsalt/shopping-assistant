@@ -11,22 +11,12 @@
       <!-- 账号选择 -->
       <div>
         <label class="block text-sm font-medium text-gray-700 mb-1">账号</label>
-        <select
+        <UiSelect
           v-model="accountId"
+          :options="accountOptions"
+          :placeholder="isLoadingAccounts ? '加载账号中…' : '请选择账号'"
           :disabled="isLoading || isLoadingAccounts"
-          class="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-        >
-          <option value="">
-            {{ isLoadingAccounts ? '加载账号中…' : '请选择账号' }}
-          </option>
-          <option
-            v-for="item in availableAccounts"
-            :key="item.id"
-            :value="item.id"
-          >
-            {{ accountDisplayName(item) }}{{ item.uin ? ' · ' + item.uin : '' }}
-          </option>
-        </select>
+        />
         <p v-if="isLoadingAccounts" class="mt-1 text-xs text-gray-500">正在加载账号列表…</p>
         <p v-else-if="availableAccounts.length === 0" class="mt-1 text-xs text-amber-600">
           还没有带登录态的账号，请先到
@@ -50,20 +40,7 @@
       <!-- 持续时长 -->
       <div>
         <label class="block text-sm font-medium text-gray-700 mb-1">任务持续时长</label>
-        <select
-          v-model="duration"
-          :disabled="isLoading"
-          class="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-        >
-          <option :value="3600">1 小时</option>
-          <option :value="7200">2 小时</option>
-          <option :value="10800">3 小时</option>
-          <option :value="21600">6 小时</option>
-          <option :value="43200">12 小时</option>
-          <option :value="86400">24 小时</option>
-          <option :value="172800">48 小时</option>
-          <option :value="259200">72 小时</option>
-        </select>
+        <UiSelect v-model="duration" :options="DURATION_OPTIONS" :disabled="isLoading" />
         <p class="mt-1 text-xs text-gray-500">到期后任务自动结束；到货 / 价格监控自动下单会自动创建一个 12 小时的续期任务。</p>
       </div>
     </div>
@@ -99,6 +76,18 @@ const emit = defineEmits<{
 
 const DEFAULT_DURATION = 43200 // 12 小时，与自动创建一致
 
+/** 任务持续时长选项（秒） */
+const DURATION_OPTIONS = [
+  { value: 3600, label: '1 小时' },
+  { value: 7200, label: '2 小时' },
+  { value: 10800, label: '3 小时' },
+  { value: 21600, label: '6 小时' },
+  { value: DEFAULT_DURATION, label: '12 小时' },
+  { value: 86400, label: '24 小时' },
+  { value: 172800, label: '48 小时' },
+  { value: 259200, label: '72 小时' },
+]
+
 const { accounts, isLoading: isLoadingAccounts, fetchAccounts } = useAccounts()
 const { isLoading, submit } = useTaskSubmit()
 
@@ -108,6 +97,13 @@ const duration = ref(DEFAULT_DURATION)
 /** 只有具备登录态的账号才能续期 */
 const availableAccounts = computed(() => accounts.value.filter(a => a.hasCredential))
 const noCredentialAccounts = computed(() => accounts.value.filter(a => !a.hasCredential))
+
+const accountOptions = computed(() =>
+  availableAccounts.value.map(item => ({
+    value: item.id,
+    label: `${accountDisplayName(item)}${item.uin ? ' · ' + item.uin : ''}`,
+  }))
+)
 
 const handleClose = () => emit('update:open', false)
 const handleOpenChange = (value: boolean) => emit('update:open', value)

@@ -5,21 +5,12 @@
         <!-- Tab 选择（快速选择） -->
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1.5">快速选择</label>
-          <div class="relative">
-            <select
-              v-model="selectedTabOption"
-              class="w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-white appearance-none"
-              @change="handleSelectTabFromDropdown"
-            >
-              <option value="">-- 请选择 --</option>
-              <option v-for="option in TAB_OPTIONS" :key="option.id" :value="option.id">
-                {{ option.name }} (ID: {{ option.id }})
-              </option>
-            </select>
-            <svg class="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-            </svg>
-          </div>
+          <UiSelect
+            v-model="selectedTabOption"
+            :options="tabOptions"
+            placeholder="-- 请选择 --"
+            @change="handleSelectTabFromDropdown"
+          />
         </div>
 
         <!-- Tab ID 和 Tab 名称 -->
@@ -174,19 +165,7 @@
 
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-1.5">价格排序方式</label>
-              <div class="relative">
-                <select
-                  v-model.number="form.sort"
-                  class="w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-white appearance-none"
-                >
-                  <option :value="1">默认排序</option>
-                  <option :value="3">从高到低</option>
-                  <option :value="4">从低到高</option>
-                </select>
-                <svg class="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-                </svg>
-              </div>
+              <UiSelect v-model="form.sort" :options="SORT_OPTIONS" />
               <p class="mt-1 text-xs text-gray-500">只影响抓取到的商品顺序，不改变监控范围</p>
             </div>
           </div>
@@ -254,6 +233,19 @@ const defaultForm = () => ({
   windowStart: '09:00',
   windowEnd: '23:00',
 })
+
+/** 快速选择下拉选项 */
+const tabOptions = TAB_OPTIONS.map(tab => ({
+  value: tab.id,
+  label: `${tab.name} (ID: ${tab.id})`,
+}))
+
+/** 价格排序方式 */
+const SORT_OPTIONS: Array<{ value: number; label: string }> = [
+  { value: 1, label: '默认排序' },
+  { value: 3, label: '从高到低' },
+  { value: 4, label: '从低到高' },
+]
 
 const form = ref(defaultForm())
 const selectedTabOption = ref('')
