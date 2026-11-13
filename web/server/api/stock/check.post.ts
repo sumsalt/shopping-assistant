@@ -2,8 +2,10 @@
  * 库存查询 API
  * POST /api/stock/check
  *
- * 只查询单个商品（批量 ID 查询已下线）。使用当前账号的一手登录态
- * （保留 uid/token），返回的价格是真实拿货价。
+ * 只查询单个商品（批量 ID 查询已下线）。按当前账号快照原样回放请求参数，
+ * 不主动剔除 uid/token：账号带登录态时返回真实拿货价；账号没有登录态也能
+ * 正常查询（一手把 shop_price 降级成 "??.??"，映射层回退 alone_price 并标注
+ * 「游客参考价」），不在这里做凭证校验。
  */
 
 import { checkStock } from '@core'
@@ -25,17 +27,8 @@ export default defineEventHandler(async (event) => {
       return createErrorResponse(ErrorCode.UNAUTHORIZED, '请先登录')
     }
 
-    // 带登录态：按当前账号快照保留 uid/token，缺凭证直接提示
-    const { config: adapterConfig, hasCredential } = resolveAdapterConfigForUser(
-      currentUser.username,
-      true
-    )
-    if (!hasCredential) {
-      return createErrorResponse(
-        ErrorCode.AUTH_REQUIRED,
-        '库存查询需要一手登录态，请先在账号管理中选择带登录态的账号'
-      )
-    }
+    // 不主动去掉登录态：按当前账号快照完整回放（有凭证就带上，没有也能查）
+    const { config: adapterConfig } = resolveAdapterConfigForUser(currentUser.username, true)
 
     const body = await readBody<CheckStockBody>(event)
     const productId = typeof body?.productId === 'string' ? body.productId.trim() : ''

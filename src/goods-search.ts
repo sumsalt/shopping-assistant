@@ -4,9 +4,10 @@
  * 库存查询页的第二种搜索：单个纯数字（商品 ID / 货号）走原有 checkStock；
  * 含文字的关键词走一手 Goods/keyword_search。批量 ID 查询已下线。
  *
- * 登录态由调用方通过 AdapterConfig 决定：服务端传当前账号的完整快照（带
- * uid/token）时，接口返回真实 shop_price（拿货价）；匿名请求会把它降级成
- * "??.??"，映射层归一成「无价格」，由前端兜底。
+ * 登录态由调用方通过 AdapterConfig 决定，这里不做凭证校验：服务端传当前账号的
+ * 完整快照（不主动剔除 uid/token）时，带登录态返回真实 shop_price（拿货价）；
+ * 账号没有登录态时接口仍能返回商品列表，只是价格降级成 "??.??"，映射层归一成
+ * 「无价格」，由前端兜底。
  */
 
 import { getAdapter } from './adapters';
@@ -24,7 +25,7 @@ export interface KeywordSearchRequest {
 }
 
 export interface KeywordSearchOptions {
-  /** 适配器配置（服务端按当前账号解析，带登录态才能拿到真实价格）；不传则用默认匿名参数 */
+  /** 适配器配置（服务端按当前账号原样解析，有凭证就带上、没有也能搜索）；不传则用默认匿名参数 */
   adapterConfig?: AdapterConfig;
 }
 
