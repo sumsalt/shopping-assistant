@@ -120,11 +120,17 @@ export class YishouAdapter extends BaseAdapter {
     page: number = 1,
     pageSize: number = 20
   ): Promise<CollectionStockCheckResult> {
+    const index = Math.max(1, Math.floor(page) || 1)
+    const size = Math.max(1, Math.floor(pageSize) || 20)
+
     return this.directClient
       .post<YishouCollectionGoodsData[]>(EP.COLLECTION_LIST, {
-        page: `${page}`,
-        page_size: `${pageSize}`,
-        defaultSort: '1',
+        // 一手实测：pageindex 是页码（从 1 开始）、pagesize 生效（最大 50 左右）；
+        // 服务端也兼容 page/page_size，但官方抓包用的是这两个名字，按官方来更稳。
+        pageindex: `${index}`,
+        pagesize: `${size}`,
+        goods_sale_status: '',
+        market_id: '',
       })
       .then(items => splitByStock((items || []).map(mapCollectionItemToResult)))
       .catch(withErrorContext('查询收藏夹库存失败'));

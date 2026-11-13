@@ -75,11 +75,12 @@ export default defineEventHandler(async (event) => {
     })
 
     // 返回结果；带上本次使用的账号摘要，供页面标明正在查看谁的收藏夹
+    // 接口没有总数：只有本页满页才认为可能还有下一页（最后一页不满即到底）
     return createSuccessResponse({
       ...result,
       page,
       pageSize,
-      hasMore: result.total > page * pageSize,
+      hasMore: result.total >= pageSize,
       account: resolved.account
         ? { id: resolved.account.id, phone: resolved.account.phone, title: resolved.account.title }
         : null,

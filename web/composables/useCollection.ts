@@ -40,6 +40,17 @@ interface CollectionResult {
 }
 
 /**
+ * 追加去重：同一 collectId 只保留第一次出现的条目
+ *
+ * 收藏夹按收藏时间倒序，翻页期间新增收藏会把旧商品挤到下一页，
+ * 原样 concat 会出现重复卡片和错位的 key。
+ */
+const mergeById = (prev: CollectionItem[], next: CollectionItem[]): CollectionItem[] => {
+  const seen = new Set(prev.map(item => item.collectId))
+  return [...prev, ...next.filter(item => !seen.has(item.collectId))]
+}
+
+/**
  * 收藏夹管理组合式函数
  *
  * @param accountId 指定账号 ID（通常来自路由 query）；为空时查看当前账号的收藏夹
@@ -87,8 +98,15 @@ export const useCollection = (accountId?: Ref<string | null>) => {
 
         // 累加或重置商品列表
         if (append) {
-          allInStockItems.value = [...allInStockItems.value, ...response.data.inStockItems]
-          allOutOfStockItems.value = [...allOutOfStockItems.value, ...response.data.outOfStockItems]
+          // 翻页期间新增收藏会把旧商品往后挤，第二页可能重复第一页末尾的条目
+          allInStockItems.value = mergeById(
+            allInStockItems.value,
+            response.data.inStockItems
+          )
+          allOutOfStockItems.value = mergeById(
+            allOutOfStockItems.value,
+            response.data.outOfStockItems
+          )
         } else {
           allInStockItems.value = response.data.inStockItems
           allOutOfStockItems.value = response.data.outOfStockItems

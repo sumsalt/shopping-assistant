@@ -61,8 +61,8 @@
       </div>
     </div>
 
-    <!-- 错误状态 -->
-    <div v-else-if="error" class="bg-white rounded-lg border border-red-200 p-8">
+    <!-- 错误状态：只在还没有任何数据时整页报错；翻页失败保留已加载内容，仅 toast -->
+    <div v-else-if="error && !collectionResult" class="bg-white rounded-lg border border-red-200 p-8">
       <div class="flex flex-col items-center justify-center text-center">
         <div class="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center mb-4">
           <svg class="w-8 h-8 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -84,20 +84,20 @@
         <div class="flex flex-wrap items-center justify-between gap-4">
           <div class="flex items-center gap-6">
             <div class="text-center">
-              <div class="text-2xl font-bold text-gray-900">{{ collectionResult.total }}</div>
-              <div class="text-sm text-gray-500">总收藏</div>
+              <div class="text-2xl font-bold text-gray-900">{{ loadedTotal }}</div>
+              <div class="text-sm text-gray-500">已加载</div>
             </div>
             <div class="text-center">
-              <div class="text-2xl font-bold text-green-600">{{ collectionResult.inStockCount }}</div>
+              <div class="text-2xl font-bold text-green-600">{{ allInStockItems.length }}</div>
               <div class="text-sm text-gray-500">有货</div>
             </div>
             <div class="text-center">
-              <div class="text-2xl font-bold text-red-600">{{ collectionResult.outOfStockCount }}</div>
+              <div class="text-2xl font-bold text-red-600">{{ allOutOfStockItems.length }}</div>
               <div class="text-sm text-gray-500">无货</div>
             </div>
           </div>
           <div class="text-sm text-gray-500">
-            当前第 {{ currentPage }} 页
+            已加载 {{ currentPage }} 页
           </div>
         </div>
       </div>
@@ -246,6 +246,9 @@ const viewingAccount = computed(() => {
   const account = collectionResult.value?.account
   return account?.id === accountId.value ? account : null
 })
+
+/** 已加载总数：接口按页返回，只有累计值才和下面的列表对得上 */
+const loadedTotal = computed(() => allInStockItems.value.length + allOutOfStockItems.value.length)
 
 // 刷新处理
 const handleRefresh = () => {
