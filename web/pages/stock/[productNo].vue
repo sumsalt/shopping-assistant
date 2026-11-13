@@ -303,7 +303,9 @@ const handleManualOrder = async () => {
 
   isOrdering.value = true
   try {
-    const response = await $fetch<ApiResponse<AutoOrderResult>>('/api/order/manual', {
+    const response = await $fetch<
+      ApiResponse<AutoOrderResult & { renewAction?: 'created' | 'extended' | 'skipped' }>
+    >('/api/order/manual', {
       method: 'POST',
       body: { goodsId: result.productId, goodsNo: result.productNo },
     })
@@ -313,8 +315,14 @@ const handleManualOrder = async () => {
       if (order.success) {
         const amountText =
           typeof order.orderAmount === 'number' ? `，应付 ¥${order.orderAmount.toFixed(2)}` : ''
+        const renewText =
+          order.renewAction === 'created'
+            ? '，已开启订单续期'
+            : order.renewAction === 'extended'
+              ? '，订单续期已延长至 12 小时'
+              : ''
         toast.success(
-          `已创建订单 ${order.orderSn ?? ''}（${order.num ?? 0} 件${amountText}），请到一手 App 付款`
+          `已创建订单 ${order.orderSn ?? ''}（${order.num ?? 0} 件${amountText}）${renewText}，请到一手 App 付款`
         )
       } else {
         toast.error(order.message || '下单失败')

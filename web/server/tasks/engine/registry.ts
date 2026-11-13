@@ -133,6 +133,8 @@ export class TaskRegistry<S = unknown> {
 
     promise
       .then(() => {
+        // 已被更新的一次 launch 取代（如延长任务时在同 record 上重启）：旧循环收尾不得覆盖新状态
+        if (record.controller !== controller) return
         if (this.removed.delete(record.id)) return
         record.status = 'completed'
         record.controller = undefined
@@ -140,6 +142,7 @@ export class TaskRegistry<S = unknown> {
         saveTask(toStored(record))
       })
       .catch(error => {
+        if (record.controller !== controller) return
         if (this.removed.delete(record.id)) return
         console.error(`[${this.kind}] 任务 ${record.id} 失败:`, error)
         record.status = 'stopped'

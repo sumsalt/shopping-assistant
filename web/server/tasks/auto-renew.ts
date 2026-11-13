@@ -79,41 +79,118 @@ export interface AutoRenewSourceRecord {
   id: string
 }
 
+/** 续期任务保障结果：新建 / 已延长 / 跳过（无账号或异常） */
+export type RenewEnsureAction = 'created' | 'extended' | 'skipped'
+
+interface EnsureRenewInput {
+  userId: string
+  email: string
+  accountId?: string | null
+  sourceTaskId?: string
+}
+
+/** 把运行中的续期任务时长重置为 12 小时（失败只记日志） */
+const extendRenewTo12h = (record: TaskRecordBase<RenewTaskState>): RenewEnsureAction => {
+  try {
+    renewService.extend(record.userId, record.id, AUTO_RENEW_DURATION_SECONDS)
+    return 'extended'
+  } catch (error) {
+    console.error(`[自动续期] 延长任务失败（任务 ${record.id}）:`, error)
+    return 'skipped'
+  }
+}
+
 /**
- * 自动下单成功后调用：若账号无续期任务，静默建一个 12 小时任务。
- * 成功 / 已有 running / 老任务跳过 都会置位守卫；任何异常只记日志。
+ * 确保账号有 12 小时续期任务：
+ *   - 无运行中任务 → 新建（created）
+ *   - 已有运行中任务 → 将其时长重置为 12 小时（extended），不新建
+ *   - 无账号 / 异常 → skipped
+ *
+ * 全程吞掉异常，绝不打断调用方（下单或监控循环）。
+ */
+const ensureRenewTask12h = async (input: EnsureRenewInput): Promise<RenewEnsureAction> => {
+  if (!input.accountId) return 'skipped'
+
+  const running = findRunningRenewForAccount(input.userId, input.accountId)
+  if (running) return extendRenewTo12h(running)
+
+  try {
+    await createRenewTaskForAccount({
+      username: input.userId,
+      email: input.email,
+      accountId: input.accountId,
+      duration: AUTO_RENEW_DURATION_SECONDS,
+      source: 'auto',
+      ...(input.sourceTaskId ? { sourceTaskId: input.sourceTaskId } : {}),
+    })
+    return 'created'
+  } catch (error) {
+    // 并发下刚好被别的请求建出来了：改为延长，不再当异常
+    if (error instanceof TaskApiError && error.code === ErrorCode.DUPLICATE) {
+      const again = findRunningRenewForAccount(input.userId, input.accountId)
+      if (again) return extendRenewTo12h(again)
+      return 'skipped'
+    }
+    console.error(`[自动续期] 创建失败（账号 ${input.accountId}）:`, error)
+    return 'skipped'
+  }
+}
+
+/**
+ * 自动下单成功后调用：为该账号补一个 12 小时续期任务。
+ * 已有运行中的任务时改为「把时长重置为 12 小时」。
+ * 成功 / 延长 都会置位守卫；明确失败时保留守卫为 false 以便下一轮重试。
  */
 export const ensureAutoRenewFromOrder = async (
   record: AutoRenewSourceRecord,
   touch: () => void
 ): Promise<void> => {
   if (record.autoRenewTriggered) return
-  if (!record.accountId) {
+
+  const action = await ensureRenewTask12h({
+    userId: record.userId,
+    email: record.userEmail,
+    accountId: record.accountId,
+    sourceTaskId: record.id,
+  })
+
+  if (action !== 'skipped' || !record.accountId) {
     record.autoRenewTriggered = true
-    touch()
-    return
   }
+  touch()
 
-  try {
-    if (findRunningRenewForAccount(record.userId, record.accountId)) {
-      record.autoRenewTriggered = true
-      touch()
-      return
-    }
-
-    await createRenewTaskForAccount({
-      username: record.userId,
-      email: record.userEmail,
-      accountId: record.accountId,
-      duration: AUTO_RENEW_DURATION_SECONDS,
-      source: 'auto',
-      sourceTaskId: record.id,
-    })
-
-    record.autoRenewTriggered = true
-    touch()
+  if (action === 'created') {
     console.log(`[自动续期] 已为账号 ${record.accountId} 创建 12 小时任务（来源 ${record.id}）`)
-  } catch (error) {
-    console.error(`[自动续期] 创建失败（来源 ${record.id}）:`, error)
+  } else if (action === 'extended') {
+    console.log(`[自动续期] 账号 ${record.accountId} 已有任务，已重置为 12 小时（来源 ${record.id}）`)
   }
+}
+
+/**
+ * 手动下单成功后调用：为该账号补一个 12 小时续期任务。
+ *
+ * 规则与自动下单保持一致：
+ *   - 时长同为 12 小时（AUTO_RENEW_DURATION_SECONDS）
+ *   - 已有运行中的续期任务时，把该任务时长重置为 12 小时，不再跳过
+ *   - 任何异常只记日志并返回 skipped，绝不影响下单结果
+ *
+ * 与自动下单的唯一差别是没有来源任务 record，因此不传 sourceTaskId。
+ */
+export const ensureRenewAfterManualOrder = async (input: {
+  userId: string
+  email: string
+  accountId?: string | null
+}): Promise<RenewEnsureAction> => {
+  const action = await ensureRenewTask12h({
+    userId: input.userId,
+    email: input.email,
+    accountId: input.accountId,
+  })
+
+  if (action === 'created') {
+    console.log(`[自动续期] 手动下单后已为账号 ${input.accountId} 创建 12 小时任务`)
+  } else if (action === 'extended') {
+    console.log(`[自动续期] 手动下单后账号 ${input.accountId} 已有任务，已重置为 12 小时`)
+  }
+  return action
 }

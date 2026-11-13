@@ -134,8 +134,7 @@ export class TaskService<S> {
   }
 
   /** 重新发起 */
-  async restart(username: string, taskId: string): Promise<TaskRecordBase<S>> {
-    const original = this.requireOwned(username, taskId, '操作')
+  async restart(username: string, taskId: string): Promise<TaskRecordBase<S>> {    const original = this.requireOwned(username, taskId, '操作')
     const { state } = this.definition.restart(original)
 
     if (this.definition.removeOriginalOnRestart) {
@@ -160,6 +159,38 @@ export class TaskService<S> {
     this.definition.uniqueness?.(record, this.registry.all())
     this.registry.add(record)
     this.start(record)
+    return record
+  }
+
+  /**
+   * 延长运行中的任务：把时长重置为 durationSeconds（从当前时刻重新计时），保留累计统计。
+   *
+   * 用于「已有同类任务时把时长更新为 12 小时」：不新建任务、不换 id，
+   * 只重置计时起点并在原 record 上以新时长重启监控循环。
+   */
+  extend(username: string, taskId: string, durationSeconds: number): TaskRecordBase<S> {
+    const record = this.requireOwned(username, taskId, '更新')
+    if (record.status !== 'running') {
+      throw new TaskApiError(ErrorCode.INVALID_PARAMS, '任务未在运行，无法更新时长')
+    }
+
+    const state = record.state as unknown as { config?: { duration?: number } }
+    if (!state || typeof state !== 'object' || !state.config) {
+      throw new TaskApiError(ErrorCode.INVALID_PARAMS, '该任务不支持修改时长')
+    }
+
+    // 更新配置时长（UI 与持久化都读这里）
+    state.config.duration = durationSeconds
+    // 重置计时起点：保证进程重启后 remaining 仍按新时长计算
+    record.createdAt = new Date()
+    record.status = 'running'
+
+    // 中止旧循环，在同一 record 上按新时长重启（run 以现有 state 为基数，累计不清零）
+    this.registry.abort(record.id)
+    record.controller = undefined
+    // 确保在内存表内并落盘（get 可能返回仅来自 DB 的副本）
+    this.registry.add(record)
+    this.start(record, { resume: true, durationSeconds })
     return record
   }
 

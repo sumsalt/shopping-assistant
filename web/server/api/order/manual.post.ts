@@ -10,6 +10,7 @@ import { getOrderAdapter, MANUAL_ORDER_MAX_NUM, placeAutoOrder } from '@core'
 import { createErrorResponse, createSuccessResponse, ErrorCode } from '../../utils/response'
 import { getCurrentUser } from '../../utils/session'
 import { resolveAdapterConfigForUser } from '../../utils/adapterConfig'
+import { ensureRenewAfterManualOrder, type RenewEnsureAction } from '../../tasks/auto-renew'
 
 export default defineEventHandler(async (event) => {
   try {
@@ -19,7 +20,7 @@ export default defineEventHandler(async (event) => {
     }
 
     // 下单链路必须带一手登录态
-    const { config: adapterConfig, hasCredential } = resolveAdapterConfigForUser(
+    const { config: adapterConfig, account, hasCredential } = resolveAdapterConfigForUser(
       currentUser.username,
       true
     )
@@ -51,7 +52,19 @@ export default defineEventHandler(async (event) => {
       config: { enabled: true, num: MANUAL_ORDER_MAX_NUM },
     })
 
-    return createSuccessResponse(result)
+    // 与自动下单一致：建单成功后确保该账号有 12 小时续期任务。
+    // 已有运行中的任务时把时长重置为 12 小时（extended），否则新建（created）。
+    // best-effort——无账号或异常都只返回 skipped，不影响下单结果。
+    let renewAction: RenewEnsureAction = 'skipped'
+    if (result.success && result.orderSn) {
+      renewAction = await ensureRenewAfterManualOrder({
+        userId: currentUser.username,
+        email: currentUser.email,
+        accountId: account?.id ?? null,
+      })
+    }
+
+    return createSuccessResponse({ ...result, renewAction })
   } catch (error: unknown) {
     console.error('手动下单失败:', error)
     const message = error instanceof Error ? error.message : '未知错误'
