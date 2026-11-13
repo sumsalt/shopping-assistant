@@ -327,6 +327,8 @@ const {
   resolveProductId: () => props.product?.productId,
   // 到货监控的规格同时也是提醒条件，打开弹窗就要能选
   skusOnOpen: true,
+  // 与价格监控一致：自动下单默认 5 件（上限与「一键下单」对齐）
+  defaultNum: 5,
 })
 
 /** 普通监控不要求登录态与货号；开启自动下单则两者都必须具备 */

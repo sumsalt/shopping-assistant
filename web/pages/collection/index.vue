@@ -6,6 +6,7 @@
       :description="accountId ? '查看指定账号的收藏夹库存，点击商品进入详情页创建监控' : '查看收藏夹商品库存，点击商品进入详情页创建监控'"
     >
       <template #actions>
+        <AccountSwitcher />
         <UiButton
           :loading="isLoading"
           :disabled="isLoading"

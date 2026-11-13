@@ -443,6 +443,8 @@ const {
   resolveProductNo,
   resolveProductId: () => displayProduct.value?.productId,
   withTrigger: true,
+  // 价格监控自动下单默认 5 件（与「一键下单」上限一致）
+  defaultNum: 5,
 })
 
 const notifyOptions: Array<{ value: PriceNotifyOn; label: string }> = [

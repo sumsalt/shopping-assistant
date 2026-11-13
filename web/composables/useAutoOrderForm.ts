@@ -35,6 +35,8 @@ export interface AutoOrderFormOptions {
   resolveProductId: () => string | undefined
   /** 是否展示「目标价 / 折扣」触发方式（价格监控需要，到货监控不需要） */
   withTrigger?: boolean
+  /** 打开弹窗时复位到的购买件数（两种监控弹窗都传 5；不传则默认 1 件） */
+  defaultNum?: number
   /** 打开弹窗时是否立刻读规格（到货监控的规格同时也是提醒条件） */
   skusOnOpen?: boolean
 }
@@ -42,6 +44,9 @@ export interface AutoOrderFormOptions {
 export const useAutoOrderForm = (options: AutoOrderFormOptions) => {
   const configStore = useConfigStore()
   const toast = useToast()
+
+  /** 件数默认值：限定在 1~99，与服务端 MAX_AUTO_ORDER_NUM 一致 */
+  const defaultNum = Math.min(99, Math.max(1, Math.floor(Number(options.defaultNum) || 1)))
 
   /** 是否已配置登录态（自动下单的前提） */
   const hasCredential = computed(() => Boolean(configStore.activeAccount?.hasCredential))
@@ -54,8 +59,8 @@ export const useAutoOrderForm = (options: AutoOrderFormOptions) => {
   const targetDiscountInput = ref('')
   const targetDiscountError = ref('')
 
-  // 下单参数
-  const num = ref(1)
+  // 下单参数（价格监控默认 5 件；到货监控沿用 1 件）
+  const num = ref(defaultNum)
   const payTool = ref<'1' | '4'>('4')
 
   // 收货地址
@@ -224,7 +229,7 @@ export const useAutoOrderForm = (options: AutoOrderFormOptions) => {
     ...(selectedSkus.value.length > 0 ? { skus: selectedSkus.value } : {}),
   })
 
-  /** 复位到安全默认：不自动下单、1 件、微信支付 */
+  /** 复位到安全默认：不自动下单、件数回到弹窗默认值、微信支付 */
   const reset = () => {
     enabled.value = false
     mode.value = 'price'
@@ -232,7 +237,7 @@ export const useAutoOrderForm = (options: AutoOrderFormOptions) => {
     targetPriceError.value = ''
     targetDiscountInput.value = ''
     targetDiscountError.value = ''
-    num.value = 1
+    num.value = defaultNum
     payTool.value = '4'
     addresses.value = []
     addressId.value = ''

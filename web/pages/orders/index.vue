@@ -6,6 +6,7 @@
       :description="accountId ? '查看指定账号的订单，不改变当前使用账号' : '查看当前账号的订单，点击商品可进入详情页'"
     >
       <template #actions>
+        <AccountSwitcher />
         <UiButton
           :loading="isLoading"
           :disabled="isLoading"
