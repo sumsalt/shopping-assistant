@@ -1,16 +1,18 @@
 <template>
   <div class="max-w-6xl mx-auto">
-    <LayoutPageHeader
+    <TaskListHeader
+      v-model="statusFilter"
       title="Tab 监控任务"
       description="监控 Tab 商品列表，累计发现新商品后邮件提醒"
+      :is-loading="isLoading"
+      :total="tasks.length"
+      :counts="statusCounts"
+      @refresh="fetchTasks()"
     >
       <template #actions>
-        <UiButton variant="outline" size="sm" :disabled="isLoading" @click="fetchTasks()">
-          刷新
-        </UiButton>
         <UiButton size="sm" @click="showAddDialog = true">新增监控</UiButton>
       </template>
-    </LayoutPageHeader>
+    </TaskListHeader>
 
     <!-- 加载状态 -->
     <div v-if="isLoading && tasks.length === 0" class="space-y-4">
@@ -30,10 +32,36 @@
       </div>
     </div>
 
+    <!-- 完全没有任务 -->
+    <div v-else-if="tasks.length === 0" class="bg-white rounded-lg border border-gray-200 p-8">
+      <div class="flex flex-col items-center justify-center text-center">
+        <div class="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mb-4">
+          <svg class="w-8 h-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+          </svg>
+        </div>
+        <h3 class="text-lg font-medium text-gray-900 mb-2">暂无 Tab 监控任务</h3>
+        <p class="text-gray-500 max-w-sm mb-4">创建一个 Tab 监控，任务会定时抓取该 Tab 的商品列表并累计新商品</p>
+        <UiButton @click="showAddDialog = true">新增监控</UiButton>
+      </div>
+    </div>
+
+    <!-- 有任务但当前状态下没有（筛选后无结果） -->
+    <div v-else-if="filteredTasks.length === 0" class="bg-white rounded-lg border border-gray-200">
+      <UiEmptyState
+        type="search"
+        title="该状态下暂无任务"
+        description="换个状态看看，或切回「全部」。"
+        action-text="查看全部"
+        action-variant="outline"
+        @action="statusFilter = 'all'"
+      />
+    </div>
+
     <!-- 任务列表 -->
-    <div v-else-if="tasks.length > 0" class="space-y-4">
+    <div v-else class="space-y-4">
       <TaskCard
-        v-for="task in tasks"
+        v-for="task in filteredTasks"
         :key="task.id"
         :task="task"
         :busy="busyId === task.id"
@@ -52,20 +80,6 @@
           </UiButton>
         </template>
       </TaskCard>
-    </div>
-
-    <!-- 空状态 -->
-    <div v-else class="bg-white rounded-lg border border-gray-200 p-8">
-      <div class="flex flex-col items-center justify-center text-center">
-        <div class="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mb-4">
-          <svg class="w-8 h-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-          </svg>
-        </div>
-        <h3 class="text-lg font-medium text-gray-900 mb-2">暂无 Tab 监控任务</h3>
-        <p class="text-gray-500 max-w-sm mb-4">创建一个 Tab 监控，任务会定时抓取该 Tab 的商品列表并累计新商品</p>
-        <UiButton @click="showAddDialog = true">新增监控</UiButton>
-      </div>
     </div>
 
     <TabCreateDialog v-model:open="showAddDialog" @created="handleCreated" />
@@ -198,7 +212,7 @@ import type { TabSeenProductItem } from '@/composables/useTabSeen'
 
 definePageMeta({ title: 'Tab 监控任务' })
 
-const { tasks, isLoading, error, busyId, fetchTasks, remove, restart } =
+const { tasks, isLoading, error, busyId, statusFilter, filteredTasks, statusCounts, fetchTasks, remove, restart } =
   useTaskList(taskEndpoint('tab'))
 const { fetchSeenProducts } = useTabSeen()
 const { isMobileViewport, openYishouProduct } = useYishouApp()

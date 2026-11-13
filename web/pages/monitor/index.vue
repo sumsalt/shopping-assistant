@@ -1,15 +1,14 @@
 <template>
   <div class="max-w-6xl mx-auto">
-    <LayoutPageHeader title="监控任务" description="管理商品到货监控任务">
-      <template #actions>
-        <UiButton :loading="isLoading" :disabled="isLoading" @click="fetchTasks()">
-          <svg class="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-          </svg>
-          刷新
-        </UiButton>
-      </template>
-    </LayoutPageHeader>
+    <TaskListHeader
+      v-model="statusFilter"
+      title="监控任务"
+      description="管理商品到货监控任务"
+      :is-loading="isLoading"
+      :total="tasks.length"
+      :counts="statusCounts"
+      @refresh="fetchTasks()"
+    />
 
     <!-- 加载状态 -->
     <div v-if="isLoading && tasks.length === 0" class="space-y-4">
@@ -21,7 +20,7 @@
     </div>
 
     <!-- 错误状态 -->
-    <div v-else-if="error" class="bg-white rounded-lg border border-red-200 p-8">
+    <div v-else-if="error && tasks.length === 0" class="bg-white rounded-lg border border-red-200 p-8">
       <div class="flex flex-col items-center justify-center text-center">
         <h3 class="text-lg font-medium text-gray-900 mb-2">加载失败</h3>
         <p class="text-gray-500 mb-4">{{ error }}</p>
@@ -29,20 +28,8 @@
       </div>
     </div>
 
-    <!-- 任务列表 -->
-    <div v-else-if="tasks.length > 0" class="space-y-4">
-      <TaskCard
-        v-for="task in tasks"
-        :key="task.id"
-        :task="task"
-        :busy="busyId === task.id"
-        @restart="handleRestart"
-        @delete="handleDelete"
-      />
-    </div>
-
-    <!-- 空状态 -->
-    <div v-else class="bg-white rounded-lg border border-gray-200 p-8">
+    <!-- 完全没有任务 -->
+    <div v-else-if="tasks.length === 0" class="bg-white rounded-lg border border-gray-200 p-8">
       <div class="flex flex-col items-center justify-center text-center">
         <div class="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mb-4">
           <svg class="w-8 h-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -58,6 +45,30 @@
         </NuxtLink>
       </div>
     </div>
+
+    <!-- 有任务但当前状态下没有（筛选后无结果） -->
+    <div v-else-if="filteredTasks.length === 0" class="bg-white rounded-lg border border-gray-200">
+      <UiEmptyState
+        type="search"
+        title="该状态下暂无任务"
+        description="换个状态看看，或切回「全部」。"
+        action-text="查看全部"
+        action-variant="outline"
+        @action="statusFilter = 'all'"
+      />
+    </div>
+
+    <!-- 任务列表 -->
+    <div v-else class="space-y-4">
+      <TaskCard
+        v-for="task in filteredTasks"
+        :key="task.id"
+        :task="task"
+        :busy="busyId === task.id"
+        @restart="handleRestart"
+        @delete="handleDelete"
+      />
+    </div>
   </div>
 </template>
 
@@ -67,7 +78,7 @@ import type { TaskSummary } from '@core/contract'
 
 definePageMeta({ title: '监控任务' })
 
-const { tasks, isLoading, error, busyId, fetchTasks, remove, restart } =
+const { tasks, isLoading, error, busyId, statusFilter, filteredTasks, statusCounts, fetchTasks, remove, restart } =
   useTaskList(taskEndpoint('stock'))
 
 const { danger: confirmDelete, warning: confirmRestart } = useConfirmDialog()

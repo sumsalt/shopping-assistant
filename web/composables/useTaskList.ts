@@ -12,6 +12,12 @@
 
 import type { ApiResponse } from '@/types'
 import type { TaskListPayload, TaskSummary } from '@core/contract'
+import {
+  countTasksByStatus,
+  filterTasksByStatus,
+  type TaskStatusFilter,
+  type TaskStatusCounts,
+} from '@core/utils/task-filter'
 import { useToast } from '@/composables/useToast'
 
 export const useTaskList = (baseUrl: string) => {
@@ -22,6 +28,11 @@ export const useTaskList = (baseUrl: string) => {
   const error = ref<string | null>(null)
   /** 正在操作的任务 id（删除 / 重启） */
   const busyId = ref('')
+
+  /** 状态筛选：四个任务列表页共用，切页不影响各自状态 */
+  const statusFilter = ref<TaskStatusFilter>('all')
+  const filteredTasks = computed(() => filterTasksByStatus(tasks.value, statusFilter.value))
+  const statusCounts = computed<TaskStatusCounts>(() => countTasksByStatus(tasks.value))
 
   const fetchTasks = async (): Promise<void> => {
     isLoading.value = true
@@ -89,5 +100,16 @@ export const useTaskList = (baseUrl: string) => {
     }
   }
 
-  return { tasks, isLoading, error, busyId, fetchTasks, remove, restart }
+  return {
+    tasks,
+    isLoading,
+    error,
+    busyId,
+    fetchTasks,
+    remove,
+    restart,
+    statusFilter,
+    filteredTasks,
+    statusCounts,
+  }
 }

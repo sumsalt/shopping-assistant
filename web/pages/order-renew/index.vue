@@ -1,13 +1,15 @@
 <template>
   <div class="max-w-6xl mx-auto">
-    <LayoutPageHeader
+    <TaskListHeader
+      v-model="statusFilter"
       title="订单续期"
       description="每分钟扫描账号下的待支付订单，自动为支付有效期不足 5 分钟的订单刷新有效期"
+      :is-loading="isLoading"
+      :total="tasks.length"
+      :counts="statusCounts"
+      @refresh="fetchTasks()"
     >
       <template #actions>
-        <UiButton variant="outline" size="sm" :disabled="isLoading" @click="fetchTasks()">
-          刷新
-        </UiButton>
         <UiButton size="sm" @click="showCreateDialog = true">
           <svg class="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
@@ -15,7 +17,7 @@
           新建任务
         </UiButton>
       </template>
-    </LayoutPageHeader>
+    </TaskListHeader>
 
     <div v-if="isLoading && tasks.length === 0" class="space-y-4">
       <div v-for="i in 3" :key="i" class="bg-white rounded-lg border border-gray-200 p-6">
@@ -33,18 +35,8 @@
       </div>
     </div>
 
-    <div v-else-if="tasks.length > 0" class="space-y-4">
-      <TaskCard
-        v-for="task in tasks"
-        :key="task.id"
-        :task="task"
-        :busy="busyId === task.id"
-        @restart="handleRestart"
-        @delete="handleDelete"
-      />
-    </div>
-
-    <div v-else class="bg-white rounded-lg border border-gray-200 p-8">
+    <!-- 完全没有任务 -->
+    <div v-else-if="tasks.length === 0" class="bg-white rounded-lg border border-gray-200 p-8">
       <div class="flex flex-col items-center justify-center text-center">
         <div class="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mb-4">
           <svg class="w-8 h-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -57,6 +49,30 @@
         </p>
         <UiButton @click="showCreateDialog = true">新建续期任务</UiButton>
       </div>
+    </div>
+
+    <!-- 有任务但当前状态下没有（筛选后无结果） -->
+    <div v-else-if="filteredTasks.length === 0" class="bg-white rounded-lg border border-gray-200">
+      <UiEmptyState
+        type="search"
+        title="该状态下暂无任务"
+        description="换个状态看看，或切回「全部」。"
+        action-text="查看全部"
+        action-variant="outline"
+        @action="statusFilter = 'all'"
+      />
+    </div>
+
+    <!-- 任务列表 -->
+    <div v-else class="space-y-4">
+      <TaskCard
+        v-for="task in filteredTasks"
+        :key="task.id"
+        :task="task"
+        :busy="busyId === task.id"
+        @restart="handleRestart"
+        @delete="handleDelete"
+      />
     </div>
 
     <div class="mt-6 p-4 bg-blue-50 rounded-lg">
@@ -80,7 +96,7 @@ import type { TaskSummary } from '@core/contract'
 
 definePageMeta({ title: '订单续期' })
 
-const { tasks, isLoading, error, busyId, fetchTasks, remove, restart } =
+const { tasks, isLoading, error, busyId, statusFilter, filteredTasks, statusCounts, fetchTasks, remove, restart } =
   useTaskList(taskEndpoint('renew'))
 
 const confirmDialog = useConfirmDialog()
