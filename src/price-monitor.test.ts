@@ -8,6 +8,7 @@ import {
   compareCoupons,
   shouldNotifyPriceChange,
   createCancellablePriceMonitor,
+  computeCouponAdjustedPrice,
   MIN_PRICE_MONITOR_INTERVAL,
 } from './price-monitor';
 import type { PriceSnapshot } from './types';
@@ -169,5 +170,42 @@ describe('compareCoupons - 优惠券变化判定', () => {
 
     expect(change?.removed).toEqual([{ kind: '红包', label: '平台红包：A' }]);
     expect(change?.added).toEqual([]);
+  });
+});
+
+describe('computeCouponAdjustedPrice - 券后最优价', () => {
+  const cn = (threshold: number, reduce: number) => ({ couponId: String(threshold + reduce), threshold, reduce });
+
+  it('价<门槛的券按折扣率缩放减免（取折扣最大的一张）', () => {
+    // 88, 100-5(5%) / 200-15(7.5%) → 88 * 0.925 = 81.4
+    expect(computeCouponAdjustedPrice(88, [cn(100, 5), cn(200, 15)])).toBeCloseTo(81.4, 6);
+  });
+
+  it('价≥门槛减足、价<门槛按比例，两组各取最优再取低价', () => {
+    // 88, 50-5(价够→减5→83) / 100-8(价不够→88*0.92=80.96) → 80.96
+    expect(computeCouponAdjustedPrice(88, [cn(50, 5), cn(100, 8)])).toBeCloseTo(80.96, 6);
+  });
+
+  it('价≥门槛的多张券取额度最大的一张', () => {
+    // 120, 满100减10 / 满50减5 → 减10 → 110
+    expect(computeCouponAdjustedPrice(120, [cn(100, 10), cn(50, 5)])).toBeCloseTo(110, 6);
+  });
+
+  it('价远低于所有门槛时按比例缩放', () => {
+    // 30, 满100减20 / 满200减50 → 30*0.8=24 / 30*0.75=22.5 → 22.5
+    expect(computeCouponAdjustedPrice(30, [cn(100, 20), cn(200, 50)])).toBeCloseTo(22.5, 6);
+  });
+
+  it('无券或空列表返回原价', () => {
+    expect(computeCouponAdjustedPrice(88, [])).toBe(88);
+    expect(computeCouponAdjustedPrice(88)).toBe(88);
+  });
+
+  it('门槛为 0 视为减足', () => {
+    expect(computeCouponAdjustedPrice(88, [cn(0, 10)])).toBe(78);
+  });
+
+  it('游客态/无券返回原价（urls 不带金额）', () => {
+    expect(computeCouponAdjustedPrice(0, [cn(100, 5)])).toBe(0);
   });
 });

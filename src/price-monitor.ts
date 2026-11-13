@@ -39,6 +39,50 @@ export const DEFAULT_PRICE_MONITOR_INTERVAL = 60;
 export const DEFAULT_MIN_PRICE_DELTA = 0.01;
 
 /**
+ * 计算「券后最优价」：在满减券里挑一张让到手价最低的使用。
+ *
+ * 规则（一手满减券，门槛 = 商品金额门槛）：
+ * - 价 ≥ 门槛的券：直接减足 `reduce`（取额度最大的一张）。
+ * - 价 < 门槛的券：按 `reduce / threshold` 折扣率缩放减免额（取折扣最大的一张），
+ *   即"不满足门槛也能用，但只按比例享受"。
+ * 两组各取最优后，再取两者里更低的价格。
+ *
+ * 红包（coupons）无金额字段，不参与计算；游客态 / 无券返回原价。
+ * threshold ≤ 0 视为减足处理（防除零）。
+ *
+ * @param shopPrice 拿货价（折后基准价）
+ * @param couponsNew 满减券列表（已归一化的 threshold / reduce）
+ */
+export function computeCouponAdjustedPrice(
+  shopPrice: number,
+  couponsNew?: CouponNewInfo[]
+): number {
+  if (!shopPrice || shopPrice <= 0 || !couponsNew || couponsNew.length === 0) {
+    return shopPrice;
+  }
+  let bestAboveReduce = 0; // 价≥门槛组：最大减免额
+  let bestBelowRate = 0; // 价<门槛组：最大折扣率
+  for (const coupon of couponsNew) {
+    const threshold = coupon.threshold ?? 0;
+    const reduce = coupon.reduce ?? 0;
+    if (threshold <= 0) {
+      // 门槛为 0：视为减足
+      bestAboveReduce = Math.max(bestAboveReduce, reduce);
+      continue;
+    }
+    if (shopPrice >= threshold) {
+      bestAboveReduce = Math.max(bestAboveReduce, reduce);
+    } else {
+      bestBelowRate = Math.max(bestBelowRate, reduce / threshold);
+    }
+  }
+  let adjusted = shopPrice;
+  if (bestAboveReduce > 0) adjusted = Math.min(adjusted, shopPrice - bestAboveReduce);
+  if (bestBelowRate > 0) adjusted = Math.min(adjusted, shopPrice * (1 - bestBelowRate));
+  return adjusted;
+}
+
+/**
  * 通知条件
  * - any: 涨跌都通知
  * - drop: 仅降价
@@ -178,6 +222,8 @@ export interface PriceMonitorResult {
   couponsNew?: CouponNewInfo[];
   /** 当前价格 */
   currentPrice?: number;
+  /** 当前券后最优价（把满减券算进去；无券时等于 currentPrice） */
+  couponAdjustedPrice?: number;
   /** 本次是否因价格到点触发了自动下单 */
   orderTriggered?: boolean;
   /** 自动下单成功的订单号 */
@@ -466,6 +512,10 @@ export const createCancellablePriceMonitor = (
         productName: initialSnapshot?.productName || task.productName || '',
         detected: false,
         currentPrice: initialSnapshot?.shopPrice,
+        couponAdjustedPrice: computeCouponAdjustedPrice(
+          initialSnapshot?.shopPrice ?? 0,
+          initialSnapshot?.couponsNew
+        ),
         checkCount: initialCheckCount,
         errorCount: 0,
       };
@@ -490,22 +540,31 @@ export const createCancellablePriceMonitor = (
 
           result.productName = current.productName || result.productName;
           result.currentPrice = current.shopPrice;
+          result.couponAdjustedPrice = computeCouponAdjustedPrice(
+            current.shopPrice,
+            current.couponsNew
+          );
           result.coupons = current.coupons;
           result.couponsNew = current.couponsNew;
           // 每轮重置，避免上一轮的下单失败原因一直挂在卡片上
           result.orderError = undefined;
           result.orderSkipped = undefined;
 
-          // 触发条件：拿货价 ≤ 目标价（price 模式）或 当前折扣 ≤ 目标折扣（discount 模式）。
+          // 触发条件：券后最优价 ≤ 目标价（price 模式）或 券后折扣 ≤ 目标折扣（discount 模式）。
           // 与「涨跌通知」相互独立；首次检测也参与判断——创建任务时已满足条件就该立刻买。
+          // 券后最优价把满减券算进去（价≥门槛减足、价<门槛按比例），用更低的到手价去比价。
+          const couponAdjustedPrice = computeCouponAdjustedPrice(
+            current.shopPrice,
+            current.couponsNew
+          );
           const currentDiscount =
             current.shoppePrice && current.shoppePrice > 0
-              ? Math.round((current.shopPrice / current.shoppePrice) * 10 * 10) / 10
+              ? Math.round((couponAdjustedPrice / current.shoppePrice) * 10 * 10) / 10
               : undefined;
           const triggerByPrice =
             autoOrder?.triggerMode !== 'discount' &&
             Number(autoOrder?.targetPrice) > 0 &&
-            current.shopPrice <= Number(autoOrder?.targetPrice);
+            couponAdjustedPrice <= Number(autoOrder?.targetPrice);
           const triggerByDiscount =
             autoOrder?.triggerMode === 'discount' &&
             Number(autoOrder?.targetDiscount) > 0 &&
@@ -569,6 +628,15 @@ export const createCancellablePriceMonitor = (
                     requestedNum: orderResult.requestedNum,
                     payTool: orderResult.payTool,
                     expireAt: orderResult.expireAt,
+                    couponAdjustedPrice: couponAdjustedPrice,
+                    targetPrice:
+                      autoOrder?.triggerMode !== 'discount'
+                        ? Number(autoOrder?.targetPrice) || undefined
+                        : undefined,
+                    targetDiscount:
+                      autoOrder?.triggerMode === 'discount'
+                        ? Number(autoOrder?.targetDiscount) || undefined
+                        : undefined,
                   }),
                 });
 

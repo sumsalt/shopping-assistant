@@ -1188,6 +1188,12 @@ export interface AutoOrderTemplateParams {
   payTool?: string;
   /** 支付截止时间（毫秒时间戳） */
   expireAt?: number;
+  /** 触发下单时的券后最优价（已把满减券算进去），用于说明「为什么到点」 */
+  couponAdjustedPrice?: number;
+  /** 触发时的目标价（price 模式），与 couponAdjustedPrice 对照展示 */
+  targetPrice?: number;
+  /** 触发时的目标折扣（discount 模式，如 2.4 表示 2.4 折），与券后折扣对照展示 */
+  targetDiscount?: number;
 }
 
 /** 把支付截止时间格式化成「今天 12:34」这种可读文案 */
@@ -1218,6 +1224,9 @@ export function createAutoOrderTemplate(params: AutoOrderTemplateParams): string
     requestedNum,
     payTool,
     expireAt,
+    couponAdjustedPrice,
+    targetPrice,
+    targetDiscount,
   } = params;
 
   const numReduced = Boolean(requestedNum && requestedNum > num);
@@ -1282,6 +1291,17 @@ export function createAutoOrderTemplate(params: AutoOrderTemplateParams): string
             ${multiSku ? `<tr><td class="label">合计</td><td>${orderItems.length} 个规格，共 ${num} 件</td></tr>` : ''}
             <tr><td class="label">支付方式</td><td>${payText}</td></tr>
             ${expireText ? `<tr><td class="label">付款截止</td><td>${expireText}</td></tr>` : ''}
+            ${
+              couponAdjustedPrice !== undefined
+                ? `<tr><td class="label">券后最优价</td><td>¥${couponAdjustedPrice.toFixed(2)}${
+                    targetPrice !== undefined
+                      ? `（已达目标价 ¥${targetPrice.toFixed(2)}）`
+                      : targetDiscount !== undefined
+                        ? `（已达目标折扣 ${targetDiscount} 折）`
+                        : ''
+                  }</td></tr>`
+                : ''
+            }
           </table>
           ${numReduced ? `<div class="warn">库存不足，已按实际可买 <strong>${num}</strong> 件下单（你设置的是 ${requestedNum} 件）。如需更多，请补货后再发起监控。</div>` : ''}
           <div class="warn">
