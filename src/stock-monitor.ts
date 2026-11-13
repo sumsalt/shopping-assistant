@@ -229,7 +229,7 @@ export const monitorSingleStock = async (
  * 库存监控的闸门上下文
  *
  * 检测阶段固定走匿名桶：即使任务带了登录态（自动下单必须配 uid/token），
- * 轮询本身不用身份、也不占账号配额，否则检测节奏会被压到 15 秒一次。
+ * 轮询本身不用身份、也不占账号配额，否则检测节奏会被压到 5 秒一次。
  * 登录态只在真正下单时使用，那条链路 skipGate，不进闸门排队。
  */
 export const createStockGateContext = (config: StockMonitorConfig): GateContext => ({
@@ -308,7 +308,7 @@ export const createCancellableMonitor = (
       }
 
       // 不选规格时检测保持匿名（匿名桶 1 秒一槽，价格回退游客参考价）；
-      // 选了规格就必须查 SKU 明细，而该接口拒绝匿名，所以检测也要带凭证，进账号桶（15 秒一槽）。
+      // 选了规格就必须查 SKU 明细，而该接口拒绝匿名，所以检测也要带凭证，进账号桶（5 秒一槽）。
       const detectionConfig = needSkuDetail ? adapterConfig : toAnonymousAdapterConfig(adapterConfig);
 
       const startTime = Date.now();
@@ -481,7 +481,7 @@ export const createCancellableMonitor = (
             resultCallback(result);
           }
 
-          // 请求节奏由全局请求闸门控制（匿名 1 秒 / 登录态 15 秒），轮次节奏由下方 sleep 控制
+          // 请求节奏由全局请求闸门控制（匿名 1 秒 / 登录态 5 秒），轮次节奏由下方 sleep 控制
         } catch (error) {
           result.error = error instanceof Error ? error.message : String(error);
           result.checkCount++;

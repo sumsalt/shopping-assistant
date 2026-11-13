@@ -304,7 +304,7 @@
       <div class="p-3 bg-blue-50 rounded-lg text-sm text-blue-700">
         预计每轮检测耗时：{{ cycleText }}
         <p class="mt-1 text-xs text-blue-600">
-          轮次间隔在每次检测结束后再计算，实际节奏还受全局请求闸门限制（登录态约 15 秒一次请求）
+          轮次间隔在每次检测结束后再计算，实际节奏还受全局请求闸门限制（登录态约 5 秒一次请求）
         </p>
       </div>
     </div>

@@ -101,7 +101,7 @@
         </div>
 
         <p v-if="selectedSkus.length > 0" class="mt-1 text-xs text-blue-600">
-          只在选中的 {{ selectedSkus.length }} 个规格有货时提醒 / 下单（多个规格有货会合并成一单）；选规格会使用登录态检测（15 秒一轮），比匿名检测慢
+          只在选中的 {{ selectedSkus.length }} 个规格有货时提醒 / 下单（多个规格有货会合并成一单）；选规格会使用登录态检测（5 秒一轮），比匿名检测慢
         </p>
       </div>
 

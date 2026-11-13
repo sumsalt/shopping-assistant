@@ -23,7 +23,7 @@ export interface HttpRequestOptions {
   /**
    * 跳过全局请求闸门
    *
-   * 下单链路（加购 / 结算 / 建单）是「抢库存」操作，排队 15 秒即失去意义，
+   * 下单链路（加购 / 结算 / 建单）是「抢库存」操作，排队 5 秒即失去意义，
    * 因此这些请求显式跳过限流；它们只在检测到有货时触发，不会持续空转。
    */
   skipGate?: boolean;
@@ -97,7 +97,7 @@ export const httpRequest = async <T>(
   const gateContext = getGateContext();
   if (gateContext && !skipGate) {
     // 分桶跟着「本次请求实际带的凭证」走：请求级声明优先于任务上下文，
-    // 否则会出现「匿名请求排 15 秒桶」或「登录请求排 1 秒桶」的错配。
+    // 否则会出现「匿名请求排 5 秒桶」或「登录请求排 1 秒桶」的错配。
     const scopedContext =
       options.accountKey === undefined
         ? gateContext

@@ -17,7 +17,7 @@
  *   - 凭据失效：停止任务并告警，不无限重试。
  *
  * 接口已 skipGate（YishouOrderApi 构造时带 skipGate:true），因此请求节流由本层自律，
- * 也不挂 runWithGateContext —— 避免与全局闸门的 15 秒排队耦合。
+ * 也不挂 runWithGateContext —— 避免与全局闸门的 5 秒排队耦合。
  */
 
 import type { AdapterConfig, RenewOrderAdapter } from './adapters/types';

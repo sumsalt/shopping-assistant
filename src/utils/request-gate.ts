@@ -6,10 +6,10 @@
  * （用户手动查询、创建任务时的基线拉取等）直接放行，不受任何限制。
  *
  * 分桶规则（以「本次请求实际带的凭证」为准，由适配器在请求级声明）：
- * - 带 uid + token：按账号分桶，默认 15 秒放行一次，多账号互不影响
+ * - 带 uid + token：按账号分桶，默认 5 秒放行一次，多账号互不影响
  * - 不带凭证：所有匿名请求共享一个桶，默认 1 秒放行一次（同出口 IP 共享配额）
  *
- * 桶键与请求身份保持一致很重要：给匿名请求排 15 秒桶会让检测变慢，
+ * 桶键与请求身份保持一致很重要：给匿名请求排 5 秒桶会让检测变慢，
  * 给登录请求排 1 秒桶则会用匿名配额去打账号接口。
  *
  * 公平策略：每个任务一个 FIFO 子队列，令牌就绪时按任务轮转（round-robin）取队首，
@@ -69,7 +69,7 @@ const readEnvInt = (name: string, fallback: number): number => {
 };
 
 const options: GateOptions = {
-  authIntervalMs: readEnvInt('GATE_AUTH_INTERVAL_MS', 15_000),
+  authIntervalMs: readEnvInt('GATE_AUTH_INTERVAL_MS', 5_000),
   anonIntervalMs: readEnvInt('GATE_ANON_INTERVAL_MS', 1_000),
   maxWaitMs: readEnvInt('GATE_MAX_WAIT_MS', 10 * 60_000),
 };
