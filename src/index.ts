@@ -69,6 +69,9 @@ export {
   sendTabEmail,
   ensureEmailServiceConfigured,
   verifyEmailConfig,
+  configureEmailThrottle,
+  getEmailThrottleOptions,
+  resetEmailThrottle,
   createBackInStockTemplate,
   createStockReportTemplate,
   createPriceChangeTemplate,
@@ -81,6 +84,7 @@ export type {
   EmailContent,
   EmailAttachment,
   EmailResult,
+  EmailThrottleOptions,
   RenewEndingSoonTemplateParams,
 } from './email';
 

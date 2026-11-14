@@ -72,6 +72,145 @@ export interface EmailResult {
 }
 
 /**
+ * 发信节流配置
+ */
+export interface EmailThrottleOptions {
+  /** 两封邮件之间的最小间隔（毫秒），0 表示不限制 */
+  minGapMs: number;
+  /** 任意 60 秒窗口内最多发送的封数，0 表示不限制 */
+  perMinute: number;
+}
+
+/**
+ * 默认节流参数
+ *
+ * QQ 邮箱对同一账号短时间内的 SMTP 登录/发信有频率限制：连续发约 10 封后
+ * 会返回 `535 Login fail ... login frequency limited`，之后同一批次的邮件
+ * 全部失败。6 秒间隔 ≈ 10 封/分钟，比官方阈值保守，且不影响单封场景。
+ */
+const DEFAULT_EMAIL_THROTTLE: EmailThrottleOptions = { minGapMs: 6000, perMinute: 10 };
+
+/** 频率统计的滑动窗口 */
+const RATE_WINDOW_MS = 60_000;
+
+/** 显式配置的节流参数（未配置时从环境变量读，再回退默认值） */
+let throttleOptions: EmailThrottleOptions | null = null;
+
+/** 上一个占坑的时间戳 */
+let lastSlotAt = 0;
+
+/** 窗口内的占坑时间戳，按时间递增 */
+const slotHistory: number[] = [];
+
+/**
+ * 串行链：保证全局同一时刻只有一封在发送，其余按调用顺序排队。
+ * 多任务并发触发时（例如十几个价格监控同时发现券失效），
+ * 不会出现并发登录 SMTP 引发风控。
+ */
+let sendChain: Promise<unknown> = Promise.resolve();
+
+function readPositiveNumber(value: string | undefined, fallback: number): number {
+  if (value === undefined || value.trim() === '') return fallback;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+/**
+ * 获取当前节流参数
+ *
+ * 优先级：`configureEmailThrottle()` > 环境变量 > 默认值。
+ * 环境变量：`EMAIL_MIN_GAP_MS`、`EMAIL_PER_MINUTE`。
+ */
+export function getEmailThrottleOptions(): EmailThrottleOptions {
+  if (!throttleOptions) {
+    throttleOptions = {
+      minGapMs: readPositiveNumber(process.env.EMAIL_MIN_GAP_MS, DEFAULT_EMAIL_THROTTLE.minGapMs),
+      perMinute: readPositiveNumber(
+        process.env.EMAIL_PER_MINUTE,
+        DEFAULT_EMAIL_THROTTLE.perMinute
+      ),
+    };
+  }
+  return throttleOptions;
+}
+
+/**
+ * 覆盖节流参数（主要给测试与排障用）
+ * @param options 需要覆盖的字段
+ */
+export function configureEmailThrottle(options: Partial<EmailThrottleOptions>): void {
+  throttleOptions = { ...getEmailThrottleOptions(), ...options };
+}
+
+/**
+ * 重置节流状态（清空排队历史与串行链，测试用）
+ */
+export function resetEmailThrottle(): void {
+  throttleOptions = null;
+  lastSlotAt = 0;
+  slotHistory.length = 0;
+  sendChain = Promise.resolve();
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * 申请一个发信名额：满足「最小间隔 + 每分钟上限」后才返回
+ *
+ * 名额在真正发起 SMTP 会话之前占用，失败也算一次占用，
+ * 因为被拒绝的登录同样计入邮箱侧的频率统计。
+ */
+async function acquireSendSlot(): Promise<void> {
+  for (;;) {
+    const { minGapMs, perMinute } = getEmailThrottleOptions();
+    const now = Date.now();
+
+    while (slotHistory.length > 0 && now - slotHistory[0] >= RATE_WINDOW_MS) {
+      slotHistory.shift();
+    }
+
+    let waitMs = 0;
+    if (minGapMs > 0 && lastSlotAt > 0) {
+      waitMs = Math.max(waitMs, lastSlotAt + minGapMs - now);
+    }
+    if (perMinute > 0 && slotHistory.length >= perMinute) {
+      waitMs = Math.max(waitMs, slotHistory[0] + RATE_WINDOW_MS - now);
+    }
+
+    if (waitMs <= 0) {
+      lastSlotAt = now;
+      slotHistory.push(now);
+      return;
+    }
+
+    if (waitMs > 1000) {
+      console.log(`[Email] 发信节流，排队等待 ${(waitMs / 1000).toFixed(1)}s`);
+    }
+    await sleep(waitMs);
+  }
+}
+
+/**
+ * 把发信任务挂到全局串行链上
+ *
+ * 前一个任务抛错也不能阻断后续排队，所以成功/失败两条分支都继续执行。
+ */
+function enqueueEmailSend(task: () => Promise<EmailResult>): Promise<EmailResult> {
+  const run = async () => {
+    await acquireSendSlot();
+    return task();
+  };
+  const result = sendChain.then(run, run);
+  sendChain = result.then(
+    () => undefined,
+    () => undefined
+  );
+  return result;
+}
+
+/**
  * 邮件服务类
  */
 export class EmailService {
@@ -112,10 +251,23 @@ export class EmailService {
 
   /**
    * 发送邮件
+   *
+   * 统一经过全局发信队列：并发调用会按顺序排队，并遵守最小间隔与每分钟上限，
+   * 避免短时间大量发信触发邮箱侧的风控（535 login frequency limited）。
+   *
    * @param content 邮件内容
    * @returns Promise<EmailResult> 发送结果
    */
   async sendEmail(content: EmailContent): Promise<EmailResult> {
+    return enqueueEmailSend(() => this.deliver(content));
+  }
+
+  /**
+   * 真正执行 SMTP 发送（不带节流，仅供内部与队列调用）
+   * @param content 邮件内容
+   * @returns Promise<EmailResult> 发送结果
+   */
+  private async deliver(content: EmailContent): Promise<EmailResult> {
     try {
       const mailOptions = {
         from: this.fromAddress,
