@@ -29,11 +29,19 @@ npm run web:build           # 产物 web/.output
 | 命令 | 说明 |
 |---|---|
 | `npm run web:build` | Nuxt 构建，产物 `web/.output` |
-| `cd web && npx nuxi typecheck` | Vue 组件类型检查（`web:build` 不一定覆盖） |
+| `cd web && npx nuxi typecheck` | Vue 组件类型检查（`nuxt build` 本身不做类型检查） |
 | `npm run test:run` | vitest，核心层与 kinds 的单测 |
 | `npm run dev` | 只跑核心库的 ts-node 入口，日常不用 |
 
-环境变量（`.env`，不进 git）：`SMTP_HOST/PORT/USER/PASS/SECURE/FROM_NAME`、`GATE_AUTH_INTERVAL_MS`（默认 5000）、`GATE_ANON_INTERVAL_MS`（默认 1000）、`SESSION_DAYS`（默认 30）。
+环境变量（`.env`，不进 git）：`SMTP_HOST/PORT/USER/PASS/SECURE/FROM_NAME`、`GATE_AUTH_INTERVAL_MS`（默认 5000）、`GATE_ANON_INTERVAL_MS`（默认 1000）、`SESSION_DAYS`（默认 30）、`DATA_DIR`（默认 `<cwd>/data`）。
+
+**本地登录**：数据库和表会自动创建，但 `config/users.json` 不会自动生成，没有它谁都登不进去（日志提示「用户配置文件不存在」）。从服务器拷一份，或手写：
+
+```json
+{ "users": [{ "username": "you", "email": "you@example.com", "password": "<bcrypt hash>" }] }
+```
+
+密码是 bcryptjs 哈希，不是明文。
 
 ## 三、部署
 
@@ -58,6 +66,8 @@ bash deploy.sh logs       # 远程日志
 
 Node 必须 ≥ 22.5（`node:sqlite`）。服务启动时会幂等补齐新列（`PRAGMA table_info` + `ALTER TABLE`）。
 
+Web 登录用 `session_id` cookie，滑动过期默认 30 天（`SESSION_DAYS`），会话落 SQLite，**发版重启不会掉登录**。
+
 ## 四、目录地图
 
 ```
@@ -71,7 +81,7 @@ src/                     平台无关内核（可单测，不依赖 Nuxt）
   auto-order.ts          加购 / 结算 / 建单
   email.ts               所有邮件模板
 web/
-  pages/                 15 个页面（见下表）
+  pages/                 页面（见下表）
   components/task/       TaskCard / TaskListHeader / TaskEventList
   components/ui/         Button / Input / Select / Dialog / Toast…
   composables/           useTaskList / useAutoOrderForm / useStock…
@@ -108,7 +118,7 @@ web/utils/               前端纯工具（时长选项、格式化、任务筛�
 
 只有 3 类后台检测请求排队：到货、价格、Tab（每任务 FIFO，按 taskId 轮转）。登录态桶 5 秒/次，匿名桶 1 秒/次。
 
-**手动接口、下单、订单续期都不排队**。下单是抢库存写操作，排队即失去意义；续期自带 300ms/5s 节流。
+**手动接口、下单、订单续期都不排队**。下单是抢库存写操作，排队即失去意义；续期自己节流：每 60 秒扫一轮、请求间隔 300ms、写操作间隔 5 秒。
 
 新增后台任务目前要手动 `runWithGateContext({ taskId, kind })`，忘了就完全不限流且不报错——这是已知待改造点，详见 [PROTOCOL-YISHOU.md](./docs/PROTOCOL-YISHOU.md) §三。
 
@@ -118,7 +128,7 @@ web/utils/               前端纯工具（时长选项、格式化、任务筛�
 券后价 = P − max{ reduce × min(1, P / threshold) }
 ```
 
-`P` 是 `shopPrice`（折后价），券在折后价上算，不满足门槛的券按比例折算；多张券取最小值。页面只展示折后价，不展示券后价。`minPrice/maxPrice` 是传给一手的筛选参数，不是本地过滤。
+`P` 是 `shopPrice`（折后价），券在折后价上算，不满足门槛的券按比例折算；多张券取最低券后价。页面只展示折后价，不展示券后价。`minPrice/maxPrice` 是传给一手的筛选参数，不是本地过滤。
 
 ### 5. 续期是「12 小时 + 结束前 10 分钟邮件」
 
@@ -134,7 +144,7 @@ web/utils/               前端纯工具（时长选项、格式化、任务筛�
 | `/monitor` | 到货监控任务 |
 | `/price-monitor` | 价格监控任务 |
 | `/tab-monitor` | Tab 监控任务 |
-| `/order-renew` | 订单续期任务 |
+| `/order-renew` | 订单续期任务（每分钟扫描，有效期不足 5 分钟自动刷新） |
 | `/orders` | 订单列表，支持 `?accountId=` 临时查看 |
 | `/collection` | 收藏夹，同上 |
 | `/shops`、`/shops/blacklist` | 店铺评分与黑名单 |
@@ -151,9 +161,9 @@ web/utils/               前端纯工具（时长选项、格式化、任务筛�
 - **匿名价格口径**：一手对游客返回 `shop_price = "??.??"`，映射层回退 `alone_price` 并标「游客参考价」；关键词搜索无回退，列表显示「价格暂不可用」。
 - **历史任务没有货号**时不可点，不做实时回填。
 - **Tab 监控邮件**最多 50 个商品，两列布局，商品链接是一手 App 深链 `yishou://fmkj/openyishou?...`，不是 H5。
-- **邮件/监控默认自动下单 5 件**（价格监控、到货监控一致）；手动一键下单是「每个有货 SKU 各 1 件，上限 5」。
+- **价格监控、到货监控的自动下单默认 5 件**；手动一键下单是「每个有货 SKU 各 1 件，上限 5」。
 - **层级顺序**：Toast `z-[100]` > `UiSelect` 面板 `z-[60]` > Dialog `z-50`。改层级时注意别把 Toast 盖住（曾因此看不到错误提示）。
-- **Web 登录用户仍在 `config/users.json`**（2 个账号：`wxt`、`yanxia`），没进数据库；`accounts.user_id` 存的是用户名字符串，不是外键。
+- **Web 登录用户仍在 `config/users.json`**（目前 2 个账号：`wxt`、`yanxia`），没进数据库；`accounts.user_id` 存的是用户名字符串，不是外键。
 - **代理是全局设置**，影响服务器出网，不按用户隔离。
 - **不要改 `src/utils/request-gate.ts` 的默认值**来给单个接口提速，会同时影响所有后台任务。
 
