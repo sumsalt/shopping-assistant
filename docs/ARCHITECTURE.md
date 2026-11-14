@@ -1,5 +1,7 @@
 # 架构说明
 
+> 第一次接手先看 [HANDOFF.md](../HANDOFF.md)：运行、部署、页面清单与已知坑都在那里。
+
 本文记录系统的分层、依赖规则，以及「为什么这样拆」。改动代码前先读这里；
 新增一类任务 / 改一个字段的实操步骤见 [ITERATION-GUIDE.md](./ITERATION-GUIDE.md)；
 一手接口的签名、下单与续期链路见 [PROTOCOL-YISHOU.md](./PROTOCOL-YISHOU.md)。
