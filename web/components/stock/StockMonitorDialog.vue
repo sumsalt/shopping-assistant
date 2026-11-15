@@ -315,6 +315,8 @@ const {
   defaultNum: 5,
   // 到货即下单：默认打开自动下单（无登录态时回落为关闭）
   defaultEnabled: true,
+  // 弹窗关闭时不要在后台预取地址 / 规格
+  isActive: () => props.open,
 })
 
 /** 收货地址下拉选项 */

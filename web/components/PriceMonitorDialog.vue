@@ -425,6 +425,8 @@ const {
   defaultEnabled: true,
   defaultMode: 'discount',
   defaultTargetDiscount: '2.1',
+  // 弹窗关闭时不要在后台预取地址 / 规格
+  isActive: () => props.open,
 })
 
 /** 收货地址下拉选项 */

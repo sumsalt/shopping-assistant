@@ -45,6 +45,8 @@ export interface AutoOrderFormOptions {
   defaultMode?: 'price' | 'discount'
   /** 打开弹窗时预填的目标折扣（如 '2.1' 表示 2.1 折） */
   defaultTargetDiscount?: string
+  /** 弹窗当前是否打开：关闭时不做任何预取，避免在后台白跑请求 */
+  isActive?: () => boolean
 }
 
 export const useAutoOrderForm = (options: AutoOrderFormOptions) => {
@@ -115,15 +117,16 @@ export const useAutoOrderForm = (options: AutoOrderFormOptions) => {
       return
     }
 
-    const no = productNo || (await ensureProductNo())
-    if (!no) {
-      return
-    }
-
+    // 先占位再等货号：查货号本身是一次请求，重复进入会发两遍
     isLoadingSkus.value = true
     skuError.value = ''
 
     try {
+      const no = productNo || (await ensureProductNo())
+      if (!no) {
+        return
+      }
+
       const response = await $fetch<{
         success: boolean
         data?: {
@@ -257,6 +260,24 @@ export const useAutoOrderForm = (options: AutoOrderFormOptions) => {
     ...(selectedSkus.value.length > 0 ? { skus: selectedSkus.value } : {}),
   })
 
+  /**
+   * 按需预取自动下单要用的数据
+   *
+   * 开关打开、有登录态时拉地址与规格；两者都只拉一次（已有数据就跳过）。
+   * 打开弹窗时显式调用一次，用户手动打开开关时也走这里。
+   */
+  const ensureData = () => {
+    if (!toBoolean(enabled.value) || !hasCredential.value) {
+      return
+    }
+    if (skus.value.length === 0) {
+      void loadSkus()
+    }
+    if (addresses.value.length === 0) {
+      void loadAddresses()
+    }
+  }
+
   /** 复位到默认值：自动下单默认状态、默认触发方式与预填折扣、件数、微信支付 */
   const reset = () => {
     userToggledEnabled = false
@@ -278,14 +299,18 @@ export const useAutoOrderForm = (options: AutoOrderFormOptions) => {
     selectedSkus.value = []
     skuError.value = ''
     precheck.value = null
-  }
 
-  /** 打开弹窗时调用：复位并按需预取规格 */
-  const open = () => {
-    reset()
-    if (options.skusOnOpen) {
+    // 开关本来就是打开状态（默认值或上次遗留）时 watch 不会触发，必须显式拉一次
+    // 到货监控的规格本身就是提醒条件，开关关着也要读
+    if (options.skusOnOpen && hasCredential.value) {
       void loadSkus()
     }
+    ensureData()
+  }
+
+  /** 打开弹窗时调用：复位并按需预取（reset 内已含规格 / 地址的拉取） */
+  const open = () => {
+    reset()
   }
 
   /** 换商品时清掉与旧商品相关的数据 */
@@ -300,18 +325,12 @@ export const useAutoOrderForm = (options: AutoOrderFormOptions) => {
   }
 
   // 打开自动下单才去请求一手：地址必拉，规格按 skusOnOpen 决定
-  watch(enabled, async value => {
+  watch(enabled, value => {
     precheck.value = null
-    if (!toBoolean(value) || !hasCredential.value) {
+    if (!toBoolean(value)) {
       return
     }
-
-    if (skus.value.length === 0) {
-      void loadSkus()
-    }
-    if (addresses.value.length === 0) {
-      void loadAddresses()
-    }
+    ensureData()
   })
 
   // 刷新后立刻打开开关时账号配置可能还在路上：到齐后补拉一次
@@ -323,22 +342,19 @@ export const useAutoOrderForm = (options: AutoOrderFormOptions) => {
       return
     }
 
-    // 默认就该自动下单，但打开弹窗时登录态还没到位：补开（用户手动关过则不动）
-    if (defaultEnabled && !enabled.value && !userToggledEnabled) {
+    // 默认就该自动下单，但打开弹窗时登录态还没到位：补开（用户手动关过、弹窗没开都不动）
+    if (
+      defaultEnabled &&
+      !enabled.value &&
+      !userToggledEnabled &&
+      (options.isActive?.() ?? true)
+    ) {
       applyingDefault = true
       enabled.value = true
       applyingDefault = false
     }
 
-    if (!toBoolean(enabled.value)) {
-      return
-    }
-    if (skus.value.length === 0) {
-      void loadSkus()
-    }
-    if (addresses.value.length === 0) {
-      void loadAddresses()
-    }
+    ensureData()
   })
 
   return {
