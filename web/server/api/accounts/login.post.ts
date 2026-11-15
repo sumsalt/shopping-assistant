@@ -29,19 +29,28 @@ export default defineEventHandler(async (event) => {
 
     const body = await readBody(event)
     const phone = typeof body?.phone === 'string' ? body.phone.trim() : ''
-    const password = typeof body?.password === 'string' ? body.password : ''
+    let password = typeof body?.password === 'string' ? body.password : ''
 
     if (!phone) {
       return createErrorResponse('INVALID_PARAMS', '请输入手机号')
-    }
-    if (!password) {
-      return createErrorResponse('INVALID_PARAMS', '请输入密码')
     }
     if (phone.length > 40 || password.length > 128) {
       return createErrorResponse('INVALID_PARAMS', '手机号或密码长度不正确')
     }
 
     const existing = getAccountByPhone(currentUser.username, phone)
+
+    // 列表里的「登录」按钮不带密码：复用账号已保存的密码重登
+    if (!password) {
+      password = existing?.password ?? ''
+      if (!password) {
+        return createErrorResponse(
+          'INVALID_PARAMS',
+          '该账号还没有保存密码，请手动输入密码登录'
+        )
+      }
+    }
+
     // 同一账号固定一台设备：老账号沿用上次快照里的 udid / 机型，避免设备画像漂移
     const device = extractYishouDevice(existing?.requestProfile?.params ?? null) ?? undefined
 

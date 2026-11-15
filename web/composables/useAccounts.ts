@@ -197,10 +197,12 @@ export const useAccounts = () => {
    *
    * 用手机号 + 密码直接向一手换 uid / token，设备信息由服务端随机生成。
    * 同一手机号已有账号时会更新该账号，不新增记录。
+   *
+   * 不传密码时由服务端复用账号已保存的密码（列表里的「登录」按钮走这条）。
    */
   const loginWithPassword = async (payload: {
     phone: string
-    password: string
+    password?: string
     title?: string
     remark?: string
   }): Promise<AccountSubmitResult & { created?: boolean }> => {

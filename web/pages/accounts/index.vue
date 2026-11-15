@@ -9,9 +9,6 @@
         <UiButton variant="outline" size="sm" :disabled="isLoading" @click="handleRefresh">
           刷新
         </UiButton>
-        <UiButton variant="outline" size="sm" @click="openLogin">
-          密码登录
-        </UiButton>
         <UiButton size="sm"  @click="openCreate">
           <svg class="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
@@ -298,6 +295,18 @@
               @click="viewOrders(item)"
             >
               查看订单
+            </UiButton>
+            <UiButton
+              variant="ghost"
+              size="sm"
+              :loading="loggingInId === item.id"
+              :disabled="!item.phone"
+              :title="item.phone
+                ? (item.hasPassword ? '用已保存的密码重新登录，换取新 token' : '该账号还没有密码，点击后输入密码登录')
+                : '该账号没有手机号，无法用密码登录'"
+              @click="handleRowLogin(item)"
+            >
+              {{ loggingInId === item.id ? '登录中…' : '登录' }}
             </UiButton>
             <UiButton
               variant="ghost"
@@ -838,11 +847,37 @@ const viewOrders = (item: AccountItem) => {
 const showLoginDialog = ref(false)
 const loginError = ref('')
 const loginForm = ref({ phone: '', password: '', title: '', remark: '' })
+/** 正在用已存密码重登的账号 ID（行内按钮 loading） */
+const loggingInId = ref<string | null>(null)
 
-const openLogin = () => {
+const openLogin = (phone = '') => {
   loginError.value = ''
-  loginForm.value = { phone: '', password: '', title: '', remark: '' }
+  loginForm.value = { phone, password: '', title: '', remark: '' }
   showLoginDialog.value = true
+}
+
+/**
+ * 列表行内的「登录」
+ *
+ * 账号已保存密码时直接重登（换新 token，设备不变）；没密码时弹窗让用户补一次，
+ * 补完会随登录结果一起存进账号，下次就能一键重登。
+ */
+const handleRowLogin = async (item: AccountItem) => {
+  if (!item.phone) {
+    toast.warning('该账号没有手机号，无法用密码登录')
+    return
+  }
+  if (!item.hasPassword) {
+    openLogin(item.phone)
+    return
+  }
+
+  loggingInId.value = item.id
+  try {
+    await loginWithPassword({ phone: item.phone })
+  } finally {
+    loggingInId.value = null
+  }
 }
 
 const handleLogin = async () => {

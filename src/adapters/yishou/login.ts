@@ -167,6 +167,34 @@ export const buildYishouDeviceParams = (
 });
 
 /**
+ * 登录接口专属参数
+ *
+ * 真机只在 /users/login、/users/check_intl_mobile 这类账号接口里带这些字段，
+ * 商品详情、库存、订单等业务请求一个都不带（线上 13 个抓包快照可对照）。
+ * 若把它们写进账号快照，后续每个请求都会多带手机号等参数，
+ * 既与真机链路不一致，也没必要把手机号散播到每个请求体里。
+ */
+const LOGIN_ONLY_PARAM_KEYS = new Set(['channel', 'ua', 'mobile', 'event_id', 'android_id']);
+
+/**
+ * 登录参数 → 业务请求公共参数
+ *
+ * 过滤掉登录专属字段，剩下的就是真机业务请求也会带的那一套
+ * （设备、版本、渠道包标识等），可直接作为账号快照长期复用。
+ */
+export const toBusinessRequestParams = (
+  params: Record<string, string>
+): Record<string, string> => {
+  const result: Record<string, string> = {};
+  for (const [key, value] of Object.entries(params)) {
+    if (!LOGIN_ONLY_PARAM_KEYS.has(key.toLowerCase())) {
+      result[key] = value;
+    }
+  }
+  return result;
+};
+
+/**
  * 登录请求头
  *
  * equipmd5 真机是设备指纹，服务端当前不校验，用 md5(udid) 占位即可。
@@ -263,8 +291,10 @@ export const loginYishouByPassword = async (options: {
       device,
       profile: {
         channel: 'app',
-        // uid/token 写进快照，后续所有请求直接复用
-        params: { ...params, uid, token },
+        // uid/token 写进快照，后续所有请求直接复用；
+        // 登录专属字段（mobile / channel / ua / event_id / android_id）不进快照，
+        // 保证后续业务请求的参数与真机抓包一致
+        params: { ...toBusinessRequestParams(params), uid, token },
         headers,
       },
     };

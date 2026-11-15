@@ -77,6 +77,34 @@ describe('一手密码登录', () => {
     }
   })
 
+  it('快照只保留业务公共参数，登录专属字段不落库', async () => {
+    mockedPost.mockResolvedValue({
+      code: '200',
+      msg: 'success',
+      data: { user_id: '19456111', token: 'c'.repeat(32) },
+    })
+
+    const result = await loginYishouByPassword({ phone: '15928169484', password: 'wj635761' })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+
+    // 与真机业务请求对齐：手机号、渠道、WebView UA、事件 ID、android_id 都不该带
+    for (const key of ['mobile', 'channel', 'ua', 'event_id', 'android_id']) {
+      expect(result.profile.params).not.toHaveProperty(key)
+    }
+    // 签名四要素与设备指纹必须保留，否则后续请求签名对不上
+    expect(result.profile.params).toMatchObject({
+      model: expect.any(String),
+      udid: expect.any(String),
+      version: expect.any(String),
+      version_name: expect.any(String),
+      device_id: result.profile.params.udid,
+      plat_type: 'Android',
+    })
+    expect(result.profile.params.uid).toBe('19456111')
+    expect(result.profile.params.token).toBe('c'.repeat(32))
+  })
+
   it('已存 32 位 MD5 时不二次哈希', async () => {
     mockedPost.mockResolvedValue({
       code: '200',
