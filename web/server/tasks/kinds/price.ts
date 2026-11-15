@@ -101,6 +101,8 @@ const rebuildSnapshot = (state: PriceTaskState): PriceSnapshot | undefined => {
     productImage: snapshot.productImage ?? state.product.productImage ?? '',
     productUrl: '',
     shopPrice: snapshot.shopPrice,
+    ...(snapshot.inStock !== undefined ? { inStock: snapshot.inStock } : {}),
+    ...(snapshot.stockMessage ? { stockMessage: snapshot.stockMessage } : {}),
     authState: 'logged_in',
     coupons: snapshot.coupons ?? [],
     couponsNew: snapshot.couponsNew ?? [],
@@ -123,6 +125,25 @@ const orderPolicyText = (policy: AutoOrderPolicy): string =>
 
 const notifyText = (value: 'any' | 'drop' | 'rise'): string =>
   value === 'drop' ? '仅降价通知' : value === 'rise' ? '仅涨价通知' : '涨跌都通知'
+
+/**
+ * 库存状态胶囊
+ *
+ * 数据来自与价格同一次详情响应（is_stockout / is_on_sale / goods_status）。
+ * 老任务或适配器没返回时保持「未知」——不展示，避免误报成「无货」。
+ */
+const stockStat = (state: PriceTaskState) => {
+  const inStock = state.snapshot?.inStock
+  if (inStock === undefined) return []
+  return [
+    {
+      key: 'stock',
+      label: inStock ? '当前库存' : state.snapshot?.stockMessage || '当前库存',
+      value: inStock ? '有货' : '无货',
+      tone: (inStock ? 'success' : 'danger') as Tone,
+    },
+  ]
+}
 
 const toAutoOrderView = (policy: AutoOrderPolicy | undefined) =>
   policy
@@ -282,6 +303,8 @@ export const priceDefinition: TaskKindDefinition<PriceTaskState> = {
           productImage: product.productImage || initialSnapshot.productImage,
           shopPrice: initialSnapshot.shopPrice,
           checkedAt: initialSnapshot.capturedAt,
+          ...(initialSnapshot.inStock !== undefined ? { inStock: initialSnapshot.inStock } : {}),
+          ...(initialSnapshot.stockMessage ? { stockMessage: initialSnapshot.stockMessage } : {}),
           coupons: initialSnapshot.coupons,
           couponsNew: initialSnapshot.couponsNew,
         },
@@ -349,6 +372,8 @@ export const priceDefinition: TaskKindDefinition<PriceTaskState> = {
             ...(state.product.productImage ? { productImage: state.product.productImage } : {}),
             shopPrice: result.currentPrice,
             checkedAt: Date.now(),
+            ...(result.inStock !== undefined ? { inStock: result.inStock } : {}),
+            ...(result.stockMessage ? { stockMessage: result.stockMessage } : {}),
             ...(result.coupons ? { coupons: result.coupons } : {}),
             ...(result.couponsNew ? { couponsNew: result.couponsNew } : {}),
           }
@@ -466,6 +491,7 @@ export const priceDefinition: TaskKindDefinition<PriceTaskState> = {
               },
             ]
           : []),
+        ...stockStat(state),
       ],
       config: {
         interval: state.config.interval,

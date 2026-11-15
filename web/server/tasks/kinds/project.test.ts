@@ -62,6 +62,52 @@ describe('任务视图投影', () => {
     expect(summary.events).toHaveLength(1)
     expect(summary.notice?.type).toBe('no_stock')
     expect(JSON.stringify(summary)).not.toContain('"token"')
+    // 老快照没有库存字段：保持未知，不臆断成「无货」
+    expect(summary.stats.find(s => s.key === 'stock')).toBeUndefined()
+  })
+
+  it('price：快照有货 → 列表多一个「有货」胶囊', () => {
+    const state: PriceTaskState = {
+      product: { productId: '339789599', productName: '测试商品' },
+      config: { interval: 60, notifyOn: 'any', minPriceDelta: 0.01 },
+      checkCount: 3,
+      detectedCount: 0,
+      snapshot: {
+        productId: '339789599',
+        productName: '测试商品',
+        shopPrice: 199,
+        checkedAt: 1,
+        inStock: true,
+        stockMessage: '商品有货，可以购买',
+      },
+      events: [],
+    }
+    const stock = priceDefinition
+      .project(base({ state }))
+      .stats.find(s => s.key === 'stock')
+    expect(stock).toMatchObject({ value: '有货', label: '当前库存', tone: 'success' })
+  })
+
+  it('price：快照无货 → 展示「无货」并带上原因', () => {
+    const state: PriceTaskState = {
+      product: { productId: '339789599', productName: '测试商品' },
+      config: { interval: 60, notifyOn: 'any', minPriceDelta: 0.01 },
+      checkCount: 3,
+      detectedCount: 0,
+      snapshot: {
+        productId: '339789599',
+        productName: '测试商品',
+        shopPrice: 199,
+        checkedAt: 1,
+        inStock: false,
+        stockMessage: '已下架',
+      },
+      events: [],
+    }
+    const stock = priceDefinition
+      .project(base({ state }))
+      .stats.find(s => s.key === 'stock')
+    expect(stock).toMatchObject({ value: '无货', label: '已下架', tone: 'danger' })
   })
 
   it('stock：订单与规格等待提示', () => {

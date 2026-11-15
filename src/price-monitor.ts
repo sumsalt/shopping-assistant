@@ -224,6 +224,10 @@ export interface PriceMonitorResult {
   currentPrice?: number;
   /** 当前券后最优价（把满减券算进去；无券时等于 currentPrice） */
   couponAdjustedPrice?: number;
+  /** 商品级是否有货（与价格同一次详情响应；适配器未返回时为 undefined） */
+  inStock?: boolean;
+  /** 无货原因文案（缺货 / 已下架 / 已停售） */
+  stockMessage?: string;
   /** 本次是否因价格到点触发了自动下单 */
   orderTriggered?: boolean;
   /** 自动下单成功的订单号 */
@@ -516,6 +520,8 @@ export const createCancellablePriceMonitor = (
           initialSnapshot?.shopPrice ?? 0,
           initialSnapshot?.couponsNew
         ),
+        ...(initialSnapshot?.inStock !== undefined ? { inStock: initialSnapshot.inStock } : {}),
+        ...(initialSnapshot?.stockMessage ? { stockMessage: initialSnapshot.stockMessage } : {}),
         checkCount: initialCheckCount,
         errorCount: 0,
       };
@@ -546,6 +552,9 @@ export const createCancellablePriceMonitor = (
           );
           result.coupons = current.coupons;
           result.couponsNew = current.couponsNew;
+          // 库存状态与价格同源，每轮覆盖（适配器没给就清空，避免旧结论一直挂在卡片上）
+          result.inStock = current.inStock;
+          result.stockMessage = current.stockMessage;
           // 每轮重置，避免上一轮的下单失败原因一直挂在卡片上
           result.orderError = undefined;
           result.orderSkipped = undefined;

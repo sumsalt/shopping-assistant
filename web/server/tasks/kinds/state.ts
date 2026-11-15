@@ -67,6 +67,10 @@ export interface PriceTaskState {
     productImage?: string
     shopPrice: number
     checkedAt: number
+    /** 最近一轮的商品级库存状态（与价格同源），列表据此展示「有货/无货」 */
+    inStock?: boolean
+    /** 无货原因（缺货 / 已下架 / 已停售） */
+    stockMessage?: string
     /** 重启后复用，避免把已有优惠券当成「新增」再提醒一次 */
     coupons?: Array<{ couponId: string; typeTitle: string; title: string }>
     couponsNew?: Array<{ couponId: string; threshold: number; reduce: number }>

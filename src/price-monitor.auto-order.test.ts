@@ -268,6 +268,9 @@ describe('价格到点自动下单', () => {
     expect(result.orderError).toContain('无货')
     expect(result.orderError).toContain('商品暂时缺货')
     expect(result.orderSn).toBeUndefined()
+    // 库存状态要跟着结果一起带出来，供任务列表展示
+    expect(result.inStock).toBe(false)
+    expect(result.stockMessage).toBe('商品暂时缺货')
   })
 
   it('商品有货时照常下单，不被库存预判挡掉', async () => {
@@ -296,5 +299,7 @@ describe('价格到点自动下单', () => {
     expect(placeAutoOrder).toHaveBeenCalledTimes(1)
     expect(result.orderSkipped).toBeUndefined()
     expect(result.orderSn).toBe('12641415441627')
+    expect(result.inStock).toBe(true)
+    expect(result.stockMessage).toBe('商品有货，可以购买')
   })
 })
