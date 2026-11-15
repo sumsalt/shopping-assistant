@@ -71,6 +71,9 @@
         {{ message }}
       </div>
     </div>
+
+    <!-- 操作区：由列表页按需提供，不传就完全不渲染（库存查询页不受影响） -->
+    <slot name="actions" />
   </div>
 </template>
 

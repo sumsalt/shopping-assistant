@@ -125,7 +125,16 @@
             :message="item.message"
             :sales="item.salesOf7"
             @click="handleProductClick(item.productNo)"
-          />
+          >
+            <template #actions>
+              <StockProductQuickActions
+                :show-app="isMobileViewport"
+                @stock="openStockMonitor(item)"
+                @price="openPriceMonitor(item)"
+                @open-app="openInYishou(item)"
+              />
+            </template>
+          </StockProductCard>
         </div>
       </div>
 
@@ -148,7 +157,16 @@
             :in-stock="item.inStock"
             :sales="item.salesOf7"
             @click="handleProductClick(item.productNo)"
-          />
+          >
+            <template #actions>
+              <StockProductQuickActions
+                :show-app="isMobileViewport"
+                @stock="openStockMonitor(item)"
+                @price="openPriceMonitor(item)"
+                @open-app="openInYishou(item)"
+              />
+            </template>
+          </StockProductCard>
         </div>
       </div>
 
@@ -207,10 +225,22 @@
         </UiButton>
       </div>
     </div>
+
+    <!-- 到货监控 / 价格监控弹窗（与详情页同一组件，点击卡片上的按钮时打开） -->
+    <PriceMonitorDialog
+      v-model:open="showPriceDialog"
+      :product="priceMonitorProduct"
+    />
+    <StockMonitorDialog
+      v-model:open="showStockMonitorDialog"
+      :product="stockMonitorProduct"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
+import type { PriceMonitorProduct } from '~/composables/usePriceMonitor'
+
 import { accountDisplayName } from '@/utils/accountName'
 
 // 页面元信息
@@ -264,6 +294,47 @@ const handleLoadMore = () => {
 // 点击商品卡片
 const handleProductClick = (productNo: string) => {
   goToProductDetail(productNo)
+}
+
+/** 唤起一手 App：「打开一手 App」按钮只在手机端出现，桌面端没有 App 可开 */
+const { isMobileViewport, openYishouProduct } = useYishouApp()
+
+/** 卡片按钮用到的商品字段（收藏夹条目结构更大，这里只取需要的） */
+interface CardProduct {
+  productId: string
+  productName?: string
+  productImage?: string
+  productNo?: string
+}
+
+const showStockMonitorDialog = ref(false)
+const showPriceDialog = ref(false)
+const stockMonitorProduct = ref<PriceMonitorProduct | null>(null)
+const priceMonitorProduct = ref<PriceMonitorProduct | null>(null)
+
+/** 收藏夹条目 → 弹窗需要的商品信息 */
+const toMonitorProduct = (item: CardProduct): PriceMonitorProduct => ({
+  productId: item.productId,
+  productName: item.productName,
+  productImage: item.productImage,
+  productNo: item.productNo,
+})
+
+/** 到货监控：无货商品正是它的主要场景 */
+const openStockMonitor = (item: CardProduct) => {
+  stockMonitorProduct.value = toMonitorProduct(item)
+  showStockMonitorDialog.value = true
+}
+
+/** 价格监控：需要一手登录态，缺少时弹窗内会给出提示 */
+const openPriceMonitor = (item: CardProduct) => {
+  priceMonitorProduct.value = toMonitorProduct(item)
+  showPriceDialog.value = true
+}
+
+/** 打开一手 App 到该商品详情页 */
+const openInYishou = (item: CardProduct) => {
+  openYishouProduct(item.productId, item.productNo)
 }
 
 // 页面加载时自动获取数据
