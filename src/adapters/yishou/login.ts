@@ -16,30 +16,13 @@ import type { AdapterConfig } from '../../contract/platform';
 import { md5 } from '../../utils/crypto';
 import * as EP from './endpoints';
 import { YishouClient } from './client';
+import { pickDevicePreset, pickOsVersion } from './device-pool';
 
 /** App 版本口径：与线上账号快照保持一致，避免版本跨度太大引起风控 */
 const APP_VERSION = '7.77.00';
 const APP_VERSION_CODE = '77700';
 const APP_VERSION_NUM = '35';
 const APP_UA = 'okhttp/3.14.9';
-
-/** 机型池：型号 / 厂商 / 分辨率 / Android 版本必须成套出现，不能随机拼 */
-const DEVICE_POOL: ReadonlyArray<{
-  model: string;
-  manufacturer: string;
-  screenWidth: string;
-  screenHeight: string;
-  osVersion: string;
-}> = [
-  { model: 'SO-51B', manufacturer: 'Sony', screenWidth: '1080', screenHeight: '2204', osVersion: '15' },
-  { model: 'V1938T', manufacturer: 'vivo', screenWidth: '1080', screenHeight: '2204', osVersion: '15' },
-  { model: 'SM-G9910', manufacturer: 'SAMSUNG', screenWidth: '1080', screenHeight: '2400', osVersion: '13' },
-  { model: '22021211RC', manufacturer: 'Xiaomi', screenWidth: '1080', screenHeight: '2400', osVersion: '14' },
-  { model: 'PDKM00', manufacturer: 'OPPO', screenWidth: '1080', screenHeight: '2412', osVersion: '14' },
-  { model: 'NOH-AN00', manufacturer: 'HUAWEI', screenWidth: '1200', screenHeight: '2640', osVersion: '12' },
-  { model: 'M816Q', manufacturer: 'MEIZU', screenWidth: '1080', screenHeight: '2208', osVersion: '12' },
-  { model: 'LE2100', manufacturer: 'OnePlus', screenWidth: '1080', screenHeight: '2400', osVersion: '13' },
-];
 
 const CARRIERS = ['中国电信', '中国联通', '中国移动'] as const;
 
@@ -109,20 +92,24 @@ const pick = <T>(list: ReadonlyArray<T>, random: () => number): T =>
 
 /**
  * 随机生成一台 Android 虚拟设备
+ *
+ * 机型从 `device-pool.ts` 的池子里加权抽取（新机权重高），
+ * 系统版本限定在该机型现实中会上报的版本区间内。
+ *
  * @param random 随机源（测试可注入固定序列）
  */
 export const generateYishouDeviceProfile = (
   random: () => number = Math.random
 ): YishouDeviceProfile => {
-  const base = pick(DEVICE_POOL, random);
+  const preset = pickDevicePreset(random);
   return {
     // 真机的 udid 是 16 位小写 hex
     udid: randomHex(16, random),
-    model: base.model,
-    manufacturer: base.manufacturer,
-    osVersion: base.osVersion,
-    screenWidth: base.screenWidth,
-    screenHeight: base.screenHeight,
+    model: preset.model,
+    manufacturer: preset.manufacturer,
+    osVersion: pickOsVersion(preset, random),
+    screenWidth: preset.screenWidth,
+    screenHeight: preset.screenHeight,
     carrier: pick(CARRIERS, random),
     adIdMd5: randomHex(32, random),
   };

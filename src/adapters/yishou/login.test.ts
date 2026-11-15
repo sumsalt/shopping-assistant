@@ -11,6 +11,7 @@ import {
   generateYishouDeviceProfile,
   loginYishouByPassword,
 } from './login'
+import { YISHOU_DEVICE_POOL } from './device-pool'
 
 const mockedPost = vi.mocked(httpPost)
 
@@ -25,16 +26,18 @@ describe('一手密码登录', () => {
     mockedPost.mockReset()
   })
 
-  it('随机设备：udid 16 位 hex、广告 ID 32 位 hex、机型套装一致', () => {
-    const device = generateYishouDeviceProfile(fixedRandom([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7]))
+  it('随机设备：udid 16 位 hex、广告 ID 32 位 hex、字段成套来自设备池', () => {
+    const device = generateYishouDeviceProfile(fixedRandom([0]))
+    const preset = YISHOU_DEVICE_POOL[0]!
 
     expect(device.udid).toMatch(/^[0-9a-f]{16}$/)
     expect(device.adIdMd5).toMatch(/^[0-9a-f]{32}$/)
-    expect(device.model).toBe('SO-51B')
-    expect(device.manufacturer).toBe('Sony')
-    expect(device.screenWidth).toBe('1080')
-    expect(device.screenHeight).toBe('2204')
-    expect(device.osVersion).toBe('15')
+    // 机型 / 厂商 / 分辨率 / 系统版本必须来自同一条池子记录，不能拼
+    expect(device.model).toBe(preset.model)
+    expect(device.manufacturer).toBe(preset.manufacturer)
+    expect(device.screenWidth).toBe(preset.screenWidth)
+    expect(device.screenHeight).toBe(preset.screenHeight)
+    expect(preset.osVersions).toContain(device.osVersion)
     expect(['中国电信', '中国联通', '中国移动']).toContain(device.carrier)
   })
 
