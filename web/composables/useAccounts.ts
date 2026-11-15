@@ -192,6 +192,45 @@ export const useAccounts = () => {
     }
   }
 
+  /**
+   * 密码登录
+   *
+   * 用手机号 + 密码直接向一手换 uid / token，设备信息由服务端随机生成。
+   * 同一手机号已有账号时会更新该账号，不新增记录。
+   */
+  const loginWithPassword = async (payload: {
+    phone: string
+    password: string
+    title?: string
+    remark?: string
+  }): Promise<AccountSubmitResult & { created?: boolean }> => {
+    isSubmitting.value = true
+
+    try {
+      const response = await $fetch<ApiResponse<{ account: AccountItem; created: boolean }>>(
+        '/api/accounts/login',
+        { method: 'POST', body: payload }
+      )
+
+      if (!response.success) {
+        const message = response.error?.message || '登录失败'
+        toast.error(message)
+        return { success: false, error: message }
+      }
+
+      await fetchAccounts()
+      const created = Boolean(response.data?.created)
+      toast.success(created ? '登录成功，账号已添加' : '登录成功，已更新账号')
+      return { success: true, created }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '网络请求失败'
+      toast.error(message)
+      return { success: false, error: message }
+    } finally {
+      isSubmitting.value = false
+    }
+  }
+
   /** 删除账号 */
   const deleteAccount = async (id: string): Promise<AccountSubmitResult> => {
     try {
@@ -287,6 +326,7 @@ export const useAccounts = () => {
     fetchAccounts,
     createAccount,
     updateAccount,
+    loginWithPassword,
     deleteAccount,
     revealField,
     verifyAccount,

@@ -28,6 +28,19 @@ export { placeAutoOrder, precheckAutoOrder, DEFAULT_AUTO_ORDER_PAY_TOOL, MAX_AUT
 export type { AutoOrderAdapter, PlaceOrderParams, PrecheckOrderResult } from './auto-order';
 export type { PlatformAdapter, AdapterConfig, RenewOrderAdapter, AuthCheckResult } from './adapters';
 
+// 导出账号密码登录（Android App 通道）
+export {
+  loginYishouByPassword,
+  generateYishouDeviceProfile,
+  extractYishouDevice,
+  buildYishouDeviceParams,
+} from './adapters/yishou/login';
+export type {
+  YishouDeviceProfile,
+  YishouLoginProfile,
+  YishouLoginResult,
+} from './adapters/yishou/login';
+
 // 订单列表分页上限与状态枚举（一手服务端硬限制）
 export { ORDER_LIST_PAGE_SIZE, ORDER_STATUS_TABS, normalizeOrderStatus } from './adapters/yishou/order-api';
 

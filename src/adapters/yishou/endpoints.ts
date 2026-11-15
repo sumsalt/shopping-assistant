@@ -79,6 +79,14 @@ export const ORDER_CONFIRM_WAIT_PAY = `${BASE}/order/confirm_wait_pay_order`;
  */
 export const ORDER_RELOAD_WAIT_PAY = `${BASE}/order/reload_wait_pay_order`;
 
+/**
+ * 账号密码登录（App 通道）
+ *
+ * 请求体带 mobile + password(md5) + 设备参数 + t_t，签名与其它接口一致。
+ * 返回 data.user_id / data.token，可据此拼出登录态快照。
+ */
+export const USER_LOGIN = `${BASE}/users/login`;
+
 /** 商品 H5 链接前缀 */
 export const GOODS_URL_PREFIX = 'https://www.yishouapp.com/goods/';
 

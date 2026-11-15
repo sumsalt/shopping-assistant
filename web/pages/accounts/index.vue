@@ -6,13 +6,11 @@
       description="保存一手账号及其抓包请求信息，支持小程序 / App 抓包，可设为当前使用账号"
     >
       <template #actions>
-        <UiButton
-          variant="outline"
-          size="sm"
-          :disabled="isLoading"
-          @click="handleRefresh"
-        >
+        <UiButton variant="outline" size="sm" :disabled="isLoading" @click="handleRefresh">
           刷新
+        </UiButton>
+        <UiButton variant="outline" size="sm" @click="openLogin">
+          密码登录
         </UiButton>
         <UiButton size="sm"  @click="openCreate">
           <svg class="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -428,6 +426,58 @@
         </div>
       </template>
     </UiDialog>
+
+    <!-- 密码登录：直接用手机号 + 密码换 token，设备信息由服务端生成 -->
+    <UiDialog v-model:open="showLoginDialog" title="密码登录" size="sm">
+      <div class="space-y-4">
+        <p class="text-xs text-gray-500 leading-relaxed">
+          用一手账号的手机号与密码登录，自动生成一台虚拟设备并换取 token。
+          同手机号已存在时会更新该账号，不新增记录。
+        </p>
+        <UiInput
+          v-model="loginForm.phone"
+          label="手机号"
+          placeholder="一手账号手机号"
+          required
+          autocomplete="off"
+        />
+        <UiInput
+          v-model="loginForm.password"
+          label="密码"
+          type="password"
+          placeholder="一手登录密码"
+          required
+          autocomplete="off"
+        />
+        <UiInput
+          v-model="loginForm.title"
+          label="标题（可选）"
+          placeholder="例如：主号 / 客户 A；留空则显示手机号"
+          autocomplete="off"
+        />
+        <UiInput
+          v-model="loginForm.remark"
+          label="备注（可选）"
+          placeholder="例如：主号 / 备用"
+          autocomplete="off"
+        />
+        <p v-if="loginError" class="text-sm text-red-600">{{ loginError }}</p>
+      </div>
+
+      <template #footer>
+        <div class="flex gap-2 w-full">
+          <UiButton
+            variant="outline"
+            class="flex-1"
+            :disabled="isSubmitting"
+            @click="showLoginDialog = false"
+          >
+            取消
+          </UiButton>
+          <UiButton class="flex-1" :loading="isSubmitting" @click="handleLogin">登录</UiButton>
+        </div>
+      </template>
+    </UiDialog>
   </div>
 </template>
 
@@ -459,6 +509,7 @@ const {
   fetchAccounts,
   createAccount,
   updateAccount,
+  loginWithPassword,
   deleteAccount,
   revealField,
   verifyAccount,
@@ -781,6 +832,43 @@ const viewOrders = (item: AccountItem) => {
     return
   }
   navigateTo(`/orders?accountId=${encodeURIComponent(item.id)}`)
+}
+
+// 密码登录对话框
+const showLoginDialog = ref(false)
+const loginError = ref('')
+const loginForm = ref({ phone: '', password: '', title: '', remark: '' })
+
+const openLogin = () => {
+  loginError.value = ''
+  loginForm.value = { phone: '', password: '', title: '', remark: '' }
+  showLoginDialog.value = true
+}
+
+const handleLogin = async () => {
+  loginError.value = ''
+  const phone = loginForm.value.phone.trim()
+  if (!phone) {
+    loginError.value = '请输入手机号'
+    return
+  }
+  if (!loginForm.value.password) {
+    loginError.value = '请输入密码'
+    return
+  }
+
+  const result = await loginWithPassword({
+    phone,
+    password: loginForm.value.password,
+    ...(loginForm.value.title.trim() ? { title: loginForm.value.title.trim() } : {}),
+    ...(loginForm.value.remark.trim() ? { remark: loginForm.value.remark.trim() } : {}),
+  })
+
+  if (result.success) {
+    showLoginDialog.value = false
+  } else {
+    loginError.value = result.error || '登录失败'
+  }
 }
 
 // 对话框状态
