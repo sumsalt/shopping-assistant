@@ -313,6 +313,8 @@ const {
   skusOnOpen: true,
   // 与价格监控一致：自动下单默认 5 件（上限与「一键下单」对齐）
   defaultNum: 5,
+  // 到货即下单：默认打开自动下单（无登录态时回落为关闭）
+  defaultEnabled: true,
 })
 
 /** 收货地址下拉选项 */
@@ -369,7 +371,7 @@ const handleOpenChange = (value: boolean) => {
   emit('update:open', value)
 }
 
-// 每次打开回到安全的默认：只发提醒、不自动下单，规格回到「全部」
+// 每次打开回到默认：默认打开自动下单（无登录态时关闭），规格回到「全部」
 watch(
   () => props.open,
   open => {

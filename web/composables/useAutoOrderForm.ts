@@ -39,6 +39,12 @@ export interface AutoOrderFormOptions {
   defaultNum?: number
   /** 打开弹窗时是否立刻读规格（到货监控的规格同时也是提醒条件） */
   skusOnOpen?: boolean
+  /** 打开弹窗时自动下单开关的默认状态（需账号有登录态，否则回落为关闭） */
+  defaultEnabled?: boolean
+  /** 打开弹窗时的默认触发方式（仅 withTrigger 有意义），默认按目标价 */
+  defaultMode?: 'price' | 'discount'
+  /** 打开弹窗时预填的目标折扣（如 '2.1' 表示 2.1 折） */
+  defaultTargetDiscount?: string
 }
 
 export const useAutoOrderForm = (options: AutoOrderFormOptions) => {
@@ -52,12 +58,34 @@ export const useAutoOrderForm = (options: AutoOrderFormOptions) => {
   const hasCredential = computed(() => Boolean(configStore.activeAccount?.hasCredential))
 
   // 开关与触发条件
+  const defaultEnabled = Boolean(options.defaultEnabled)
+  const defaultMode: 'price' | 'discount' = options.defaultMode ?? 'price'
+  const defaultTargetDiscount = options.defaultTargetDiscount ?? ''
+
   const enabled = ref(false)
-  const mode = ref<'price' | 'discount'>('price')
+  const mode = ref<'price' | 'discount'>(defaultMode)
   const targetPriceInput = ref('')
   const targetPriceError = ref('')
-  const targetDiscountInput = ref('')
+  const targetDiscountInput = ref(defaultTargetDiscount)
   const targetDiscountError = ref('')
+
+  /**
+   * 用户是否在本轮手动动过开关
+   *
+   * 默认打开自动下单时，账号登录态可能是异步到位的：登录态到达后补开开关，
+   * 但用户已经手动关掉的话就不该再打开。
+   */
+  let userToggledEnabled = false
+  let applyingDefault = false
+  watch(
+    enabled,
+    () => {
+      if (!applyingDefault) {
+        userToggledEnabled = true
+      }
+    },
+    { flush: 'sync' }
+  )
 
   // 下单参数（价格监控默认 5 件；到货监控沿用 1 件）
   const num = ref(defaultNum)
@@ -229,13 +257,17 @@ export const useAutoOrderForm = (options: AutoOrderFormOptions) => {
     ...(selectedSkus.value.length > 0 ? { skus: selectedSkus.value } : {}),
   })
 
-  /** 复位到安全默认：不自动下单、件数回到弹窗默认值、微信支付 */
+  /** 复位到默认值：自动下单默认状态、默认触发方式与预填折扣、件数、微信支付 */
   const reset = () => {
-    enabled.value = false
-    mode.value = 'price'
+    userToggledEnabled = false
+    applyingDefault = true
+    // 没有登录态时自动下单无从谈起，开关回落为关闭（页面会给出提示）
+    enabled.value = defaultEnabled && hasCredential.value
+    applyingDefault = false
+    mode.value = defaultMode
     targetPriceInput.value = ''
     targetPriceError.value = ''
-    targetDiscountInput.value = ''
+    targetDiscountInput.value = defaultTargetDiscount
     targetDiscountError.value = ''
     num.value = defaultNum
     payTool.value = '4'
@@ -289,6 +321,13 @@ export const useAutoOrderForm = (options: AutoOrderFormOptions) => {
       skus.value = []
       skuError.value = ''
       return
+    }
+
+    // 默认就该自动下单，但打开弹窗时登录态还没到位：补开（用户手动关过则不动）
+    if (defaultEnabled && !enabled.value && !userToggledEnabled) {
+      applyingDefault = true
+      enabled.value = true
+      applyingDefault = false
     }
 
     if (!toBoolean(enabled.value)) {

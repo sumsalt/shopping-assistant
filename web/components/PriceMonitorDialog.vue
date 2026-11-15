@@ -354,7 +354,7 @@ const { checkStock } = useStock()
 
 // 检测间隔
 const intervalInput = ref(String(MIN_PRICE_MONITOR_INTERVAL))
-// 监控时长（默认 3 小时）
+// 监控时长（默认 72 小时）
 const duration = ref(DEFAULT_PRICE_MONITOR_DURATION)
 // 通知条件
 const notifyOn = ref<PriceNotifyOn>('any')
@@ -421,6 +421,10 @@ const {
   withTrigger: true,
   // 价格监控自动下单默认 5 件（与「一键下单」上限一致）
   defaultNum: 5,
+  // 默认就打开自动下单，按折扣触发，预填 2.1 折
+  defaultEnabled: true,
+  defaultMode: 'discount',
+  defaultTargetDiscount: '2.1',
 })
 
 /** 收货地址下拉选项 */
