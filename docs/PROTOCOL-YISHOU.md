@@ -140,6 +140,36 @@ prepareCheckout = add_cart_goods_info → add_goods_to_cart → get_carts_by_sup
 - 响应里的 `pay_tool`（实测 `12`）是内部渠道码，真正支付方式取 `current_pay_tool`
   （实测 `1`），与建单结论一致。
 
+**灰度字段 `stock_warning_methods`（2026-11-16 抓包 + 灰度账号实测）**
+
+部分账号命中一手的「断货风险通知」灰度，`confirm_order_v4` 与 `confirm_wait_pay_order`
+的响应会多出 `stock_warning_options`：
+
+```text
+[{"value":"message","name":"一手消息","selected":"1"},
+ {"value":"sms","name":"短信","selected":"1"},
+ {"value":"none","name":"无需通知","selected":"0"}]
+```
+
+命中灰度的账号，**建单与续期都必须显式回传** `stock_warning_methods`（JSON 数组字符串），
+否则服务端返回 `code=400`、`msg=请选择断货风险通知方式，再提交订单`。未命中灰度的账号
+（响应里没有 `stock_warning_options`）不带该字段也能正常建单（实测 `13345517284`）。
+
+| 场景 | 参数 | 结果 |
+|---|---|---|
+| `create_order_v4` | 不带 | ❌ 请选择断货风险通知方式 |
+| `create_order_v4` | `["none"]` | ✅ 建单成功 |
+| `reload_wait_pay_order` | 不带 | ❌ 同上 |
+| `reload_wait_pay_order` | `["message","sms"]` / `["none"]` | ✅ 续期成功 |
+
+抓包原文：`stock_warning_methods=%5B%22message%22%2C%22sms%22%5D`。
+字段名是**复数 `methods`**——此前按 `stock_warning` / `stock_warning_type` / `_way`
+等单数形态试了 30 多个都无效。
+
+取值策略（`resolveStockWarningMethods`）：跟随响应里 `selected=1` 的 `value`；账号从没选过
+（三个都是 `0`）时兜底 `["none"]`，不打扰、不产生短信费——断货本来就由本项目自己的监控通知。
+灰度判定就是「响应里有没有 `stock_warning_options`」，非灰度账号一个参数都不加。
+
 **编排层风控**（`src/order-renew-monitor.ts`，与协议层解耦）：
 
 | 约束 | 值 | 原因 |
