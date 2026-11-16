@@ -17,6 +17,7 @@ import type {
   PriceSnapshot,
   ProductSkuResult,
   StockCheckResult,
+  AddToCollectionResult,
   YishouCartDetailData,
   YishouCollectionGoodsData,
   YishouGoodsData,
@@ -67,12 +68,20 @@ export class YishouAdapter extends BaseAdapter {
   private readonly directClient: YishouClient;
   /** 下单链路 */
   private readonly order: YishouOrderApi;
+  /**
+   * 收藏写入：用户点击触发的一次性写操作，跳过闸门
+   *
+   * 收藏夹列表刚查过时（同一账号桶 5 秒），走普通 client 会卡 5 秒才发出去，
+   * 体验上像「点了没反应」；这类显式点击动作与下单同性质，按单次请求放行。
+   */
+  private readonly writeClient: YishouClient;
 
   constructor(config: AdapterConfig = {}) {
     super(config);
     this.client = new YishouClient(config);
     this.directClient = new YishouClient(config, { useProxy: false });
     this.order = new YishouOrderApi(config);
+    this.writeClient = new YishouClient(config, { useProxy: false, skipGate: true });
   }
 
   /** 按 goods_id 查商品详情（库存 / 价格共用） */
@@ -137,6 +146,35 @@ export class YishouAdapter extends BaseAdapter {
       })
       .then(items => splitByStock((items || []).map(mapCollectionItemToResult)))
       .catch(withErrorContext('查询收藏夹库存失败'));
+  }
+
+  /**
+   * 添加到收藏夹（抓包：POST /users/add_goods_collection）
+   *
+   * 按 iOS 原生形态发 form：`app_code=0&goods_no=xxx`，最少参数即可。
+   * 一手对重复收藏返回业务错误「该商品已收藏」，这里不吞掉，交给调用方提示。
+   */
+  async addCollection(productNo: string): Promise<AddToCollectionResult> {
+    const no = String(productNo || '').trim();
+    if (!no) {
+      throw new StockCheckError(StockCheckErrorType.API_ERROR, '缺少商品货号，无法收藏');
+    }
+    if (!this.writeClient.hasAuth) {
+      throw new StockCheckError(StockCheckErrorType.AUTH_REQUIRED, '收藏需要登录态，请先选择账号');
+    }
+
+    const data = await this.writeClient
+      .post<{ collect_id?: string | number }>(EP.ADD_COLLECTION, {
+        app_code: '0',
+        goods_no: no,
+      })
+      .catch(withErrorContext('添加到收藏夹失败'));
+
+    const collectId = String(data?.collect_id ?? '');
+    if (!collectId) {
+      throw new StockCheckError(StockCheckErrorType.API_ERROR, '收藏失败：未返回收藏 ID');
+    }
+    return { collectId };
   }
 
   /** 获取 H5 Tab 商品列表 */

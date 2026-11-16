@@ -13,6 +13,19 @@ export const GOODS_INFO = `${BASE}/goods/get_goods_info_v2`;
 /** 收藏夹商品列表 */
 export const COLLECTION_LIST = `${BASE}/users/get_goods_collection_list`;
 
+/**
+ * 添加到收藏夹（iOS 原生 / Android H5 同一端点）
+ *
+ * 抓包：iOS form 编码 `app_code=0&goods_no=xxx`；Android H5 用 JSON
+ * `{version_name,goods_no,goods_id,collect_id:"0",token,uid}`。
+ * 服务端两种都认，这里按 iOS 的 form 形态发（最少参数），响应回 collect_id。
+ * 重复添加会返回业务错误「该商品已收藏」。
+ */
+export const ADD_COLLECTION = `${BASE}/users/add_goods_collection`;
+
+/** 从收藏夹移除（按 collect_id + goods_no） */
+export const DEL_COLLECTION = `${BASE}/users/del_goods_collection`;
+
 /** 商品详情（按 goods_no 查 SKU，匿名可用） */
 export const GOODS_DETAIL = `${BASE}/wechat/add_cart_goods_info`;
 

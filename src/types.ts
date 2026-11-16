@@ -267,6 +267,16 @@ export interface CollectionStockCheckResult {
   outOfStockCount: number;
 }
 
+/**
+ * 添加到收藏夹的结果
+ *
+ * 一手只在成功时返回 collect_id（收藏条目 ID），后续移除收藏要用它。
+ */
+export interface AddToCollectionResult {
+  /** 一手收藏条目 ID */
+  collectId: string;
+}
+
 // ==================== SKU 相关类型 ====================
 
 /**

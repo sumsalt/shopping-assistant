@@ -118,15 +118,28 @@
               :key="item.productId"
               class="relative overflow-hidden rounded-xl bg-gray-50 ring-1 ring-gray-100"
             >
-              <button
-                v-if="isMobileViewport && item.productId"
-                type="button"
-                class="absolute right-1.5 top-1.5 z-10 rounded-md bg-black/55 px-1.5 py-0.5 text-[11px] font-medium text-white backdrop-blur-sm active:bg-black/70"
-                title="用一手 App 打开这个商品"
-                @click="openSeenApp(item)"
-              >
-                App
-              </button>
+              <div class="absolute right-1.5 top-1.5 z-10 flex items-center gap-1">
+                <button
+                  v-if="item.productNo"
+                  type="button"
+                  class="rounded-md px-1.5 py-0.5 text-[11px] font-medium text-white backdrop-blur-sm transition-colors"
+                  :class="isSeenCollected(item.productNo) ? 'bg-amber-500/90 active:bg-amber-600' : 'bg-black/55 active:bg-black/70'"
+                  :disabled="addingNo === item.productNo"
+                  :title="isSeenCollected(item.productNo) ? '已在一手收藏夹' : '加入一手收藏夹'"
+                  @click="addSeenToCollection(item)"
+                >
+                  {{ addingNo === item.productNo ? '收藏中' : isSeenCollected(item.productNo) ? '已收藏' : '收藏' }}
+                </button>
+                <button
+                  v-if="isMobileViewport && item.productId"
+                  type="button"
+                  class="rounded-md bg-black/55 px-1.5 py-0.5 text-[11px] font-medium text-white backdrop-blur-sm active:bg-black/70"
+                  title="用一手 App 打开这个商品"
+                  @click="openSeenApp(item)"
+                >
+                  App
+                </button>
+              </div>
               <a
                 :href="seenDetailPath(item) || undefined"
                 :target="seenDetailPath(item) ? '_blank' : undefined"
@@ -219,6 +232,7 @@ const { isMobileViewport, openYishouProduct } = useYishouApp()
 const { danger: confirmDelete, warning: confirmRestart, confirm: confirmSeenBlacklist } =
   useConfirmDialog()
 const toast = useToast()
+const { addingNo, isCollected: isSeenCollected, addToCollection } = useCollectionAdd()
 
 const showAddDialog = ref(false)
 
@@ -356,6 +370,12 @@ const openSeenApp = (item: TabSeenProductItem) => {
     const fallback = seenDetailPath(item)
     if (fallback) window.location.href = fallback
   })
+}
+
+/** 卡片右上角「收藏」：加入当前账号的一手收藏夹 */
+const addSeenToCollection = (item: TabSeenProductItem) => {
+  if (!item.productNo || isSeenCollected(item.productNo)) return
+  void addToCollection(item.productNo)
 }
 
 /**

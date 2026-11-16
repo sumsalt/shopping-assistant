@@ -13,6 +13,7 @@ import type {
   RenewOrderResult,
   WaitPayConfirmData,
   KeywordSearchResult,
+  AddToCollectionResult,
 } from '../types';
 
 /**
@@ -52,6 +53,16 @@ export interface PlatformAdapter {
    * @returns 价格快照
    */
   getPriceInfo(productId: string): Promise<PriceSnapshot>;
+
+  /**
+   * 把商品加入收藏夹（必须携带登录态）
+   *
+   * @param productNo 商品货号
+   *
+   * 不是所有平台都支持：未实现时调用方应提示「当前平台不支持收藏」。
+   * 已收藏时服务端会返回业务错误（一手文案「该商品已收藏」），由调用方原样提示。
+   */
+  addCollection?(productNo: string): Promise<AddToCollectionResult>;
 
   /**
    * 查询订单列表（必须携带登录态）

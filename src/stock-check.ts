@@ -10,7 +10,8 @@ import type {
   OrderListResult,
   OrderStatusTab,
   ProductSkuResult,
-  Platform
+  Platform,
+  AddToCollectionResult
 } from './types';
 import { getAdapter } from './adapters';
 import type { AdapterConfig } from './adapters';
@@ -240,4 +241,46 @@ export const getProductSkus = async (
 
   // 调用适配器获取商品 SKU
   return adapter.getProductSkus(productNo);
+};
+
+/**
+ * 添加到收藏夹请求参数
+ */
+export interface AddCollectionRequest {
+  /** 平台类型 */
+  platform: Platform;
+  /** 商品货号（一手收藏接口按 goods_no 收） */
+  productNo: string;
+}
+
+/**
+ * 把商品加入一手收藏夹
+ *
+ * 必须带登录态；重复收藏时服务端返回业务错误「该商品已收藏」，
+ * 这里原样抛出，由调用方决定提示文案。
+ *
+ * @param request 收藏请求参数
+ * @param options 查询选项（包含平台认证配置等）
+ * @returns 一手返回的收藏条目 ID
+ */
+export const addProductToCollection = async (
+  request: AddCollectionRequest,
+  options: CheckStockOptions = {}
+): Promise<AddToCollectionResult> => {
+  const { platform, productNo } = request;
+  const { adapterConfig = {} } = options;
+
+  if (!platform) {
+    throw new StockCheckError(StockCheckErrorType.API_ERROR, '缺少必要参数: platform');
+  }
+  if (!productNo) {
+    throw new StockCheckError(StockCheckErrorType.API_ERROR, '缺少必要参数: productNo');
+  }
+
+  const adapter = getAdapter(platform, adapterConfig);
+  if (typeof adapter.addCollection !== 'function') {
+    throw new StockCheckError(StockCheckErrorType.API_ERROR, '当前平台不支持收藏');
+  }
+
+  return adapter.addCollection(productNo);
 };
