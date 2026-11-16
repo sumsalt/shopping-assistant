@@ -20,6 +20,7 @@ import {
   pickCartLines,
   resolveSelectedExpress,
   resolveSettledNum,
+  resolveStockWarningMethods,
   toSettledItems,
   type YishouCartColorRaw,
   type YishouCartGroupItemRaw,
@@ -275,5 +276,49 @@ describe('结算明细 → 编排层领域模型', () => {
       ...confirmStock,
       { ...confirmStock[0], num: '2' },
     ])).toBe(3)
+  })
+})
+
+describe('断货风险通知方式（灰度字段 stock_warning_methods）', () => {
+  it('账号未命中灰度（响应没有该字段）→ undefined，请求里一个字段都不加', () => {
+    expect(resolveStockWarningMethods(undefined)).toBeUndefined()
+    expect(resolveStockWarningMethods([])).toEqual(['none'])
+  })
+
+  it('跟随账号在 App 里已选的方式', () => {
+    expect(
+      resolveStockWarningMethods([
+        { value: 'message', name: '一手消息', selected: '1' },
+        { value: 'sms', name: '短信', selected: '1' },
+        { value: 'none', name: '无需通知', selected: '0' },
+      ])
+    ).toEqual(['message', 'sms'])
+    expect(
+      resolveStockWarningMethods([
+        { value: 'message', name: '一手消息', selected: '0' },
+        { value: 'sms', name: '短信', selected: '0' },
+        { value: 'none', name: '无需通知', selected: '1' },
+      ])
+    ).toEqual(['none'])
+  })
+
+  it('命中灰度但从没选过 → 兜底「无需通知」，避免短信费用', () => {
+    expect(
+      resolveStockWarningMethods([
+        { value: 'message', name: '一手消息', selected: '0' },
+        { value: 'sms', name: '短信', selected: '0' },
+        { value: 'none', name: '无需通知', selected: '0' },
+      ])
+    ).toEqual(['none'])
+  })
+
+  it('selected 可能是数字 1，且重复值只保留一份', () => {
+    expect(
+      resolveStockWarningMethods([
+        { value: 'sms', selected: 1 },
+        { value: 'sms', selected: '1' },
+        { value: 'message', selected: 0 },
+      ])
+    ).toEqual(['sms'])
   })
 })

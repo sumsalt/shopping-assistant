@@ -173,12 +173,67 @@ describe('reloadWaitPayOrder（抓包 1.4）', () => {
     for (const key of ['pay_id', 'rec_ids', 'is_df']) {
       expect(body).not.toHaveProperty(key)
     }
+    // 非灰度账号（confirm 没返回 stock_warning_options）一个字段都不加
+    expect(body).not.toHaveProperty('stock_warning_methods')
     expect(optionsOf(0).skipGate).toBe(true)
 
     expect(result.orderSn).toBe('12641516245909')
     expect(result.payStatus).toBe('wait_pay')
     expect(result.orderAmount).toBe(43.19)
     expect(result.finished).toBe(false)
+  })
+
+  it('灰度账号续期必须回传 stock_warning_methods（抓包 1.4 原文）', async () => {
+    mocks.httpPost.mockImplementation((url: string) => {
+      if (url.includes('/order/confirm_wait_pay_order')) {
+        return Promise.resolve({
+          ...confirmResp,
+          data: {
+            ...confirmResp.data,
+            stock_warning_options: [
+              { value: 'message', name: '一手消息', selected: '1' },
+              { value: 'sms', name: '短信', selected: '1' },
+              { value: 'none', name: '无需通知', selected: '0' },
+            ],
+          },
+        })
+      }
+      return Promise.resolve(route(url))
+    })
+    const adapter = new YishouAdapter(config)
+    const confirmed = await adapter.confirmWaitPayOrder('12641915629615')
+    mocks.httpPost.mockClear()
+    mocks.httpPost.mockImplementation((url: string) => Promise.resolve(route(url)))
+
+    await adapter.reloadWaitPayOrder(confirmed.protocol)
+    // 真实抓包：stock_warning_methods=%5B%22message%22%2C%22sms%22%5D
+    expect(bodyOf(0).stock_warning_methods).toBe('["message","sms"]')
+  })
+
+  it('灰度账号从没选过通知方式时兜底「无需通知」', async () => {
+    mocks.httpPost.mockImplementation((url: string) => {
+      if (url.includes('/order/confirm_wait_pay_order')) {
+        return Promise.resolve({
+          ...confirmResp,
+          data: {
+            ...confirmResp.data,
+            stock_warning_options: [
+              { value: 'message', name: '一手消息', selected: '0' },
+              { value: 'sms', name: '短信', selected: '0' },
+              { value: 'none', name: '无需通知', selected: '0' },
+            ],
+          },
+        })
+      }
+      return Promise.resolve(route(url))
+    })
+    const adapter = new YishouAdapter(config)
+    const confirmed = await adapter.confirmWaitPayOrder('12641915629615')
+    mocks.httpPost.mockClear()
+    mocks.httpPost.mockImplementation((url: string) => Promise.resolve(route(url)))
+
+    await adapter.reloadWaitPayOrder(confirmed.protocol)
+    expect(bodyOf(0).stock_warning_methods).toBe('["none"]')
   })
 
   it('payTool 取 current_pay_tool，不用内部渠道码 pay_tool=12', async () => {

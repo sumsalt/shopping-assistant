@@ -249,6 +249,70 @@ describe('YishouAdapter 下单链路（对齐抓包）', () => {
     for (const key of ['custom_note', 'is_other', 'is_send_logistics', 'is_merge_order', 'is_no_invoice', 'is_df']) {
       expect(body).not.toHaveProperty(key)
     }
+    // 非灰度账号（confirm 没返回 stock_warning_options）一个字段都不加
+    expect(body).not.toHaveProperty('stock_warning_methods')
+  })
+
+  it('灰度账号建单必须回传 stock_warning_methods，否则服务端拒绝', async () => {
+    // 真实报错（13697254961 实测）：不带字段 → 「请选择断货风险通知方式，再提交订单」
+    const grayConfirm = {
+      ...confirmResp,
+      data: {
+        ...confirmResp.data,
+        stock_warning_options: [
+          { value: 'message', name: '一手消息', selected: '1' },
+          { value: 'sms', name: '短信', selected: '1' },
+          { value: 'none', name: '无需通知', selected: '0' },
+        ],
+      },
+    }
+    mocks.httpPost.mockImplementation((url: string) =>
+      Promise.resolve(url.includes('/order/confirm_order_v4') ? grayConfirm : route(url))
+    )
+
+    const adapter = new YishouAdapter(config)
+    const ready = await adapter.prepareCheckout({
+      goodsId: '339696422', goodsNo: '1373604156',
+      lines: [{ sku: '82357192', num: 1 }], address,
+    })
+    mocks.httpPost.mockClear()
+    mocks.httpPost.mockImplementation((url: string) =>
+      Promise.resolve(url.includes('/order/confirm_order_v4') ? grayConfirm : route(url))
+    )
+
+    await adapter.createOrder(ready.protocol, '1')
+    // 抓包原文：stock_warning_methods=["message","sms"]（URL 编码后传入）
+    expect(bodyOf(0).stock_warning_methods).toBe('["message","sms"]')
+  })
+
+  it('灰度账号从没选过通知方式时兜底「无需通知」', async () => {
+    const grayConfirm = {
+      ...confirmResp,
+      data: {
+        ...confirmResp.data,
+        stock_warning_options: [
+          { value: 'message', name: '一手消息', selected: '0' },
+          { value: 'sms', name: '短信', selected: '0' },
+          { value: 'none', name: '无需通知', selected: '0' },
+        ],
+      },
+    }
+    mocks.httpPost.mockImplementation((url: string) =>
+      Promise.resolve(url.includes('/order/confirm_order_v4') ? grayConfirm : route(url))
+    )
+
+    const adapter = new YishouAdapter(config)
+    const ready = await adapter.prepareCheckout({
+      goodsId: '339696422', goodsNo: '1373604156',
+      lines: [{ sku: '82357192', num: 1 }], address,
+    })
+    mocks.httpPost.mockClear()
+    mocks.httpPost.mockImplementation((url: string) =>
+      Promise.resolve(url.includes('/order/confirm_order_v4') ? grayConfirm : route(url))
+    )
+
+    await adapter.createOrder(ready.protocol, '1')
+    expect(bodyOf(0).stock_warning_methods).toBe('["none"]')
   })
 
   it('discardCheckout 清掉购物车', async () => {

@@ -29,8 +29,10 @@ import { mapYishouAddress } from './mappers';
 import {
   buildCreateSelected,
   resolveSelectedExpress,
+  resolveStockWarningMethods,
   type YishouConfirmStockRaw,
   type YishouExpressOptionRaw,
+  type YishouStockWarningOptionRaw,
 } from './checkout';
 
 // ==================== 原始响应类型 ====================
@@ -54,6 +56,8 @@ export interface YishouWaitPayConfirmRaw {
   cancel_expire?: string | number;
   /** 服务端当前时间（秒级），与 cancel_expire 同源 */
   current_timestamp?: string | number;
+  /** 断货风险通知方式选项（灰度功能，只有部分账号返回） */
+  stock_warning_options?: YishouStockWarningOptionRaw[];
   [key: string]: unknown;
 }
 
@@ -84,6 +88,12 @@ export interface YishouRenewProtocol {
   orderRemark: { custom_note: string; sender_name: string; sender_tel: string };
   /** 1.1 可用支付方式里挑定的值，reload 时原样回传，编排层不参与 */
   payTool: string;
+  /**
+   * 断货风险通知方式（灰度账号才有）
+   *
+   * undefined = 未命中灰度，reload 不带 stock_warning_methods；有值则原样回传。
+   */
+  stockWarningMethods?: string[];
 }
 
 const EMPTY_ADDRESS: YishouAddress = {
@@ -159,6 +169,7 @@ export const parseWaitPayConfirm = (
       : undefined;
 
   const remark = raw?.order_remark ?? {};
+  const stockWarningMethods = resolveStockWarningMethods(raw?.stock_warning_options);
   const protocol: YishouRenewProtocol = {
     orderSn,
     stock,
@@ -170,6 +181,7 @@ export const parseWaitPayConfirm = (
       sender_tel: String(remark.sender_tel ?? ''),
     },
     payTool: resolveRenewPayTool(payTools),
+    ...(stockWarningMethods ? { stockWarningMethods } : {}),
   };
 
   return {
@@ -208,4 +220,8 @@ export const buildReloadRequest = (ctx: YishouRenewProtocol): Record<string, str
   sender_name: ctx.orderRemark.sender_name,
   sender_tel: ctx.orderRemark.sender_tel,
   pay_tool: ctx.payTool,
+  // 灰度账号必须显式带上断货通知方式，否则服务端拒绝续期；非灰度账号不加
+  ...(ctx.stockWarningMethods
+    ? { stock_warning_methods: JSON.stringify(ctx.stockWarningMethods) }
+    : {}),
 });

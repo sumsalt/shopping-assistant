@@ -133,6 +133,21 @@ export interface YishouConfirmRaw {
   pay_tool?: Array<{ pay_tool?: string | number; [key: string]: unknown }>;
   express_options_v2?: YishouExpressOptionRaw[];
   default_address?: Record<string, unknown>;
+  /** 断货风险通知方式选项（灰度功能，只有部分账号返回；见 resolveStockWarningMethods） */
+  stock_warning_options?: YishouStockWarningOptionRaw[];
+  [key: string]: unknown;
+}
+
+/**
+ * 断货风险通知选项（confirm / confirm_wait_pay_order 的 stock_warning_options）
+ *
+ * 只有命中灰度的账号才会返回，`selected` 是账号在 App 里上次选中的状态。
+ */
+export interface YishouStockWarningOptionRaw {
+  /** message=一手消息 / sms=短信 / none=无需通知 */
+  value?: string;
+  name?: string;
+  selected?: string | number;
   [key: string]: unknown;
 }
 
@@ -302,6 +317,29 @@ export const resolveSelectedExpress = (
   return result;
 };
 
+/**
+ * 断货风险通知方式（stock_warning_methods，抓包 reload_wait_pay_order）
+ *
+ * 灰度账号的建单 / 续期都会被要求显式带上这个字段，否则服务端拒绝：
+ * 「请选择断货风险通知方式，再提交订单」。
+ *
+ * 返回 undefined = 账号未命中灰度（没有 stock_warning_options），请求里一个字段都不加；
+ * 返回 ['none'] = 命中灰度但账号从没选过，兜底「无需通知」——不打扰、不产生短信费，
+ *                断货本来就由本项目自己的监控通知，不需要一手侧重复提醒。
+ */
+export const resolveStockWarningMethods = (
+  options: YishouStockWarningOptionRaw[] | undefined
+): string[] | undefined => {
+  if (!Array.isArray(options)) return undefined;
+
+  const picked = options
+    .filter(item => String(item?.selected ?? '') === '1')
+    .map(item => String(item?.value ?? '').trim())
+    .filter(Boolean);
+
+  return picked.length > 0 ? Array.from(new Set(picked)) : ['none'];
+};
+
 // ==================== 埋点 / 幂等 ID（对齐抓包形态） ====================
 
 /** `${uid}_${秒级时间戳}`：add_cart_id / pay_id 用（抓包 2.3 / 2.15） */
@@ -367,4 +405,10 @@ export interface YishouCheckoutProtocol {
   payId: string;
   /** 登录 uid，用于埋点 */
   uid: string;
+  /**
+   * 断货风险通知方式（灰度账号才有）
+   *
+   * undefined = 未命中灰度，建单请求不带 stock_warning_methods；有值则原样回传。
+   */
+  stockWarningMethods?: string[];
 }

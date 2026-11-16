@@ -50,6 +50,7 @@ import {
   pickCartLines,
   resolveSelectedExpress,
   resolveSettledNum,
+  resolveStockWarningMethods,
   toSettledItems,
   type YishouCartActivitiesRaw,
   type YishouCartGoodsInfoRaw,
@@ -251,6 +252,7 @@ export class YishouOrderApi {
       const num = resolveSettledNum(confirm, stock);
       const payTools = (confirm?.pay_tool || []).map(item => String(item.pay_tool ?? ''));
       const selectedExpress = resolveSelectedExpress(confirm?.express_options_v2);
+      const stockWarningMethods = resolveStockWarningMethods(confirm?.stock_warning_options);
 
       const protocol: YishouCheckoutProtocol = {
         recIds,
@@ -261,6 +263,7 @@ export class YishouOrderApi {
         address,
         payId,
         uid,
+        ...(stockWarningMethods ? { stockWarningMethods } : {}),
       };
 
       return {
@@ -324,6 +327,10 @@ export class YishouOrderApi {
       rsa: buildRsa(),
       pay_id: ctx.payId,
       ...CREATE_ORDER_CONSTANTS,
+      // 灰度账号必须显式带上断货通知方式，否则服务端拒绝建单；非灰度账号不加
+      ...(ctx.stockWarningMethods
+        ? { stock_warning_methods: JSON.stringify(ctx.stockWarningMethods) }
+        : {}),
       consignee: address.consignee,
       province: address.province,
       city: address.city,
