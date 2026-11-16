@@ -1,29 +1,25 @@
 <template>
   <div v-if="images.length > 0" class="space-y-2">
-    <!-- 缩略图网格：统一 cover 裁剪，点击打开全屏预览 -->
-    <div class="grid grid-cols-3 sm:grid-cols-4 gap-2">
-      <button
-        v-for="(url, index) in images"
-        :key="`${url}-${index}`"
-        type="button"
-        class="relative aspect-square rounded-lg overflow-hidden border border-gray-200 bg-gray-100 group focus:outline-none focus:ring-2 focus:ring-red-400 cursor-pointer"
-        :aria-label="`查看第 ${index + 1} 张图片`"
-        @click="openPreview(index)"
-      >
-        <img
-          :src="url"
-          :alt="`${name || '商品'} 图片 ${index + 1}`"
-          class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-          loading="lazy"
-        />
-        <!-- 第一张标「主图」 -->
-        <span
-          v-if="index === 0"
-          class="absolute top-1 left-1 rounded bg-black/55 px-1.5 py-0.5 text-[10px] text-white"
-        >主图</span>
-      </button>
-    </div>
-    <p class="text-xs text-gray-400">共 {{ images.length }} 张图片，点击查看大图</p>
+    <!-- 单张大主图：cover 裁剪铺满，点击进全屏预览（预览里可切到其余图片） -->
+    <button
+      type="button"
+      class="relative w-full aspect-[4/3] rounded-lg overflow-hidden border border-gray-200 bg-gray-100 group focus:outline-none focus:ring-2 focus:ring-red-400 cursor-pointer"
+      :aria-label="`查看商品图片，共 ${images.length} 张，点击放大`"
+      @click="openPreview(0)"
+    >
+      <img
+        :src="images[0]"
+        :alt="name || '商品'"
+        class="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-200"
+      />
+      <!-- 张数角标，提示可点开看更多 -->
+      <span class="absolute bottom-2 right-2 flex items-center gap-1 rounded bg-black/55 px-2 py-1 text-xs text-white">
+        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+        </svg>
+        {{ images.length }} 张
+      </span>
+    </button>
 
     <!-- 全屏预览：Teleport 到 body，避免被父级 overflow / transform 裁剪 -->
     <Teleport to="body">
@@ -38,8 +34,8 @@
         <div
           v-if="previewOpen"
           class="preview-overlay fixed inset-0 z-[100] flex flex-col bg-black touch-none select-none"
-          @touchstart.prevent="onTouchStart"
-          @touchend.prevent="onTouchEnd"
+          @touchstart="onTouchStart"
+          @touchend="onTouchEnd"
         >
           <!-- 顶部栏：计数 + 缩放 + 关闭 -->
           <div class="flex items-center justify-between px-4 py-3 text-white flex-shrink-0">
