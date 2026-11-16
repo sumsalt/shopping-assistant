@@ -97,7 +97,7 @@
           <span class="shrink-0 ml-3">共 {{ seenTotal }} 个</span>
         </div>
         <p v-if="isMobileViewport" class="text-xs text-gray-400">
-          点击商品直接打开一手 App；想在本站查库存点图片右上角「网页」。
+          点击商品查看本站库存详情；想直接打开一手 App，点图片右上角「App」。
         </p>
 
         <div v-if="seenLoading" class="py-12 text-center text-sm text-gray-500">
@@ -119,13 +119,13 @@
               class="relative overflow-hidden rounded-xl bg-gray-50 ring-1 ring-gray-100"
             >
               <button
-                v-if="isMobileViewport && seenDetailPath(item)"
+                v-if="isMobileViewport && item.productId"
                 type="button"
                 class="absolute right-1.5 top-1.5 z-10 rounded-md bg-black/55 px-1.5 py-0.5 text-[11px] font-medium text-white backdrop-blur-sm active:bg-black/70"
-                title="在网页中查看库存详情"
-                @click="openSeenWeb(item)"
+                title="用一手 App 打开这个商品"
+                @click="openSeenApp(item)"
               >
-                网页
+                App
               </button>
               <a
                 :href="seenDetailPath(item) || undefined"
@@ -134,7 +134,7 @@
                 class="relative block aspect-[3/4] bg-gray-100"
                 :class="seenDetailPath(item) ? 'cursor-pointer' : 'cursor-default'"
                 :title="formatSeenTitle(item)"
-                @click="openSeenProduct($event, item)"
+                @click="openSeenDetail($event, item)"
               >
                 <img
                   v-if="item.productImage"
@@ -343,7 +343,7 @@ const formatSeenShopFull = (item: TabSeenProductItem): string => {
 const formatSeenTitle = (item: TabSeenProductItem): string => {
   const base = `${item.productName || formatSeenName(item)} · 首次发现 ${formatSeenTime(item.firstSeenAt)}`
   if (!seenDetailPath(item)) return base
-  return `${base}（${isMobileViewport.value ? '点击打开一手 App' : '点击在新窗口查看库存详情'}）`
+  return `${base}（${isMobileViewport.value ? '点击查看本站库存详情，右上角「App」用一手 App 打开' : '点击在新窗口查看库存详情'}）`
 }
 
 // 系统内 SKU 详情页地址：一手外链已不可用，统一跳到本站详情页
@@ -351,23 +351,27 @@ const formatSeenTitle = (item: TabSeenProductItem): string => {
 const seenDetailPath = (item: TabSeenProductItem): string =>
   item.productNo ? `/stock/${encodeURIComponent(item.productNo)}` : ''
 
-const openSeenWeb = (item: TabSeenProductItem) => {
-  const path = seenDetailPath(item)
-  if (path) window.open(path, '_blank', 'noopener,noreferrer')
-}
-
-/**
- * 点击商品：手机端优先唤起一手 App；未装 App 时退回站内库存详情。
- * 桌面端不拦截，交给卡片的 <a> 在新窗口打开站内详情。
- */
-const openSeenProduct = (event: MouseEvent, item: TabSeenProductItem) => {
-  if (!isMobileViewport.value) return
-
-  event.preventDefault()
+const openSeenApp = (item: TabSeenProductItem) => {
   openYishouProduct(item.productId, item.productNo, () => {
     const fallback = seenDetailPath(item)
     if (fallback) window.location.href = fallback
   })
+}
+
+/**
+ * 点击商品：进本站库存详情。
+ * 桌面端交给卡片的 <a> 在新窗口打开；手机端同窗口跳转，避免多开一个标签。
+ */
+const openSeenDetail = (event: MouseEvent, item: TabSeenProductItem) => {
+  const path = seenDetailPath(item)
+  if (!path) {
+    event.preventDefault()
+    return
+  }
+  if (!isMobileViewport.value) return
+
+  event.preventDefault()
+  window.location.href = path
 }
 
 // 卡片名称：优先用接口算好的「不带店铺名」短名，老数据兜底去掉【店铺名】前缀
