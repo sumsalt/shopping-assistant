@@ -297,6 +297,13 @@ const seenLoading = ref(false)
 const seenLoadingMore = ref(false)
 /** 列表滚动容器（滚动到底自动加载下一页） */
 const seenListRef = ref<HTMLElement | null>(null)
+/**
+ * 弹窗列表离开时的滚动位置。
+ * 从商品详情返回时页面被 keep-alive 恢复，Vue 会把页面 DOM 从隐藏容器移回，
+ * 这个过程会把内部滚动容器的 scrollTop 重置为 0。故在滚动时实时记住位置，
+ * 返回后用 onActivated 恢复。用普通变量而非 ref，避免无谓触发渲染。
+ */
+let rememberedSeenScrollTop = 0
 /** 正在拉黑的供应商标识，避免重复点击 */
 const blacklistingSupplyId = ref('')
 
@@ -311,6 +318,8 @@ const openSeenDialog = async (task: TaskSummary) => {
   seenTotal.value = 0
   seenHasMore.value = false
   seenLoading.value = true
+  // 重新打开弹窗从顶部开始，清掉上一次可能残留的滚动位置
+  rememberedSeenScrollTop = 0
 
   const data = await fetchSeenProducts(task.id, 0, SEEN_PAGE_SIZE)
   if (data) {
@@ -348,7 +357,10 @@ const loadMoreSeen = async () => {
 
 const handleSeenScroll = (event: Event) => {
   const el = event.target as HTMLElement | null
-  if (!el || seenLoadingMore.value || !seenHasMore.value) return
+  if (!el) return
+  // 实时记住位置：进详情前最后一次 scroll 的值，返回时据此恢复
+  rememberedSeenScrollTop = el.scrollTop
+  if (seenLoadingMore.value || !seenHasMore.value) return
 
   if (el.scrollTop + el.clientHeight >= el.scrollHeight - 120) {
     void loadMoreSeen()
@@ -368,6 +380,21 @@ const fillSeenList = async (depth = 0): Promise<void> => {
     await fillSeenList(depth + 1)
   }
 }
+
+/**
+ * 从商品详情返回到 Tab 监控页时恢复弹窗列表滚动位置。
+ * keep-alive 恢复页面会先把 DOM 从隐藏容器移回（此时内部滚动容器 scrollTop 已被浏览器归零），
+ * 再触发 onActivated，所以恢复要放在这里而非 onDeactivated。
+ * 注意：列表数据（seenItems / seenHasMore）由 keep-alive 保留，返回时不重新拉取，
+ * 因此列表高度与离开时一致，设回 scrollTop 才能落在同一屏。
+ */
+onActivated(() => {
+  if (!seenDialogOpen.value || rememberedSeenScrollTop <= 0) return
+  void nextTick(() => {
+    const el = seenListRef.value
+    if (el) el.scrollTop = rememberedSeenScrollTop
+  })
+})
 
 // 店铺展示文案：优先用接口返回的店铺名，老记录没有则退回供应商标识
 const formatSeenShop = (item: TabSeenProductItem): string => {
