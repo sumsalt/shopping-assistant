@@ -1,5 +1,7 @@
 <template>
-  <Teleport to="body">
+  <!-- 默认 teleport 到 body；就地渲染模式（:teleport="false"）让弹窗 DOM 留在组件子树内，
+       这样页面被 keep-alive 缓存时弹窗会被一起搬走/恢复，状态与滚动位置都能保住 -->
+  <Teleport to="body" :disabled="!teleport">
     <Transition
       enter-active-class="transition-opacity duration-200"
       enter-from-class="opacity-0"
@@ -73,6 +75,8 @@ interface Props {
   closeOnClickBackdrop?: boolean
   /** 对话框宽度：表单较长的场景用 lg / xl */
   size?: 'sm' | 'md' | 'lg' | 'xl'
+  /** 是否把弹窗传送到 body。需要配合页面级 keep-alive 保留弹窗状态/滚动位置时传 false */
+  teleport?: boolean
 }
 
 // 默认属性
@@ -80,6 +84,7 @@ const props = withDefaults(defineProps<Props>(), {
   title: '',
   closeOnClickBackdrop: true,
   size: 'md',
+  teleport: true,
 })
 
 // 宽度映射

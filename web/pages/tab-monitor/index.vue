@@ -89,6 +89,7 @@
       :open="seenDialogOpen"
       title="累计商品"
       size="lg"
+      :teleport="false"
       @update:open="seenDialogOpen = $event"
     >
       <div class="space-y-3">
