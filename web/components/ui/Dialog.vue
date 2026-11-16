@@ -10,17 +10,15 @@
       leave-from-class="opacity-100"
       leave-to-class="opacity-0"
     >
-      <!-- 遮罩容器：fill 模式用 dvh 基准（与弹窗高度同尺），避免移动端 vh/dvh 不一致导致弹窗被地址栏裁切 -->
+      <!-- 遮罩容器：固定铺满视口。配合组件内的 body 冻结锁，页面不再滚动，
+           fixed 与视口严格对齐，弹窗始终在可见区居中 -->
       <div
         v-if="open"
-        :class="[
-          'z-50 flex items-center justify-center p-4',
-          fill ? 'fixed inset-x-0 top-0 h-[100dvh]' : 'fixed inset-0',
-        ]"
+        class="fixed inset-0 z-50 flex items-center justify-center p-4 overscroll-contain"
         @click="handleBackdropClick"
       >
-        <!-- 背景遮罩 -->
-        <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+        <!-- 背景遮罩：touch-none 让在蒙层上起手滑动不再驱动页面滚动（body 锁失效时的兜底） -->
+        <div class="absolute inset-0 bg-black/50 backdrop-blur-sm touch-none" />
 
         <!-- 对话框内容 -->
         <Transition
@@ -115,46 +113,99 @@ const emit = defineEmits<{
   'update:open': [value: boolean]
 }>()
 
-// —— 打开时锁定 body 滚动 ——
-// 不锁的话，在弹窗上滑动会滚动穿透到背景页：页面一滚，移动端地址栏收缩、
-// fixed 的参照视口跟着变，蒙层和弹窗会一起「往上跑」。
+// —— 打开时冻结页面滚动 ——
+// 只设 body{overflow:hidden} 在 iOS Safari 上拦不住滚动（已知问题），页面照样能滚：
+// 一滚，地址栏收缩、fixed 参照的视口跟着变，蒙层和弹窗看起来就「往上跑」，
+// 在蒙层上滑动也会把背景页滚走。改用 position:fixed 把 body 钉住
+// （top 取滚动量的负值，视觉位置不变），iOS / Android / 桌面都能真正冻住。
 // 多个弹窗可能叠加，用计数避免一个关闭把另一个的锁也解了。
 let openDialogCount = 0
-let savedBodyOverflow = ''
-let savedBodyPaddingRight = ''
+/** 加锁时的页面滚动位置，卸载/关闭时据此还原 */
+let savedScrollY = 0
+/** 页面被 keep-alive 缓存再回来时，用它把列表钉回离开时的位置 */
+let rememberedScrollY = 0
+let savedStyle: {
+  position: string
+  top: string
+  left: string
+  right: string
+  width: string
+  overflow: string
+  paddingRight: string
+  htmlOverflow: string
+} | null = null
 let localLocked = false
 
-const applyBodyLock = () => {
+const applyBodyLock = (scrollY: number) => {
   if (typeof document === 'undefined') return
   openDialogCount += 1
   if (openDialogCount > 1) return
-  savedBodyOverflow = document.body.style.overflow
-  savedBodyPaddingRight = document.body.style.paddingRight
+  const body = document.body
+  const html = document.documentElement
+  savedScrollY = scrollY
+  rememberedScrollY = scrollY
+  savedStyle = {
+    position: body.style.position,
+    top: body.style.top,
+    left: body.style.left,
+    right: body.style.right,
+    width: body.style.width,
+    overflow: body.style.overflow,
+    paddingRight: body.style.paddingRight,
+    htmlOverflow: html.style.overflow,
+  }
   // 补偿滚动条宽度，避免桌面端页面横向跳动
-  const scrollbarGap = window.innerWidth - document.documentElement.clientWidth
-  if (scrollbarGap > 0) document.body.style.paddingRight = `${scrollbarGap}px`
-  document.body.style.overflow = 'hidden'
+  const scrollbarGap = window.innerWidth - html.clientWidth
+  if (scrollbarGap > 0) body.style.paddingRight = `${scrollbarGap}px`
+  body.style.position = 'fixed'
+  body.style.top = `-${scrollY}px`
+  body.style.left = '0'
+  body.style.right = '0'
+  body.style.width = '100%'
+  body.style.overflow = 'hidden'
+  html.style.overflow = 'hidden'
 }
 
-const releaseBodyLock = () => {
+const releaseBodyLock = (restoreScroll: boolean) => {
   if (typeof document === 'undefined') return
   if (openDialogCount <= 0) return
   openDialogCount -= 1
   if (openDialogCount > 0) return
-  document.body.style.overflow = savedBodyOverflow
-  document.body.style.paddingRight = savedBodyPaddingRight
+  if (!savedStyle) return
+  const body = document.body
+  const html = document.documentElement
+  body.style.position = savedStyle.position
+  body.style.top = savedStyle.top
+  body.style.left = savedStyle.left
+  body.style.right = savedStyle.right
+  body.style.width = savedStyle.width
+  body.style.overflow = savedStyle.overflow
+  body.style.paddingRight = savedStyle.paddingRight
+  html.style.overflow = savedStyle.htmlOverflow
+  savedStyle = null
+  if (restoreScroll) {
+    // body 被 fixed 后文档滚动量会归零，解锁后要手动滚回原位；
+    // html 上全局有 scroll-smooth，临时关掉避免解锁时页面缓动爬回去
+    const prevBehavior = html.style.scrollBehavior
+    html.style.scrollBehavior = 'auto'
+    window.scrollTo(0, savedScrollY)
+    html.style.scrollBehavior = prevBehavior
+  }
 }
 
-const lockScroll = () => {
+const lockScroll = (scrollY?: number) => {
   if (localLocked) return
   localLocked = true
-  applyBodyLock()
+  const target =
+    scrollY ??
+    (typeof window === 'undefined' ? 0 : window.scrollY || document.documentElement.scrollTop || 0)
+  applyBodyLock(target)
 }
 
-const unlockScroll = () => {
+const unlockScroll = (restoreScroll = true) => {
   if (!localLocked) return
   localLocked = false
-  releaseBodyLock()
+  releaseBodyLock(restoreScroll)
 }
 
 watch(
@@ -167,12 +218,13 @@ watch(
 )
 
 // 页面被 keep-alive 缓存（如从弹窗点进商品详情）时先解锁，否则目标页滚不动；
-// 返回时弹窗若还开着，重新锁上。
+// 这里不滚回列表位置，让目标页按路由默认行为从顶部开始。
 onDeactivated(() => {
-  if (props.open) unlockScroll()
+  if (props.open) unlockScroll(false)
 })
+// 回到缓存的页面：按离开时的位置重新钉住，弹窗与列表位置原样恢复
 onActivated(() => {
-  if (props.open) lockScroll()
+  if (props.open) lockScroll(rememberedScrollY)
 })
 
 onBeforeUnmount(() => {
