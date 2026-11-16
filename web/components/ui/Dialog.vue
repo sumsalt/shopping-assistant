@@ -10,9 +10,13 @@
       leave-from-class="opacity-100"
       leave-to-class="opacity-0"
     >
+      <!-- 遮罩容器：fill 模式用 dvh 基准（与弹窗高度同尺），避免移动端 vh/dvh 不一致导致弹窗被地址栏裁切 -->
       <div
         v-if="open"
-        class="fixed inset-0 z-50 flex items-center justify-center p-4"
+        :class="[
+          'z-50 flex items-center justify-center p-4',
+          fill ? 'fixed inset-x-0 top-0 h-[100dvh]' : 'fixed inset-0',
+        ]"
         @click="handleBackdropClick"
       >
         <!-- 背景遮罩 -->
