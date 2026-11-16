@@ -76,7 +76,7 @@
 import { taskEndpoint } from '@/utils/taskApi'
 import type { TaskSummary } from '@core/contract'
 
-definePageMeta({ title: '监控任务' })
+definePageMeta({ title: '监控任务', keepalive: true })
 
 const { tasks, isLoading, error, busyId, statusFilter, filteredTasks, statusCounts, fetchTasks, remove, restart } =
   useTaskList(taskEndpoint('stock'))

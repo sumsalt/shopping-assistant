@@ -250,6 +250,7 @@ import { accountDisplayName } from '@/utils/accountName'
 // 页面元信息
 definePageMeta({
   title: '收藏夹',
+  keepalive: true,
 })
 
 // 指定账号 ID：从账号管理跳转时带上，只临时查看、不改变当前使用账号

@@ -224,6 +224,7 @@ import { isNumericProductQuery } from '@core/utils/product-query'
 // 页面元信息
 definePageMeta({
   title: '库存查询',
+  keepalive: true,
 })
 
 // 使用库存查询 composable

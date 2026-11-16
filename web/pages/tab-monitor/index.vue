@@ -240,8 +240,9 @@ import { taskEndpoint } from '@/utils/taskApi'
 import type { TaskSummary } from '@core/contract'
 import type { TabSeenProductItem } from '@/composables/useTabSeen'
 
-definePageMeta({ title: 'Tab 监控任务' })
+definePageMeta({ title: 'Tab 监控任务', keepalive: true })
 
+const router = useRouter()
 const { tasks, isLoading, error, busyId, statusFilter, filteredTasks, statusCounts, fetchTasks, remove, restart } =
   useTaskList(taskEndpoint('tab'))
 const { fetchSeenProducts } = useTabSeen()
@@ -393,7 +394,7 @@ const seenDetailPath = (item: TabSeenProductItem): string =>
 const openSeenApp = (item: TabSeenProductItem) => {
   openYishouProduct(item.productId, item.productNo, () => {
     const fallback = seenDetailPath(item)
-    if (fallback) window.location.href = fallback
+    if (fallback) void router.push(fallback)
   })
 }
 
@@ -421,7 +422,8 @@ const handleSeenCollection = async (item: TabSeenProductItem) => {
 
 /**
  * 点击商品：进本站库存详情。
- * 桌面端交给卡片的 <a> 在新窗口打开；手机端同窗口跳转，避免多开一个标签。
+ * 桌面端交给卡片的 <a> 在新窗口打开；手机端走 SPA 同窗口跳转，
+ * 这样返回时列表页能被 Nuxt 的 keep-alive 缓存，状态保留不依赖 bfcache。
  */
 const openSeenDetail = (event: MouseEvent, item: TabSeenProductItem) => {
   const path = seenDetailPath(item)
@@ -432,7 +434,7 @@ const openSeenDetail = (event: MouseEvent, item: TabSeenProductItem) => {
   if (!isMobileViewport.value) return
 
   event.preventDefault()
-  window.location.href = path
+  void router.push(path)
 }
 
 // 卡片名称：优先用接口算好的「不带店铺名」短名，老数据兜底去掉【店铺名】前缀
