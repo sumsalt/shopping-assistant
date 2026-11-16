@@ -293,23 +293,18 @@ export const createCancellableMonitor = (
         errorCount: initialErrorCount,
       };
 
-      // 自动下单要落到具体商品上，货号缺失时无法查 SKU，提前降级为普通到货提醒
-      // 没有登录态时不可能下单，直接降级为普通到货提醒（避免任务一启动就失败退出）
+      // 自动下单要落到具体商品上，没有登录态时不可能下单，
+      // 直接降级为普通到货提醒（避免任务一启动就失败退出）
       const autoOrderEnabled = Boolean(autoOrder?.enabled && adapterConfig.uid && adapterConfig.token);
       const orderAdapter = autoOrderEnabled ? getOrderAdapter('yishou', adapterConfig) : null;
-      const hasCredential = Boolean(adapterConfig.uid && adapterConfig.token);
 
       // 只监控指定规格时，商品级有货还要再看这些规格是否真的有货
       const monitorSkus = (config.skus || []).filter(Boolean);
-      const needSkuDetail = monitorSkus.length > 0;
 
-      if (needSkuDetail && !hasCredential) {
-        throw new Error('按规格监控需要一手登录态，请先在账号管理中选择带登录态的账号');
-      }
-
-      // 不选规格时检测保持匿名（匿名桶 1 秒一槽，价格回退游客参考价）；
-      // 选了规格就必须查 SKU 明细，而该接口拒绝匿名，所以检测也要带凭证，进账号桶（5 秒一槽）。
-      const detectionConfig = needSkuDetail ? adapterConfig : toAnonymousAdapterConfig(adapterConfig);
+      // 检测与 SKU 明细统一走匿名配置：get_goods_info_v2 免登录、匿名桶 1 秒一槽，
+      // 不再因为「限定规格」把整条检测链路抬进 5 秒账号桶（价格回退游客参考价）。
+      // 自动下单仍用 adapterConfig（带凭证），两者互不影响。
+      const detectionConfig = toAnonymousAdapterConfig(adapterConfig);
 
       const startTime = Date.now();
 

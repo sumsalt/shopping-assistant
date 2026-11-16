@@ -87,7 +87,7 @@ const start = (config: Partial<StockMonitorConfig> = {}) => {
   const { controller, promise } = createCancellableMonitor(task, {
     interval: 2,
     duration: 3600,
-    // 查 SKU 明细必须登录态：选了规格的任务检测也带凭证
+    // 检测与 SKU 明细都走匿名配置；凭证只留给自动下单链路
     adapterConfig: { uid: '20478621', token: 'token' },
     ...config,
   })
@@ -165,9 +165,22 @@ describe('库存监控 × 指定规格', () => {
     expect(mocks.getProductSkus).not.toHaveBeenCalled()
   })
 
-  it('选了规格但没有登录态时直接报错，不静默忽略', async () => {
-    const { promise } = start({ adapterConfig: {}, skus: ['850001'] })
-    await expect(promise).rejects.toThrow('按规格监控需要一手登录态')
+  it('选了规格但没有登录态也能查 SKU：检测与规格明细都走匿名', async () => {
+    const { controller, promise } = start({ adapterConfig: {}, skus: ['850001'] })
+
+    await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(2_000)
+
+    const result = await promise
+    controller.abort()
+
+    expect(result.detected).toBe(true)
+    expect(result.matchedSkus).toEqual(['850001'])
+    // 规格查询沿用匿名配置，不带 uid/token
+    const [request, options] = mocks.getProductSkus.mock.calls[0]
+    expect(request).toMatchObject({ productId: '338956151' })
+    expect(options?.adapterConfig?.uid).toBeUndefined()
+    expect(options?.adapterConfig?.token).toBeUndefined()
   })
 
   it('自动下单只把选中的规格传给下单链路', async () => {

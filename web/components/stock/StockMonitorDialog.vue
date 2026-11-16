@@ -57,15 +57,12 @@
           </div>
         </div>
 
-        <div v-if="!hasCredential" class="py-2 text-xs text-amber-600">
-          选择具体规格需要一手登录态（查 SKU 明细的接口不支持匿名）。不选则监控全部规格，走匿名检测更快。
-        </div>
-        <div v-else-if="isLoadingSkus" class="py-2 text-xs text-gray-500">加载规格中…</div>
+        <div v-if="isLoadingSkus" class="py-2 text-xs text-gray-500">加载规格中…</div>
         <div v-else-if="skuError" class="py-2 text-xs text-amber-600">
           {{ skuError }}（将监控全部规格）
         </div>
         <div v-else-if="skus.length === 0" class="py-2 text-xs text-gray-500">
-          {{ product?.productNo ? '暂未读取到规格，将监控全部规格' : '缺少货号，无法选择规格，将监控全部规格' }}
+          {{ product?.productId ? '暂未读取到规格，将监控全部规格' : '缺少商品 ID，无法选择规格，将监控全部规格' }}
         </div>
         <div
           v-else

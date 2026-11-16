@@ -111,9 +111,9 @@ export const useAutoOrderForm = (options: AutoOrderFormOptions) => {
 
   const ensureProductNo = async (): Promise<string> => String((await options.resolveProductNo()) || '')
 
-  /** 读取规格列表；商品 ID 缺失或没有登录态时按「全部规格」处理 */
+  /** 读取规格列表；商品 ID 缺失时按「全部规格」处理（规格走匿名 v2 接口，不需登录态） */
   const loadSkus = async (productId?: string) => {
-    if (isLoadingSkus.value || !hasCredential.value) {
+    if (isLoadingSkus.value) {
       return
     }
 
@@ -263,17 +263,17 @@ export const useAutoOrderForm = (options: AutoOrderFormOptions) => {
   /**
    * 按需预取自动下单要用的数据
    *
-   * 开关打开、有登录态时拉地址与规格；两者都只拉一次（已有数据就跳过）。
-   * 打开弹窗时显式调用一次，用户手动打开开关时也走这里。
+   * 开关打开时拉规格（匿名可查）；地址属于下单数据，没有登录态拉不到。
+   * 两者都只拉一次（已有数据就跳过），打开弹窗与手动打开开关都会走这里。
    */
   const ensureData = () => {
-    if (!toBoolean(enabled.value) || !hasCredential.value) {
+    if (!toBoolean(enabled.value)) {
       return
     }
     if (skus.value.length === 0) {
       void loadSkus()
     }
-    if (addresses.value.length === 0) {
+    if (hasCredential.value && addresses.value.length === 0) {
       void loadAddresses()
     }
   }
@@ -301,8 +301,8 @@ export const useAutoOrderForm = (options: AutoOrderFormOptions) => {
     precheck.value = null
 
     // 开关本来就是打开状态（默认值或上次遗留）时 watch 不会触发，必须显式拉一次
-    // 到货监控的规格本身就是提醒条件，开关关着也要读
-    if (options.skusOnOpen && hasCredential.value) {
+    // 到货监控的规格本身就是提醒条件，开关关着也要读；规格匿名可查，无登录态也拉
+    if (options.skusOnOpen) {
       void loadSkus()
     }
     ensureData()
@@ -336,9 +336,9 @@ export const useAutoOrderForm = (options: AutoOrderFormOptions) => {
   // 刷新后立刻打开开关时账号配置可能还在路上：到齐后补拉一次
   watch(hasCredential, value => {
     if (!value) {
+      // 规格本身不依赖登录态（到货监控拿它当提醒条件），保留已加载列表；
+      // 只清掉下单选择，避免无凭证时把规格带进下单参数
       selectedSkus.value = []
-      skus.value = []
-      skuError.value = ''
       return
     }
 

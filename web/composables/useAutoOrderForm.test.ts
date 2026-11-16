@@ -131,4 +131,28 @@ describe('打开弹窗时自动下单数据预取', () => {
 
     expect(form.autoOrderEnabled.value).toBe(false)
   })
+
+  it('到货监控（skusOnOpen）：没有登录态也读规格，只是不拉地址', async () => {
+    activeAccount.value = null
+    calls.length = 0
+    const { useAutoOrderForm } = await import('./useAutoOrderForm')
+    const form = useAutoOrderForm({
+      resolveProductNo: () => 'PN1',
+      resolveProductId: () => 'PID1',
+      withTrigger: false,
+      defaultNum: 5,
+      defaultEnabled: false,
+      defaultMode: 'discount',
+      defaultTargetDiscount: '2.1',
+      skusOnOpen: true,
+      isActive: () => true,
+    })
+    form.open()
+    await flush()
+
+    expect(form.skus.value.length).toBe(1)
+    expect(form.selectedSkus.value).toEqual([])
+    expect(countOf('/api/stock/skus/')).toBe(1)
+    expect(countOf('/api/order/addresses')).toBe(0)
+  })
 })

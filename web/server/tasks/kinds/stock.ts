@@ -92,9 +92,9 @@ export const stockDefinition: TaskKindDefinition<StockTaskState> = {
   label: '到货监控',
   version: VERSION,
 
-  // 自动下单要拿真实库存并下单；按规格监控要查 SKU 明细（拒绝匿名）
-  requiresAuth: body =>
-    Boolean(body?.config?.autoOrder?.enabled || body?.config?.skus?.length),
+  // 自动下单要拿真实库存并下单，必须登录态；
+  // 按规格监控已改走匿名 get_goods_info_v2，不再要求凭证
+  requiresAuth: body => Boolean(body?.config?.autoOrder?.enabled),
 
   create({ body, secret }) {
     const product = body?.product
