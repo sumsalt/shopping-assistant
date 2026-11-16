@@ -19,6 +19,8 @@ export interface TabSeenProductItem {
   supplyId?: string
   shopName?: string
   marketName?: string
+  /** 抓取时的收藏状态：'0' 未收藏、非 0 已收藏、undefined 未知（老记录） */
+  collectId?: string
   firstSeenAt: string
 }
 

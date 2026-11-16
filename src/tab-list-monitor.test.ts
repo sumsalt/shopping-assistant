@@ -47,12 +47,17 @@ import type { TabMonitorProgress } from './tab-list-monitor'
 import type { CollectionStockResult } from './types'
 
 /** 构造一个最小可用的商品条目 */
-const item = (productId: string, supplyId?: string): CollectionStockResult =>
+const item = (
+  productId: string,
+  supplyId?: string,
+  collectId?: string
+): CollectionStockResult =>
   ({
     productId,
     productName: `商品${productId}`,
     price: 100,
     ...(supplyId ? { supplyId } : {}),
+    ...(collectId !== undefined ? { collectId } : {}),
   }) as CollectionStockResult
 
 /** 构造一次 Tab 列表查询结果 */
@@ -782,3 +787,40 @@ describe('monitorTabList 每日重建基线', () => {
     controller.abort()
   })
 })
+
+describe('monitorTabList 收藏状态快照', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(2026, 10, 3, 10, 0, 0))
+    mocks.getTabGoodsList.mockReset()
+    mocks.sendEmail.mockReset()
+    mocks.sendEmail.mockResolvedValue({ success: true })
+    mocks.templates.length = 0
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('累计商品记录抓取时的收藏状态，缺失时不留字段', async () => {
+    queueItems([
+      item('1', undefined, '374805600'),
+      item('2', undefined, '0'),
+      item('3'),
+    ])
+
+    const progresses: TabMonitorProgress[] = []
+    createCancellableTabMonitor(
+      { recipient: 'dev@example.com', tabName: '测试 Tab' },
+      { tabId: '146453', interval: 60, minChangeCount: 5, fullInitialScan: true },
+      progress => progresses.push(progress)
+    )
+
+    await vi.advanceTimersByTimeAsync(0)
+    const seen = progresses.at(-1)?.newlySeenProducts ?? []
+    expect(seen[0].collectId).toBe('374805600')
+    expect(seen[1].collectId).toBe('0')
+    // 接口没返回时不下发该字段，前端按「未知」处理
+    expect('collectId' in seen[2]).toBe(false)
+  })
+});

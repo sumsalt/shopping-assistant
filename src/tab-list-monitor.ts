@@ -128,6 +128,13 @@ export interface TabSeenProduct {
   shopName?: string;
   /** 市场名称（辅助识别店铺） */
   marketName?: string;
+  /**
+   * 抓取时的收藏状态（一手 collect_id 原样）
+   *
+   * `"0"` 表示未收藏，非 0 表示已收藏；老记录没有该字段，按「未知」展示，
+   * 不做补查——列表接口本身带这个字段，后续新抓的条目自然就有。
+   */
+  collectId?: string;
   /** 首次发现时间（ISO 字符串，落盘后仍可读） */
   firstSeenAt: string;
 }
@@ -508,6 +515,8 @@ export const createCancellableTabMonitor = (
           ...(item.supplyId ? { supplyId: item.supplyId } : {}),
           ...(item.brandName ? { shopName: item.brandName } : {}),
           ...(item.marketName ? { marketName: item.marketName } : {}),
+          // 收藏状态随抓取快照一起落盘：历史记录没有就是未知，不做回填
+          ...(item.collectId ? { collectId: String(item.collectId) } : {}),
           firstSeenAt: now,
         };
         records.push(record);

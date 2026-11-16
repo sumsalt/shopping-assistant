@@ -152,16 +152,16 @@
                 variant="outline"
                 size="sm"
                 :loading="addingNo === skuResult.productNo"
-                :disabled="addingNo === skuResult.productNo || isCollected(skuResult.productNo)"
-                :class="isCollected(skuResult.productNo)
+                :disabled="addingNo === skuResult.productNo || isProductCollected"
+                :class="isProductCollected
                   ? 'text-amber-600 border-amber-200 bg-amber-50'
                   : 'text-amber-600 border-amber-200 hover:bg-amber-50 hover:border-amber-300'"
                 @click="handleAddCollection"
               >
-                <svg class="w-4 h-4 mr-1" viewBox="0 0 24 24" :fill="isCollected(skuResult.productNo) ? 'currentColor' : 'none'" stroke="currentColor">
+                <svg class="w-4 h-4 mr-1" viewBox="0 0 24 24" :fill="isProductCollected ? 'currentColor' : 'none'" stroke="currentColor">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.539 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.196-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
                 </svg>
-                {{ isCollected(skuResult.productNo) ? '已收藏' : '收藏' }}
+                {{ isProductCollected ? '已收藏' : '收藏' }}
               </UiButton>
 
               <UiButton
@@ -231,7 +231,34 @@ const {
 } = useStock()
 
 // 加入一手收藏夹
-const { addingNo, isCollected, addToCollection } = useCollectionAdd()
+const { addingNo, addToCollection } = useCollectionAdd()
+
+/** 当前商品的收藏状态：来自详情接口的 collect_id（'0' 或未知都算未收藏） */
+const collectId = ref('')
+const isProductCollected = computed(() => isCollectedId(collectId.value))
+
+/**
+ * 拉取收藏状态
+ *
+ * SKU 接口（goods_detail）不返回 collect_id，这里用同源的库存查询接口
+ * （goods_info）补一次；失败不影响页面，只影响星标亮不亮。
+ */
+const loadCollectState = async (productId: string) => {
+  if (!productId) return
+  try {
+    const response = await $fetch<
+      ApiResponse<{ collectId?: string }>
+    >('/api/stock/check', {
+      method: 'POST',
+      body: { productId },
+    })
+    if (response.success) {
+      collectId.value = response.data?.collectId ?? ''
+    }
+  } catch {
+    // 收藏状态是次要信息，拿不到就按未收藏展示
+  }
+}
 
 // 手动一键下单：所有有货规格各 1 件，合计不超过 5 件
 const toast = useToast()
@@ -269,12 +296,15 @@ const openYishou = () => {
 }
 
 // 收藏当前商品（收藏夹按 goods_no 收，取详情里的货号）
-const handleAddCollection = () => {
+const handleAddCollection = async () => {
   const result = skuResult.value
-  if (!result || isCollected(result.productNo)) {
+  if (!result || isProductCollected.value) {
     return
   }
-  void addToCollection(result.productNo)
+  const outcome = await addToCollection(result.productNo)
+  if (outcome.ok) {
+    collectId.value = outcome.collectId ?? 'collected'
+  }
 }
 
 // 弹窗需要的商品信息
@@ -388,8 +418,12 @@ const handleRetry = () => {
 
 // 加载 SKU 数据
 const loadSkuData = async () => {
-  if (productNo.value) {
-    await getProductSkus(productNo.value)
+  if (!productNo.value) return
+  await getProductSkus(productNo.value)
+  const productId = skuResult.value?.productId
+  if (productId) {
+    // 不阻塞主流程：星标晚一点亮没关系
+    void loadCollectState(productId)
   }
 }
 

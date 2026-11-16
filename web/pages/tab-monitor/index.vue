@@ -97,7 +97,7 @@
           <span class="shrink-0 ml-3">共 {{ seenTotal }} 个</span>
         </div>
         <p v-if="isMobileViewport" class="text-xs text-gray-400">
-          点击商品查看本站库存详情；想直接打开一手 App，点图片右上角「App」。
+          点击商品查看本站库存详情；左上角星标可加入一手收藏夹，右上角「App」在 App 内打开。
         </p>
 
         <div v-if="seenLoading" class="py-12 text-center text-sm text-gray-500">
@@ -118,18 +118,35 @@
               :key="item.productId"
               class="relative overflow-hidden rounded-xl bg-gray-50 ring-1 ring-gray-100"
             >
-              <div class="absolute right-1.5 top-1.5 z-10 flex items-center gap-1">
-                <button
-                  v-if="item.productNo"
-                  type="button"
-                  class="rounded-md px-1.5 py-0.5 text-[11px] font-medium text-white backdrop-blur-sm transition-colors"
-                  :class="isSeenCollected(item.productNo) ? 'bg-amber-500/90 active:bg-amber-600' : 'bg-black/55 active:bg-black/70'"
-                  :disabled="addingNo === item.productNo"
-                  :title="isSeenCollected(item.productNo) ? '已在一手收藏夹' : '加入一手收藏夹'"
-                  @click="addSeenToCollection(item)"
+              <button
+                v-if="item.productNo"
+                type="button"
+                class="absolute left-1.5 top-1.5 z-10 flex h-6 w-6 items-center justify-center rounded-full backdrop-blur-sm transition-colors"
+                :class="[
+                  isSeenCollected(item)
+                    ? 'bg-amber-500/90 text-white'
+                    : 'bg-black/45 text-white active:bg-black/70',
+                  addingNo === item.productNo ? 'animate-pulse' : '',
+                ]"
+                :disabled="addingNo === item.productNo || isSeenCollected(item)"
+                :title="isSeenCollected(item) ? '已在一手收藏夹' : '加入一手收藏夹'"
+                @click.stop="addSeenToCollection(item)"
+              >
+                <svg
+                  class="h-3.5 w-3.5"
+                  viewBox="0 0 24 24"
+                  :fill="isSeenCollected(item) ? 'currentColor' : 'none'"
+                  stroke="currentColor"
+                  stroke-width="2"
                 >
-                  {{ addingNo === item.productNo ? '收藏中' : isSeenCollected(item.productNo) ? '已收藏' : '收藏' }}
-                </button>
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.539 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.196-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"
+                  />
+                </svg>
+              </button>
+              <div class="absolute right-1.5 top-1.5 z-10 flex items-center gap-1">
                 <button
                   v-if="isMobileViewport && item.productId"
                   type="button"
@@ -232,7 +249,10 @@ const { isMobileViewport, openYishouProduct } = useYishouApp()
 const { danger: confirmDelete, warning: confirmRestart, confirm: confirmSeenBlacklist } =
   useConfirmDialog()
 const toast = useToast()
-const { addingNo, isCollected: isSeenCollected, addToCollection } = useCollectionAdd()
+const { addingNo, addToCollection } = useCollectionAdd()
+
+/** 已收藏判断：用抓取时落盘的 collect_id，老记录没有该字段就按未收藏展示 */
+const isSeenCollected = (item: TabSeenProductItem): boolean => isCollectedId(item.collectId)
 
 const showAddDialog = ref(false)
 
@@ -373,9 +393,13 @@ const openSeenApp = (item: TabSeenProductItem) => {
 }
 
 /** 卡片右上角「收藏」：加入当前账号的一手收藏夹 */
-const addSeenToCollection = (item: TabSeenProductItem) => {
-  if (!item.productNo || isSeenCollected(item.productNo)) return
-  void addToCollection(item.productNo)
+const addSeenToCollection = async (item: TabSeenProductItem) => {
+  if (!item.productNo || isSeenCollected(item)) return
+  const outcome = await addToCollection(item.productNo)
+  // 收藏结果写回当前条目：拿到真实 collect_id 就用它，重复收藏时用占位值标记已收藏
+  if (outcome.ok) {
+    item.collectId = outcome.collectId ?? 'collected'
+  }
 }
 
 /**

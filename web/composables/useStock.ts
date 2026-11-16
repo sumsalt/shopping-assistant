@@ -13,6 +13,8 @@ interface StockCheckResult {
   productUrl: string
   productImage: string
   message: string
+  /** 一手收藏标记：'0' 未收藏、非 0 已收藏、undefined 未知（未登录或接口没返回） */
+  collectId?: string
 }
 
 // SKU 信息类型

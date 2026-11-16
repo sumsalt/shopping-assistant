@@ -148,6 +148,10 @@ export const mapToStockResult = (data: YishouGoodsData): StockCheckResult => {
     productUrl: goodsUrl(data.goods_id),
     productImage: data.goods_thumb,
     message: getStockMessage(data, inStock),
+    // 未登录或接口未返回时不带该字段，调用方按「未知」处理
+    ...(data.collect_id !== undefined && data.collect_id !== ''
+      ? { collectId: String(data.collect_id) }
+      : {}),
   };
 };
 
@@ -241,7 +245,8 @@ export const mapTabItemToResult = (data: YishouTabGoodsData): CollectionStockRes
     ...(data.format_first_sale_time ? { firstSaleText: data.format_first_sale_time } : {}),
     isNew: data.is_new === '1',
     message: getCollectionItemMessage(data, inStock),
-    collectId: '0',
+    // 标签列表与详情接口都按当前账号返回 collect_id：0 表示未收藏
+    collectId: data.collect_id ? String(data.collect_id) : '0',
   };
 };
 

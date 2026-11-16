@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { isInStock, getStockMessage, mapToStockResult, isCollectionItemInStock, getCollectionItemMessage, mapCollectionItemToResult, mapCartDetailToSkuResult, mapToPriceSnapshot } from './index';
+import { isInStock, getStockMessage, mapToStockResult, isCollectionItemInStock, getCollectionItemMessage, mapCollectionItemToResult, mapCartDetailToSkuResult, mapToPriceSnapshot, mapTabItemToResult } from './index';
 import type { YishouGoodsData, YishouCollectionGoodsData, YishouCartDetailData } from '../../types';
 
 // 创建测试用的商品数据工厂函数
@@ -449,5 +449,45 @@ describe('mapCartDetailToSkuResult - SKU 数据转换', () => {
 
     const blackSku = result.skuList.find(sku => sku.color === '黑色');
     expect(blackSku?.colorImage).toBe('https://example.com/black_thumb.jpg');
+  });
+});
+
+describe('收藏状态透传（一手 collect_id）', () => {
+  it('库存结果带出 collectId，可直接用于判断是否已收藏', () => {
+    expect(mapToStockResult(createMockGoodsData({ collect_id: '374805600' })).collectId).toBe('374805600');
+    expect(mapToStockResult(createMockGoodsData({ collect_id: '0' })).collectId).toBe('0');
+  });
+
+  it('接口没返回 collect_id 时不带字段，避免把「未知」误判成未收藏', () => {
+    expect('collectId' in mapToStockResult(createMockGoodsData())).toBe(false);
+    expect('collectId' in mapToStockResult(createMockGoodsData({ collect_id: '' }))).toBe(false);
+  });
+
+  it('标签列表按响应原样带出 collect_id（0 表示未收藏）', () => {
+    const base = {
+      goods_id: '340219457',
+      goods_no: '1381206701',
+      goods_name: '测试商品',
+      brand_name: '测试店铺',
+      shop_price: '43.80',
+      goods_thumb: '',
+      goods_img: 'https://example.com/a.jpg',
+      goods_status: '1',
+      is_on_sale: '1',
+      is_stockout: '0',
+      is_replenish: '2',
+      goods_kh: '',
+      market_id: '',
+      market_one_id: '',
+      one_market_name: '',
+      sales_of_7: 1,
+      video_url: '',
+      is_new: '0',
+    } as unknown as Parameters<typeof mapTabItemToResult>[0];
+
+    expect(mapTabItemToResult({ ...base, collect_id: '374805600' }).collectId).toBe('374805600');
+    expect(mapTabItemToResult({ ...base, collect_id: '0' }).collectId).toBe('0');
+    // 老接口没返回时按未收藏处理（列表字段是必填的，前端据此展示未收藏）
+    expect(mapTabItemToResult(base).collectId).toBe('0');
   });
 });

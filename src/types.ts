@@ -47,6 +47,13 @@ export interface StockCheckResult {
   productImage: string;
   /** 状态描述信息 */
   message: string;
+  /**
+   * 一手收藏标记（响应原样透传）
+   *
+   * `"0"` 或空串表示未收藏；非 0 数字就是 collect_id，可直接用于取消收藏。
+   * 接口未返回该字段时为 undefined，调用方应按「未知」处理，不要当成未收藏。
+   */
+  collectId?: string;
 }
 
 // ==================== 一手平台专用类型 ====================
@@ -71,6 +78,8 @@ export interface YishouGoodsData {
   is_on_sale: string;
   /** 是否缺货：1-缺货，0-有货 */
   is_stockout: string;
+  /** 收藏 ID：0-未收藏，非 0-已收藏（登录态下返回） */
+  collect_id?: string;
   /** 颜色（可能为空） */
   color: string;
   /** 尺码（可能为空） */
@@ -181,6 +190,8 @@ export interface YishouTabGoodsData {
   is_stockout: string;
   /** 是否补货：1-补货中，2-未补货 */
   is_replenish: string;
+  /** 收藏 ID：0-未收藏，非 0-已收藏（登录态下返回） */
+  collect_id?: string;
   /** 商品货号 */
   goods_kh: string;
   /** 市场ID */
