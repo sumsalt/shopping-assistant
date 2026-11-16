@@ -80,13 +80,24 @@
           <div class="flex-1 space-y-2">
             <h1 class="text-lg font-bold text-gray-900">{{ skuResult.productName }}</h1>
             <p class="text-sm text-gray-500">货号：{{ skuResult.productNo }}</p>
-            <p class="text-2xl font-bold text-red-600">
-              ¥{{ skuResult.price.toFixed(2) }}
+            <div class="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+              <span class="text-2xl font-bold text-red-600">¥{{ skuResult.price.toFixed(2) }}</span>
+              <template v-if="discountInfo">
+                <span class="text-sm text-gray-400 line-through">
+                  ¥{{ discountInfo.originalPrice.toFixed(2) }}
+                </span>
+                <span
+                  class="inline-flex items-center rounded border border-red-200 bg-red-50 px-1.5 py-0.5 text-xs font-semibold text-red-600"
+                  :title="`原价 ¥${discountInfo.originalPrice.toFixed(2)}，省 ¥${discountInfo.saved.toFixed(2)}`"
+                >
+                  {{ discountInfo.label }}
+                </span>
+              </template>
               <span
                 v-if="skuResult.priceNote"
-                class="ml-2 align-middle text-xs font-normal text-gray-500"
+                class="text-xs font-normal text-gray-500"
               >{{ skuResult.priceNote }}</span>
-            </p>
+            </div>
             <div class="flex items-center gap-4 text-sm text-gray-500">
               <span>销量：{{ formatSales(skuResult.sales) }}</span>
               <span>颜色：{{ skuResult.colors.length }} 种</span>
@@ -399,6 +410,22 @@ const handleManualOrder = async () => {
     isOrdering.value = false
   }
 }
+
+// 折扣信息：原价 + 折扣率（如「5折」）。没有原价、或原价不高于现价时不展示
+const discountInfo = computed(() => {
+  const result = skuResult.value
+  const originalPrice = result?.originalPrice
+  if (!result || !originalPrice || result.price <= 0 || originalPrice <= result.price) {
+    return null
+  }
+  // 折数 = 现价 / 原价 × 10，保留一位小数并去掉多余的 .0（5.0 → 5折）
+  const discount = (result.price / originalPrice) * 10
+  return {
+    originalPrice,
+    label: `${Number(discount.toFixed(1))}折`,
+    saved: originalPrice - result.price,
+  }
+})
 
 // 格式化销量
 const formatSales = (sales: number): string => {

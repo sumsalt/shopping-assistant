@@ -92,6 +92,8 @@ export interface YishouGoodsData {
   alone_price?: string;
   /** 门市价/零售价（仅登录态返回） */
   shoppe_price?: string;
+  /** 划线价（原价，常见为 0.00 表示未设置） */
+  old_price?: string;
   /** 可领红包列表（仅登录态返回） */
   coupons?: YishouCoupon[];
   /** 新版满减券列表（仅登录态返回） */
@@ -377,6 +379,13 @@ export interface ProductSkuResult {
   productNo: string;
   /** 价格 */
   price: number;
+  /**
+   * 原价（划线价 / 门市价）
+   *
+   * 取 `old_price`（划线价）优先，其次是 `shoppe_price`（门市价，仅登录态返回）；
+   * 都为空或不高于现价时不下发，前端据此判断是否展示折扣。
+   */
+  originalPrice?: number;
   /** 价格口径说明（匿名查询时为「游客参考价」） */
   priceNote?: string;
   /** 商品主图 */

@@ -306,12 +306,22 @@ export const mapGoodsToSkuResult = (
   const useAlonePrice = guest || !shopPrice || shopPrice <= 0;
   const price = (useAlonePrice ? alonePrice : shopPrice) ?? 0;
 
+  // 原价：优先划线价 old_price，其次门市价 shoppe_price（仅登录态返回）；
+  // 游客态 shop_price 是零售价（登录态才是拿货价），同样可以作为原价候选。
+  // 必须高于现价才有折扣意义，否则不下发，前端就不展示划线价和折扣标签
+  const oldPrice = toOptionalNumber(data.old_price);
+  const shoppePrice = toOptionalNumber(data.shoppe_price);
+  const originalCandidates = guest ? [oldPrice, shopPrice, shoppePrice] : [oldPrice, shoppePrice];
+  const originalPrice =
+    price > 0 ? originalCandidates.find(p => p !== undefined && p > price) : undefined;
+
   return {
     platform: 'yishou',
     productId: String(data.goods_id ?? ''),
     productName: data.goods_name,
     productNo: data.goods_no,
     price,
+    ...(originalPrice !== undefined ? { originalPrice } : {}),
     ...(guest ? { priceNote: '游客参考价' } : {}),
     productImage: data.goods_thumb,
     productUrl: goodsUrl(String(data.goods_id ?? '')),

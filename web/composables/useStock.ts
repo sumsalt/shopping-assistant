@@ -36,6 +36,8 @@ interface ProductSkuResult {
   productName: string
   productNo: string
   price: number
+  /** 原价（划线价 / 门市价），为空表示没有可比的原价 */
+  originalPrice?: number
   /** 价格口径说明：匿名查询时为「游客参考价」 */
   priceNote?: string
   productImage: string

@@ -492,3 +492,47 @@ describe('收藏状态透传（一手 collect_id）', () => {
     expect(mapTabItemToResult(base).collectId).toBe('0');
   });
 });
+
+describe('mapGoodsToSkuResult - 原价与折扣', () => {
+  it('优先用划线价 old_price 作为原价', () => {
+    const result = mapGoodsToSkuResult(
+      createMockSkuGoodsData({ old_price: '124.08', shoppe_price: '130.00' })
+    );
+    expect(result.price).toBe(62.04);
+    expect(result.originalPrice).toBe(124.08);
+  });
+
+  it('划线价为空时回落到门市价 shoppe_price', () => {
+    const result = mapGoodsToSkuResult(
+      createMockSkuGoodsData({ old_price: '0.00', shoppe_price: '124.08' })
+    );
+    expect(result.originalPrice).toBe(124.08);
+  });
+
+  it('游客态把 shop_price（零售价）当原价，现价取 alone_price', () => {
+    const result = mapGoodsToSkuResult(
+      createMockSkuGoodsData({ shop_price: '198.00', alone_price: '62.04' }),
+      { guest: true }
+    );
+    expect(result.price).toBe(62.04);
+    expect(result.originalPrice).toBe(198);
+  });
+
+  it('原价不高于现价或缺失时不下发 originalPrice', () => {
+    expect(mapGoodsToSkuResult(createMockSkuGoodsData()).originalPrice).toBeUndefined();
+    expect(
+      mapGoodsToSkuResult(createMockSkuGoodsData({ shoppe_price: '62.04' })).originalPrice
+    ).toBeUndefined();
+    expect(
+      mapGoodsToSkuResult(createMockSkuGoodsData({ shoppe_price: 'invalid' })).originalPrice
+    ).toBeUndefined();
+  });
+
+  it('现价为 0 时不计算原价，避免无价商品显示折扣', () => {
+    const result = mapGoodsToSkuResult(
+      createMockSkuGoodsData({ shop_price: '0', alone_price: '0', shoppe_price: '99.00' })
+    );
+    expect(result.price).toBe(0);
+    expect(result.originalPrice).toBeUndefined();
+  });
+});
