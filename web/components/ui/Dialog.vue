@@ -29,8 +29,8 @@
         >
           <div
             v-if="open"
-            class="relative bg-white rounded-lg shadow-xl w-full max-h-[90vh] flex flex-col"
-            :class="sizeClass"
+            class="relative bg-white rounded-lg shadow-xl w-full flex flex-col"
+            :class="[sizeClass, fill ? 'h-[85dvh]' : 'max-h-[90vh]']"
             @click.stop
           >
             <!-- 标题 -->
@@ -51,8 +51,13 @@
               </button>
             </div>
 
-            <!-- 内容（小屏可滚动）：min-h-0 + flex-1 保证 flex 容器限高时滚动生效 -->
-            <div class="px-6 py-4 overflow-y-auto flex-1 min-h-0">
+            <!-- 内容区：默认自身滚动；fill 模式改为 flex 容器、不滚动，由 slot 内部自行管理滚动 -->
+            <div
+              :class="[
+                'px-6 py-4 flex-1 min-h-0',
+                fill ? 'flex flex-col' : 'overflow-y-auto',
+              ]"
+            >
               <slot />
             </div>
 
@@ -77,6 +82,8 @@ interface Props {
   size?: 'sm' | 'md' | 'lg' | 'xl'
   /** 是否把弹窗传送到 body。需要配合页面级 keep-alive 保留弹窗状态/滚动位置时传 false */
   teleport?: boolean
+  /** 铺满模式：弹窗固定为动态视口高度，内容区不滚动、由 slot 内部自行管理滚动（列表类弹窗用） */
+  fill?: boolean
 }
 
 // 默认属性
@@ -85,6 +92,7 @@ const props = withDefaults(defineProps<Props>(), {
   closeOnClickBackdrop: true,
   size: 'md',
   teleport: true,
+  fill: false,
 })
 
 // 宽度映射

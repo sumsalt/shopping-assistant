@@ -20,6 +20,8 @@
 
 ## 交付流程（部署）
 
+**每次改完代码都要提交并部署到线上，由用户在真实环境验收。** 不要只留在本地等用户再说「提交部署」——除非用户当次明确说「先不部署 / 只改本地」。验证仍按上面的强度分级来做，部署本身是默认动作。
+
 ```bash
 npm run web:build
 cd web && sshpass -p '<服务器密码>' rsync -az --delete -e "ssh -o StrictHostKeyChecking=no" \

@@ -90,9 +90,10 @@
       title="累计商品"
       size="lg"
       :teleport="false"
+      :fill="true"
       @update:open="seenDialogOpen = $event"
     >
-      <div class="space-y-3">
+      <div class="flex h-full min-h-0 flex-col gap-3">
         <div class="flex items-center justify-between text-sm text-gray-500">
           <span class="truncate">{{ seenTaskName }} · 按首次发现时间倒序</span>
           <span class="shrink-0 ml-3">共 {{ seenTotal }} 个</span>
@@ -110,7 +111,7 @@
         <div
           v-else
           ref="seenListRef"
-          class="max-h-[65vh] overflow-y-auto"
+          class="min-h-0 flex-1 overflow-y-auto overscroll-contain"
           @scroll.passive="handleSeenScroll"
         >
           <div class="grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-3">
