@@ -258,18 +258,6 @@ setup_nginx() {
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
         proxy_cache_bypass \$http_upgrade;
-        proxy_hide_header Cache-Control;
-
-        # Nuxt SSR 页面 HTML 不缓存：避免用户拿到旧 HTML → 加载旧 hash chunk → 改了看似没变化。
-        # _nuxt/ 下带 hash 的静态资源保持 Nitro 返回的 immutable 长缓存。
-        add_header Cache-Control \"no-cache, no-store, must-revalidate\" always;
-    }
-
-    # 带 hash 的静态资源：覆盖上面的 no-cache，恢复长缓存
-    location ^~ /_nuxt/ {
-        proxy_pass http://127.0.0.1:3000;
-        proxy_hide_header Cache-Control;
-        add_header Cache-Control \"public, max-age=31536000, immutable\" always;
     }
 }"
     
