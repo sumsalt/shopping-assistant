@@ -31,8 +31,8 @@
         >
           <div
             v-if="open"
-            class="relative bg-white rounded-lg shadow-xl w-full flex flex-col"
-            :class="[sizeClass, fill ? 'h-[85dvh]' : 'max-h-[90vh]']"
+            class="dialog-panel relative bg-white rounded-lg shadow-xl w-full flex flex-col"
+            :class="[sizeClass, fill ? 'dialog-panel--fill' : '']"
             @click.stop
           >
             <!-- 标题 -->
@@ -243,3 +243,23 @@ const close = () => {
   emit('update:open', false)
 }
 </script>
+
+<style scoped>
+/*
+ * 面板高度上限必须用动态视口单位：
+ * 移动端 vh 对应「地址栏收起时的大视口」，地址栏展开时 100vh 比可视高度大几十到上百 px，
+ * 按 90vh 限高会让面板整体超出屏幕，内部滚动永远触发不了（内容被屏幕边缘裁掉）。
+ * 2rem 是遮罩层 p-4 的上下内边距，扣除后正好贴合可视区。
+ * 先写 vh 供老浏览器降级，再写 dvh 覆盖。
+ */
+.dialog-panel {
+  max-height: calc(100vh - 2rem);
+  max-height: calc(100dvh - 2rem);
+}
+
+/* fill 模式：固定高度铺满可视区（列表类弹窗用，内容区由 slot 自己滚） */
+.dialog-panel--fill {
+  height: 85vh;
+  height: 85dvh;
+}
+</style>
