@@ -57,27 +57,11 @@
     <div v-else-if="skuResult" class="space-y-6">
       <!-- 商品基本信息 -->
       <div class="bg-white rounded-lg border border-gray-200 p-4">
-        <div class="flex flex-col sm:flex-row gap-4">
-          <!-- 商品图片：移动端通栏大图，桌面固定 288px -->
-          <div class="w-full sm:w-72 flex-shrink-0">
-            <img
-              v-if="skuResult.productImage"
-              :src="skuResult.productImage"
-              :alt="skuResult.productName"
-              class="w-full aspect-square object-contain bg-white rounded-lg border border-gray-100"
-            />
-            <div
-              v-else
-              class="w-full aspect-square bg-gray-100 rounded-lg flex items-center justify-center"
-            >
-              <svg class="w-12 h-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-            </div>
-          </div>
+        <!-- 商品图集：通栏 cover 缩略图，点击全屏预览 -->
+        <UiImageGallery :images="skuResult.images || []" :name="skuResult.productName" />
 
-          <!-- 商品信息 -->
-          <div class="flex-1 space-y-2">
+        <!-- 商品信息 -->
+        <div class="mt-4 space-y-2">
             <h1 class="text-lg font-bold text-gray-900">{{ skuResult.productName }}</h1>
             <p class="text-sm text-gray-500">货号：{{ skuResult.productNo }}</p>
             <div class="flex flex-wrap items-baseline gap-x-2 gap-y-1">
@@ -194,7 +178,6 @@
                 打开一手 App
               </UiButton>
             </div>
-          </div>
         </div>
       </div>
 
@@ -205,6 +188,84 @@
           :skus="skuResult.skuList"
           :colors="skuResult.colors"
         />
+      </div>
+
+      <!-- 商品补充信息：档口 / 发货 / 文案 / 标签 / 视频 / 属性 -->
+      <div
+        v-if="skuResult.tags?.length || skuResult.provider || skuResult.originName
+          || skuResult.saleNote || skuResult.remindNote || skuResult.props?.length
+          || skuResult.videoUrl"
+        class="bg-white rounded-lg border border-gray-200 p-4 space-y-4"
+      >
+        <h2 class="text-lg font-semibold text-gray-900">商品信息</h2>
+
+        <!-- 销售 / 发货文案 -->
+        <div v-if="skuResult.saleNote || skuResult.remindNote" class="space-y-2">
+          <p v-if="skuResult.saleNote" class="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">
+            {{ skuResult.saleNote }}
+          </p>
+          <p v-if="skuResult.remindNote" class="text-sm text-amber-700 bg-amber-50 rounded-lg px-3 py-2">
+            {{ skuResult.remindNote }}
+          </p>
+        </div>
+
+        <!-- 档口信息 -->
+        <div v-if="skuResult.provider" class="flex items-center gap-3">
+          <img
+            v-if="skuResult.provider.image"
+            :src="skuResult.provider.image"
+            alt="档口"
+            class="w-12 h-12 rounded-lg object-cover border border-gray-200 flex-shrink-0"
+          />
+          <div class="min-w-0">
+            <p class="text-sm font-medium text-gray-900">
+              {{ skuResult.provider.name || '档口' }}
+              <span v-if="skuResult.provider.market" class="ml-1 text-xs font-normal text-gray-500">
+                · {{ skuResult.provider.market }}
+              </span>
+            </p>
+            <p v-if="skuResult.provider.address" class="text-xs text-gray-500">
+              地址：{{ skuResult.provider.address }}
+            </p>
+          </div>
+        </div>
+
+        <!-- 发货地 -->
+        <p v-if="skuResult.originName" class="text-sm text-gray-600">
+          <span class="text-gray-400">发货：</span>{{ skuResult.originName }}
+        </p>
+
+        <!-- 商品标签 -->
+        <div v-if="skuResult.tags?.length" class="flex flex-wrap gap-2">
+          <span
+            v-for="(tag, i) in skuResult.tags"
+            :key="i"
+            class="text-xs px-2 py-1 rounded bg-gray-100 text-gray-700"
+          >{{ tag }}</span>
+        </div>
+
+        <!-- 商品视频 -->
+        <div v-if="skuResult.videoUrl">
+          <p class="text-sm font-medium text-gray-900 mb-2">商品视频</p>
+          <video
+            :src="skuResult.videoUrl"
+            controls
+            playsinline
+            preload="metadata"
+            class="w-full max-w-md rounded-lg bg-black"
+          />
+        </div>
+
+        <!-- 商品属性 -->
+        <div v-if="skuResult.props?.length">
+          <p class="text-sm font-medium text-gray-900 mb-2">商品属性</p>
+          <dl class="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-2">
+            <div v-for="(prop, i) in skuResult.props" :key="i" class="flex text-sm border-b border-gray-100 py-1">
+              <dt class="text-gray-400 flex-shrink-0">{{ prop.label }}：</dt>
+              <dd class="text-gray-700 truncate" :title="prop.value">{{ prop.value }}</dd>
+            </div>
+          </dl>
+        </div>
       </div>
     </div>
 

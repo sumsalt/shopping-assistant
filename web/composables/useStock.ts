@@ -42,6 +42,22 @@ interface ProductSkuResult {
   priceNote?: string
   productImage: string
   productUrl: string
+  /** 商品图集（去重、主图兜底） */
+  images: string[]
+  /** 商品视频地址 */
+  videoUrl?: string
+  /** 商品标签 */
+  tags: string[]
+  /** 商品属性列表 */
+  props: Array<{ label: string; value: string }>
+  /** 档口信息 */
+  provider?: { name: string; market: string; address: string; image: string }
+  /** 发货地文案 */
+  originName?: string
+  /** 拼团 / 销售文案 */
+  saleNote?: string
+  /** 发货 / 清仓提醒 */
+  remindNote?: string
   sales: number
   colors: string[]
   sizes: string[]

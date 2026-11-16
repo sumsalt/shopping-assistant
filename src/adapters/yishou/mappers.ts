@@ -315,6 +315,31 @@ export const mapGoodsToSkuResult = (
   const originalPrice =
     price > 0 ? originalCandidates.find(p => p !== undefined && p > price) : undefined;
 
+  // 商品图集：保留一手给的图片处理参数（webp / 压缩），去重去空，主图兜底
+  const images = Array.from(
+    new Set((data.goods_img || []).filter(url => typeof url === 'string' && url.trim() !== ''))
+  );
+  if (images.length === 0) {
+    const fallback = data.main_img || data.goods_thumb;
+    if (fallback) images.push(fallback);
+  }
+
+  // 商品属性：优先展示用 fabric_display（如「100%狐狸毛」），其次 value
+  const props = (data.prop_list || [])
+    .map(prop => ({
+      label: (prop.label || '').trim(),
+      value: (prop.fabric_display || prop.value || '').trim(),
+    }))
+    .filter(prop => prop.label !== '' && prop.value !== '');
+
+  const tags = (data.goods_tags || []).filter(tag => typeof tag === 'string' && tag.trim() !== '');
+
+  const provider = data.provider;
+  const providerName = provider?.provider_name || provider?.stall_name || '';
+  const providerMarket = provider?.provider_market || '';
+  const providerAddress = provider?.supplier_address || '';
+  const providerImage = provider?.provider_image || '';
+
   return {
     platform: 'yishou',
     productId: String(data.goods_id ?? ''),
@@ -325,6 +350,23 @@ export const mapGoodsToSkuResult = (
     ...(guest ? { priceNote: '游客参考价' } : {}),
     productImage: data.goods_thumb,
     productUrl: goodsUrl(String(data.goods_id ?? '')),
+    images,
+    ...(data.video_url ? { videoUrl: data.video_url } : {}),
+    tags,
+    props,
+    ...(providerName || providerMarket || providerAddress || providerImage
+      ? {
+          provider: {
+            name: providerName,
+            market: providerMarket,
+            address: providerAddress,
+            image: providerImage,
+          },
+        }
+      : {}),
+    ...(data.origin_name ? { originName: data.origin_name } : {}),
+    ...(data.sale_note || data.desc ? { saleNote: data.sale_note || data.desc } : {}),
+    ...(data.remind_note ? { remindNote: data.remind_note } : {}),
     sales: Number.parseInt(data.sales ?? '', 10) || 0,
     colors,
     sizes: Array.from(sizesSet),

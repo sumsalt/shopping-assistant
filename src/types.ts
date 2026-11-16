@@ -110,6 +110,44 @@ export interface YishouGoodsData {
   restriction_number?: number;
   /** 限购提示文案 */
   restriction_text?: string;
+  /** 商品缩略图（大图，无处理参数） */
+  main_img?: string;
+  /** 商品图集（已带 webp / 压缩处理参数，可直接展示） */
+  goods_img?: string[];
+  /** 商品视频地址 */
+  video_url?: string;
+  /** 商品标签，如「配可拆卸狐狸毛球围脖」 */
+  goods_tags?: string[];
+  /** 商品属性列表，如面料 / 版型 / 季节 */
+  prop_list?: YishouGoodsProp[];
+  /** 档口（供应商）信息 */
+  provider?: YishouProvider;
+  /** 发货地文案，如「杭州发货商品」 */
+  origin_name?: string;
+  /** 拼团文案，如「5件成团，已拼5件」 */
+  desc?: string;
+  /** 销售文案，如「今日已拼12件」 */
+  sale_note?: string;
+  /** 发货 / 清仓提醒（登录态才有内容） */
+  remind_note?: string;
+}
+
+/** 商品属性项（prop_list） */
+export interface YishouGoodsProp {
+  label?: string;
+  value?: string;
+  fabric_display?: string;
+}
+
+/** 档口信息（provider） */
+export interface YishouProvider {
+  market_id?: string;
+  provider_id?: string;
+  provider_name?: string;
+  stall_name?: string;
+  provider_market?: string;
+  provider_image?: string;
+  supplier_address?: string;
 }
 
 /**
@@ -392,6 +430,27 @@ export interface ProductSkuResult {
   productImage: string;
   /** 商品链接 */
   productUrl: string;
+  /** 商品图集（去重、去空后，主图兜底；每项为可直接访问的图片 URL） */
+  images: string[];
+  /** 商品视频地址 */
+  videoUrl?: string;
+  /** 商品标签 */
+  tags: string[];
+  /** 商品属性列表（面料 / 版型 / 季节等） */
+  props: Array<{ label: string; value: string }>;
+  /** 档口信息 */
+  provider?: {
+    name: string;
+    market: string;
+    address: string;
+    image: string;
+  };
+  /** 发货地文案 */
+  originName?: string;
+  /** 拼团 / 销售文案 */
+  saleNote?: string;
+  /** 发货 / 清仓提醒 */
+  remindNote?: string;
   /** 销量 */
   sales: number;
   /** 可用颜色列表 */

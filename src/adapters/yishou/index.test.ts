@@ -536,3 +536,84 @@ describe('mapGoodsToSkuResult - 原价与折扣', () => {
     expect(result.originalPrice).toBeUndefined();
   });
 });
+
+describe('mapGoodsToSkuResult - 图集与详情展示字段', () => {
+  it('图集去重去空，保留一手给的图片处理参数', () => {
+    const result = mapGoodsToSkuResult(
+      createMockSkuGoodsData({
+        goods_img: [
+          'https://img.example.com/1.jpg?x-oss-process=webp',
+          'https://img.example.com/1.jpg?x-oss-process=webp', // 重复
+          '', // 空值
+          'https://img.example.com/2.jpg?x-oss-process=webp',
+        ],
+      })
+    );
+    expect(result.images).toEqual([
+      'https://img.example.com/1.jpg?x-oss-process=webp',
+      'https://img.example.com/2.jpg?x-oss-process=webp',
+    ]);
+  });
+
+  it('无图集时用 main_img / goods_thumb 兜底', () => {
+    expect(mapGoodsToSkuResult(createMockSkuGoodsData()).images).toEqual([
+      'https://example.com/thumb.jpg',
+    ]);
+    expect(
+      mapGoodsToSkuResult(createMockSkuGoodsData({ goods_img: [], main_img: 'https://img.example.com/main.jpg' })).images
+    ).toEqual(['https://img.example.com/main.jpg']);
+  });
+
+  it('属性优先展示 fabric_display，过滤空项', () => {
+    const result = mapGoodsToSkuResult(
+      createMockSkuGoodsData({
+        prop_list: [
+          { label: '面料', value: '狐狸毛(含量100%)', fabric_display: '100%狐狸毛' },
+          { label: '配件', value: '可拆卸狐狸毛球围脖' },
+          { label: '', value: '无标签' },
+          { label: '季节', value: '' },
+        ],
+      })
+    );
+    expect(result.props).toEqual([
+      { label: '面料', value: '100%狐狸毛' },
+      { label: '配件', value: '可拆卸狐狸毛球围脖' },
+    ]);
+  });
+
+  it('档口 / 标签 / 发货地 / 视频 / 文案按接口原样带出', () => {
+    const result = mapGoodsToSkuResult(
+      createMockSkuGoodsData({
+        goods_tags: ['可拆卸围脖', ''],
+        video_url: 'https://img.example.com/v.mp4',
+        provider: {
+          provider_name: '美美桑蕾',
+          provider_market: '海宁',
+          supplier_address: '杭州-海宁',
+          provider_image: 'https://img.example.com/store.jpg',
+        },
+        origin_name: '杭州发货商品',
+        desc: '5件成团，已拼5件',
+        remind_note: '清仓现货仅剩1件',
+      })
+    );
+    expect(result.tags).toEqual(['可拆卸围脖']);
+    expect(result.videoUrl).toBe('https://img.example.com/v.mp4');
+    expect(result.provider).toEqual({
+      name: '美美桑蕾',
+      market: '海宁',
+      address: '杭州-海宁',
+      image: 'https://img.example.com/store.jpg',
+    });
+    expect(result.originName).toBe('杭州发货商品');
+    expect(result.saleNote).toBe('5件成团，已拼5件');
+    expect(result.remindNote).toBe('清仓现货仅剩1件');
+  });
+
+  it('无档口信息时不下发 provider，避免展示空卡片', () => {
+    const result = mapGoodsToSkuResult(createMockSkuGoodsData());
+    expect(result.provider).toBeUndefined();
+    expect(result.tags).toEqual([]);
+    expect(result.props).toEqual([]);
+  });
+});
