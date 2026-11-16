@@ -1,87 +1,65 @@
 <template>
-  <Teleport to="body">
-    <Transition
-      enter-active-class="transition-opacity duration-200"
-      enter-from-class="opacity-0"
-      enter-to-class="opacity-100"
-      leave-active-class="transition-opacity duration-200"
-      leave-from-class="opacity-100"
-      leave-to-class="opacity-0"
-    >
+  <!-- 基于 UiDialog：高度上限、内部滚动、遮罩、滚动锁、安全区都复用同一套实现，
+       不再自己复制一份 Teleport + 遮罩。对外 API（show / confirm / cancel / update:show）保持不变 -->
+  <UiDialog
+    :open="show"
+    size="md"
+    :close-on-click-backdrop="closeOnClickBackdrop"
+    @update:open="handleOpenChange"
+  >
+    <div class="text-center">
+      <!-- 图标 -->
       <div
-        v-if="show"
-        class="fixed inset-0 z-50 flex items-center justify-center p-4"
-        @click="handleBackdropClick"
+        v-if="showIcon"
+        class="mx-auto flex items-center justify-center w-12 h-12 rounded-full mb-4"
+        :class="iconBgClass"
       >
-        <!-- 背景遮罩 -->
-        <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" />
-
-        <!-- 弹窗内容 -->
-        <Transition
-          enter-active-class="transition-all duration-200"
-          enter-from-class="opacity-0 scale-95"
-          enter-to-class="opacity-100 scale-100"
-          leave-active-class="transition-all duration-200"
-          leave-from-class="opacity-100 scale-100"
-          leave-to-class="opacity-0 scale-95"
-        >
-          <div
-            v-if="show"
-            class="relative bg-white rounded-lg shadow-xl max-w-md w-full p-6"
-            @click.stop
-          >
-            <!-- 图标 -->
-            <div
-              v-if="showIcon"
-              class="mx-auto flex items-center justify-center w-12 h-12 rounded-full mb-4"
-              :class="iconBgClass"
-            >
-              <component
-                :is="iconComponent"
-                class="w-6 h-6"
-                :class="iconClass"
-              />
-            </div>
-
-            <!-- 标题 -->
-            <h3 v-if="title" class="text-lg font-semibold text-gray-900 text-center mb-2">
-              {{ title }}
-            </h3>
-
-            <!-- 内容 -->
-            <p v-if="message" class="text-sm text-gray-600 text-center mb-6">
-              {{ message }}
-            </p>
-
-            <!-- 按钮组 -->
-            <div class="flex gap-3">
-              <!-- 取消按钮 -->
-              <UiButton
-                variant="outline"
-                class="flex-1"
-                @click="handleCancel"
-              >
-                {{ cancelText }}
-              </UiButton>
-              <!-- 确认按钮 -->
-              <UiButton
-                :variant="confirmVariant"
-                :loading="confirming"
-                :disabled="confirming"
-                class="flex-1"
-                @click="handleConfirm"
-              >
-                {{ confirmText }}
-              </UiButton>
-            </div>
-          </div>
-        </Transition>
+        <component
+          :is="iconComponent"
+          class="w-6 h-6"
+          :class="iconClass"
+        />
       </div>
-    </Transition>
-  </Teleport>
+
+      <!-- 标题 -->
+      <h3 v-if="title" class="text-lg font-semibold text-gray-900 mb-2">
+        {{ title }}
+      </h3>
+
+      <!-- 内容 -->
+      <p v-if="message" class="text-sm text-gray-600">
+        {{ message }}
+      </p>
+    </div>
+
+    <!-- 按钮组放在 footer：内容再长也固定可见，不会随内容滚走 -->
+    <template #footer>
+      <div class="flex gap-3">
+        <UiButton
+          variant="outline"
+          class="flex-1"
+          @click="handleCancel"
+        >
+          {{ cancelText }}
+        </UiButton>
+        <UiButton
+          :variant="confirmVariant"
+          :loading="confirming"
+          :disabled="confirming"
+          class="flex-1"
+          @click="handleConfirm"
+        >
+          {{ confirmText }}
+        </UiButton>
+      </div>
+    </template>
+  </UiDialog>
 </template>
 
 <script setup lang="ts">
+import UiDialog from './Dialog.vue'
+import UiButton from './Button.vue'
+
 // 图标组件
 const WarningIcon = defineComponent({
   render() {
@@ -231,17 +209,15 @@ const iconClass = computed(() => iconColorMap[props.type])
 // 确认按钮变体
 const confirmVariant = computed(() => confirmVariantMap[props.type] as any)
 
-// 点击背景
-const handleBackdropClick = () => {
-  if (props.closeOnClickBackdrop) {
-    handleCancel()
-  }
-}
-
 // 取消
 const handleCancel = () => {
   emit('update:show', false)
   emit('cancel')
+}
+
+// UiDialog 关闭（点遮罩等）统一按取消处理，保持原先「关闭即视为取消」的语义
+const handleOpenChange = (value: boolean) => {
+  if (!value) handleCancel()
 }
 
 // 确认
