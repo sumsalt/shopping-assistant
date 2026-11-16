@@ -257,9 +257,11 @@ const close = () => {
   max-height: calc(100dvh - 2rem);
 }
 
-/* fill 模式：固定高度铺满可视区（列表类弹窗用，内容区由 slot 自己滚） */
+/* fill 模式：列表类弹窗。内部列表用 flex-1 撑开，必须有确定高度才能算出可用空间，
+   所以这里是固定高度而非 max-height —— 但取值和默认模式的上限完全一致，
+   两种弹窗在屏幕上的上下边界对齐，不再一个 85dvh、一个 100dvh-2rem */
 .dialog-panel--fill {
-  height: 85vh;
-  height: 85dvh;
+  height: calc(100vh - 2rem);
+  height: calc(100dvh - 2rem);
 }
 </style>
