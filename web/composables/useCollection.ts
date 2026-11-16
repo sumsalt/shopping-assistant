@@ -150,10 +150,10 @@ export const useCollection = (accountId?: Ref<string | null>) => {
   }
 
   /**
-   * 跳转到商品详情页
+   * 跳转到商品详情页（按 goods_id）
    */
-  const goToProductDetail = (productNo: string) => {
-    router.push(`/stock/${productNo}`)
+  const goToProductDetail = (productId: string) => {
+    router.push(`/stock/${productId}`)
   }
 
   /**

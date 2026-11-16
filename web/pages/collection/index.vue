@@ -124,13 +124,15 @@
             :in-stock="item.inStock"
             :message="item.message"
             :sales="item.salesOf7"
-            @click="handleProductClick(item.productNo)"
+            @click="handleProductClick(item.productId)"
           >
             <template #actions>
               <StockProductQuickActions
                 :show-app="isMobileViewport"
+                :show-remove="!accountId"
                 @stock="openStockMonitor(item)"
                 @price="openPriceMonitor(item)"
+                @remove="handleRemoveCollection(item)"
                 @open-app="openInYishou(item)"
               />
             </template>
@@ -156,13 +158,15 @@
             :price="item.price"
             :in-stock="item.inStock"
             :sales="item.salesOf7"
-            @click="handleProductClick(item.productNo)"
+            @click="handleProductClick(item.productId)"
           >
             <template #actions>
               <StockProductQuickActions
                 :show-app="isMobileViewport"
+                :show-remove="!accountId"
                 @stock="openStockMonitor(item)"
                 @price="openPriceMonitor(item)"
+                @remove="handleRemoveCollection(item)"
                 @open-app="openInYishou(item)"
               />
             </template>
@@ -292,8 +296,22 @@ const handleLoadMore = () => {
 }
 
 // 点击商品卡片
-const handleProductClick = (productNo: string) => {
-  goToProductDetail(productNo)
+const handleProductClick = (productId: string) => {
+  goToProductDetail(productId)
+}
+
+/** 取消收藏：服务端按当前账号操作，成功后就地移除卡片（临时查看他人账号时不暴露该入口） */
+const { removingNo, removeFromCollection } = useCollectionRemove()
+const handleRemoveCollection = async (item: {
+  productNo: string
+  productId: string
+  collectId: string
+}) => {
+  if (removingNo.value) return
+  const outcome = await removeFromCollection(item.productNo, item.productId, item.collectId)
+  if (!outcome.ok) return
+  allInStockItems.value = allInStockItems.value.filter(i => i.collectId !== item.collectId)
+  allOutOfStockItems.value = allOutOfStockItems.value.filter(i => i.collectId !== item.collectId)
 }
 
 /** 唤起一手 App：「打开一手 App」按钮只在手机端出现，桌面端没有 App 可开 */

@@ -351,7 +351,7 @@ export const createCancellableMonitor = (
           if (inStock && monitorSkus.length > 0) {
             // SKU 查询走同一份匿名配置：检测链路不带登录态，排的是匿名桶
             const skuDetail = await getProductSkus(
-              { platform: task.request.platform, productNo: checkResult.productNo },
+              { platform: task.request.platform, productId: checkResult.productId },
               { adapterConfig: detectionConfig }
             );
             const hits = skuDetail.skuList.filter(

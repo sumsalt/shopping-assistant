@@ -306,7 +306,7 @@
 3. **价格字段语义随登录态变化**：游客态 `shop_price=2783.96`、`alone_price=869.99`；登录态 `shop_price=869.99`、`shoppe_price=1739.98`。当前 `StockCheckResult.price` 固定取 `shop_price`，游客态会展示 2783.96，需要明确该字段到底是「拿货价」还是「展示价」，或改为取 `alone_price`。
 4. **收藏、优惠券、新人权益、免费退货等个性化能力必须登录**；游客态这些字段为空/默认值。
 5. 项目 `src/types.ts` 的 `YishouGoodsData` 只声明了 12 个字段，实际返回 137 个；像 `attribute`（SKU 库存树）、`imgs`、`provider`、`prop_list` 这些现成字段尚未接入。
-6. `attribute[].item[]` 已包含 `sku`/`stock`/`sale_stock`/`sale_instock`，理论上可直接替代 `add_cart_goods_info` 的 SKU 查询接口，减少一次请求。
+6. `attribute[].item[]` 已包含 `sku`/`stock`/`sale_stock`/`sale_instock`，已用于替代 `add_cart_goods_info` 的 SKU 查询：本站详情页 `/stock/{goods_id}` 只调这一个接口，一次请求拿全 SKU、价格、库存与 `collect_id`。
 
 ## 7. 复现方式
 

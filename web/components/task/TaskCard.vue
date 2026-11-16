@@ -152,10 +152,10 @@ const kindLabel = computed(() => KIND_LABEL[props.task.kind])
 
 const statusVariant = computed(() => getStatusColor(props.task.status))
 
-/** 仅商品目标且带货号时可跳详情；历史任务缺货号则整卡不可点 */
+/** 商品目标按 goods_id 跳详情（与 App 详情页一致）；非商品目标整卡不可点 */
 const href = computed(() =>
-  props.task.target.type === 'product' && props.task.target.productNo
-    ? `/stock/${encodeURIComponent(props.task.target.productNo)}`
+  props.task.target.type === 'product' && props.task.target.id
+    ? `/stock/${encodeURIComponent(props.task.target.id)}`
     : ''
 )
 

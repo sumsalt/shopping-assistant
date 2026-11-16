@@ -26,6 +26,19 @@
     </button>
 
     <button
+      v-if="showRemove"
+      type="button"
+      class="flex h-7 w-7 items-center justify-center rounded-md border border-rose-200 text-rose-600 transition-colors hover:bg-rose-50 focus:outline-none focus:ring-2 focus:ring-rose-400 focus:ring-offset-1"
+      title="取消收藏"
+      aria-label="取消收藏"
+      @click.stop="emit('remove')"
+    >
+      <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+      </svg>
+    </button>
+
+    <button
       v-if="showApp"
       type="button"
       class="ml-auto flex h-7 w-7 items-center justify-center rounded-md border border-orange-200 text-orange-600 transition-colors hover:bg-orange-50 focus:outline-none focus:ring-2 focus:ring-orange-400 focus:ring-offset-1"
@@ -50,15 +63,19 @@
 interface Props {
   /** 是否显示「打开一手 App」（手机端才为 true） */
   showApp?: boolean
+  /** 是否显示「取消收藏」（收藏夹场景下为 true） */
+  showRemove?: boolean
 }
 
 withDefaults(defineProps<Props>(), {
   showApp: false,
+  showRemove: false,
 })
 
 const emit = defineEmits<{
   stock: []
   price: []
+  remove: []
   openApp: []
 }>()
 </script>

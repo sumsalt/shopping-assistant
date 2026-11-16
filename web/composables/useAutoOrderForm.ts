@@ -111,19 +111,19 @@ export const useAutoOrderForm = (options: AutoOrderFormOptions) => {
 
   const ensureProductNo = async (): Promise<string> => String((await options.resolveProductNo()) || '')
 
-  /** 读取规格列表；货号缺失或没有登录态时按「全部规格」处理 */
-  const loadSkus = async (productNo?: string) => {
+  /** 读取规格列表；商品 ID 缺失或没有登录态时按「全部规格」处理 */
+  const loadSkus = async (productId?: string) => {
     if (isLoadingSkus.value || !hasCredential.value) {
       return
     }
 
-    // 先占位再等货号：查货号本身是一次请求，重复进入会发两遍
     isLoadingSkus.value = true
     skuError.value = ''
 
     try {
-      const no = productNo || (await ensureProductNo())
-      if (!no) {
+      // 规格接口按 goods_id 查（与 App 详情页一致），不再先花一次请求换货号
+      const id = productId || String(options.resolveProductId() || '')
+      if (!id) {
         return
       }
 
@@ -133,7 +133,7 @@ export const useAutoOrderForm = (options: AutoOrderFormOptions) => {
           skuList?: Array<{ skuId: string; color?: string; size?: string; saleStock?: number }>
         }
         error?: { message: string }
-      }>(`/api/stock/skus/${no}`)
+      }>(`/api/stock/skus/${id}`)
 
       if (response.success && response.data?.skuList) {
         skus.value = response.data.skuList.map(item => ({

@@ -335,14 +335,14 @@ const handleRetry = () => {
   }
 }
 
-// 点击商品卡片（库存查询结果）
+// 点击商品卡片（库存查询结果），按 goods_id 跳详情
 const handleProductClick = (item: any) => {
-  if (item?.productNo) {
-    goToProductDetail(item.productNo)
+  if (item?.productId) {
+    goToProductDetail(item.productId)
   }
 }
 
 /** 关键词结果卡片用新窗口打开详情，保留原标签页的搜索列表 */
 const keywordDetailHref = (item: KeywordSearchItem): string | undefined =>
-  item.productNo ? `/stock/${encodeURIComponent(item.productNo)}` : undefined
+  item.productId ? `/stock/${encodeURIComponent(item.productId)}` : undefined
 </script>

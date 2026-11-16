@@ -45,7 +45,7 @@ export interface PlatformAdapter {
    * @param productNo 商品货号
    * @returns 商品 SKU 查询结果
    */
-  getProductSkus(productNo: string): Promise<ProductSkuResult>;
+  getProductSkus(productId: string): Promise<ProductSkuResult>;
 
   /**
    * 获取商品价格快照（必须携带登录态）
@@ -63,6 +63,18 @@ export interface PlatformAdapter {
    * 已收藏时服务端会返回业务错误（一手文案「该商品已收藏」），由调用方原样提示。
    */
   addCollection?(productNo: string): Promise<AddToCollectionResult>;
+
+  /**
+   * 从收藏夹移除商品（必须携带登录态）
+   *
+   * @param productNo 商品货号（一手 del 接口按 goods_no + collect_id 定位）
+   * @param collectId 收藏条目 ID（详情页/列表的 collect_id）
+   * @param productId 商品 ID（一手抓包同时带 goods_id，有则带上对齐真机）
+   *
+   * 未实现时调用方应提示「当前平台不支持」。商品已不在收藏夹时一手会返回业务错误，
+   * 由调用方决定是否当成幂等成功处理。
+   */
+  removeCollection?(productNo: string, collectId: string, productId?: string): Promise<void>;
 
   /**
    * 查询订单列表（必须携带登录态）

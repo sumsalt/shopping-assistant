@@ -26,15 +26,12 @@ export const ADD_COLLECTION = `${BASE}/users/add_goods_collection`;
 /** 从收藏夹移除（按 collect_id + goods_no） */
 export const DEL_COLLECTION = `${BASE}/users/del_goods_collection`;
 
-/** 商品详情（按 goods_no 查 SKU，匿名可用） */
-export const GOODS_DETAIL = `${BASE}/wechat/add_cart_goods_info`;
-
 /**
  * 下单取商品规格（App 通道，登录态）
  *
  * 抓包 2.1 `cart/add_cart_goods_info`：返回 attribute[] 原始规格，
- * 是加购 selected 的构造原料。与 GOODS_DETAIL 响应结构一致，但下单链路必须用这个端点
- * 才能拿到与真机一致的完整规格字段。
+ * 是加购 selected 的构造原料。与 `get_goods_info_v2` 的 `attribute` 结构一致，
+ * 但下单链路必须用这个端点才能拿到与真机一致的完整规格字段。
  */
 export const CART_GOODS_INFO = `${BASE}/cart/add_cart_goods_info`;
 

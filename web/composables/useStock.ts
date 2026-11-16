@@ -36,6 +36,8 @@ interface ProductSkuResult {
   productName: string
   productNo: string
   price: number
+  /** 价格口径说明：匿名查询时为「游客参考价」 */
+  priceNote?: string
   productImage: string
   productUrl: string
   sales: number
@@ -45,6 +47,8 @@ interface ProductSkuResult {
   inStockSkuCount: number
   totalSkuCount: number
   restrictionNumber: number
+  /** 一手收藏标记：'0' 未收藏、非 0 已收藏、undefined 未知 */
+  collectId?: string
 }
 
 // API 响应类型
@@ -65,9 +69,6 @@ export const useStock = () => {
   const skuResult = ref<ProductSkuResult | null>(null)
   const isLoadingSkus = ref(false)
   const skuError = ref<string | null>(null)
-
-  /** 当前账号是否带登录态（服务端也会兜底校验） */
-  const hasCredential = computed(() => Boolean(configStore.activeAccount?.hasCredential))
 
   /**
    * 查询单品库存（服务端按当前账号使用登录态）
@@ -103,52 +104,39 @@ export const useStock = () => {
   }
 
   /**
-   * 获取商品 SKU 列表（需要登录态）
+   * 获取商品 SKU 列表
+   *
+   * 只调 `get_goods_info_v2`，匿名也能查：没有登录态时价格是游客参考价，
+   * 收藏状态恒为未收藏。所以这里不再拦截「必须选带登录态的账号」。
    */
-  const getProductSkus = async (productNo: string): Promise<ProductSkuResult | null> => {
+  const getProductSkus = async (productId: string): Promise<ProductSkuResult | null> => {
     isLoadingSkus.value = true
     skuError.value = null
     skuResult.value = null
 
     try {
       // 直接刷新 /stock/xxx 时，页面的首个请求往往早于启动插件的配置拉取完成，
-      // 此时 activeAccount 还是空，会被误判成「没有登录态」。
+      // 此时 activeAccount 还是空，价格会降级成游客参考价。
       // load() 是幂等的：已加载立即返回，加载中会等同一份结果。
       if (!configStore.isInitialized) {
         await configStore.load()
       }
 
-      // add_cart_goods_info 必须带登录态，缺凭证时一手直接返回「请登录」，
-      // 这里提前拦下来给出可操作的提示，不用等接口失败
-      if (!hasCredential.value) {
-        const message = '查看 SKU 详情需要登录态，请先在账号管理中选择带登录态的账号'
-        skuError.value = message
-        toast.warning(message)
-        return null
-      }
-
       const response = await $fetch<ApiResponse<ProductSkuResult>>(
-        `/api/stock/skus/${productNo}`
+        `/api/stock/skus/${productId}`
       )
 
       if (response.success && response.data) {
         skuResult.value = response.data
         return response.data
       } else {
-        const rawError = response.error?.message || '查询失败'
-        // 登录态失效时一手只回「请登录」，补一句下一步该怎么办
-        const errorMsg = rawError.includes('登录')
-          ? `${rawError}（一手登录态缺失或已失效，请到账号管理重新选择账号或更新抓包）`
-          : rawError
+        const errorMsg = response.error?.message || '查询失败'
         skuError.value = errorMsg
         toast.error(errorMsg)
         return null
       }
     } catch (error) {
-      const rawError = error instanceof Error ? error.message : '网络请求失败'
-      const errorMsg = rawError.includes('登录')
-        ? `${rawError}（一手登录态缺失或已失效，请到账号管理重新选择账号或更新抓包）`
-        : rawError
+      const errorMsg = error instanceof Error ? error.message : '网络请求失败'
       skuError.value = errorMsg
       toast.error(errorMsg)
       return null
@@ -158,10 +146,10 @@ export const useStock = () => {
   }
 
   /**
-   * 跳转到商品详情页
+   * 跳转到商品详情页（按 goods_id，与 App 详情页一致）
    */
-  const goToProductDetail = (productNo: string) => {
-    router.push(`/stock/${productNo}`)
+  const goToProductDetail = (productId: string) => {
+    router.push(`/stock/${productId}`)
   }
 
   /**

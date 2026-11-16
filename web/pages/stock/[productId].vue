@@ -80,7 +80,13 @@
           <div class="flex-1 space-y-2">
             <h1 class="text-lg font-bold text-gray-900">{{ skuResult.productName }}</h1>
             <p class="text-sm text-gray-500">货号：{{ skuResult.productNo }}</p>
-            <p class="text-2xl font-bold text-red-600">¥{{ skuResult.price.toFixed(2) }}</p>
+            <p class="text-2xl font-bold text-red-600">
+              ¥{{ skuResult.price.toFixed(2) }}
+              <span
+                v-if="skuResult.priceNote"
+                class="ml-2 align-middle text-xs font-normal text-gray-500"
+              >{{ skuResult.priceNote }}</span>
+            </p>
             <div class="flex items-center gap-4 text-sm text-gray-500">
               <span>销量：{{ formatSales(skuResult.sales) }}</span>
               <span>颜色：{{ skuResult.colors.length }} 种</span>
@@ -151,17 +157,17 @@
               <UiButton
                 variant="outline"
                 size="sm"
-                :loading="addingNo === skuResult.productNo"
-                :disabled="addingNo === skuResult.productNo || isProductCollected"
+                :loading="collectionBusy"
+                :disabled="collectionBusy"
                 :class="isProductCollected
-                  ? 'text-amber-600 border-amber-200 bg-amber-50'
+                  ? 'text-amber-600 border-amber-200 bg-amber-50 hover:border-amber-300'
                   : 'text-amber-600 border-amber-200 hover:bg-amber-50 hover:border-amber-300'"
-                @click="handleAddCollection"
+                @click="handleToggleCollection"
               >
                 <svg class="w-4 h-4 mr-1" viewBox="0 0 24 24" :fill="isProductCollected ? 'currentColor' : 'none'" stroke="currentColor">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.539 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.196-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
                 </svg>
-                {{ isProductCollected ? '已收藏' : '收藏' }}
+                {{ isProductCollected ? '取消收藏' : '收藏' }}
               </UiButton>
 
               <UiButton
@@ -215,9 +221,8 @@ definePageMeta({
 })
 const route = useRoute()
 const router = useRouter()
-const productNo = computed(() => route.params.productNo as string)
-
-// 获取路由参数
+/** 商品 ID（goods_id）：与一手 App 详情页一致，链接、接口都用它 */
+const productId = computed(() => route.params.productId as string)
 
 // 一键唤起一手 App 商品详情（手机端才显示入口）
 const { isMobileViewport, openYishouProduct } = useYishouApp()
@@ -230,35 +235,22 @@ const {
   getProductSkus,
 } = useStock()
 
-// 加入一手收藏夹
+// 加入 / 移出一手收藏夹
 const { addingNo, addToCollection } = useCollectionAdd()
-
-/** 当前商品的收藏状态：来自详情接口的 collect_id（'0' 或未知都算未收藏） */
-const collectId = ref('')
-const isProductCollected = computed(() => isCollectedId(collectId.value))
+const { removingNo, removeFromCollection } = useCollectionRemove()
 
 /**
- * 拉取收藏状态
+ * 收藏状态：商品详情接口（get_goods_info_v2）直接带回 collect_id
  *
- * SKU 接口（goods_detail）不返回 collect_id，这里用同源的库存查询接口
- * （goods_info）补一次；失败不影响页面，只影响星标亮不亮。
+ * 匿名请求恒为 '0'，登录态才有真实收藏条目 ID，所以不再额外发一次库存查询。
  */
-const loadCollectState = async (productId: string) => {
-  if (!productId) return
-  try {
-    const response = await $fetch<
-      ApiResponse<{ collectId?: string }>
-    >('/api/stock/check', {
-      method: 'POST',
-      body: { productId },
-    })
-    if (response.success) {
-      collectId.value = response.data?.collectId ?? ''
-    }
-  } catch {
-    // 收藏状态是次要信息，拿不到就按未收藏展示
-  }
-}
+const isProductCollected = computed(() => isCollectedId(skuResult.value?.collectId))
+
+/** 收藏按钮忙碌态：加/删共用，避免两个请求打架 */
+const collectionBusy = computed(() => {
+  const no = skuResult.value?.productNo
+  return Boolean(no) && (addingNo.value === no || removingNo.value === no)
+})
 
 // 手动一键下单：所有有货规格各 1 件，合计不超过 5 件
 const toast = useToast()
@@ -295,15 +287,28 @@ const openYishou = () => {
   openYishouProduct(result.productId, result.productNo)
 }
 
-// 收藏当前商品（收藏夹按 goods_no 收，取详情里的货号）
-const handleAddCollection = async () => {
+// 收藏 / 取消收藏当前商品：收藏按 goods_no，取消按 goods_no + collect_id
+const handleToggleCollection = async () => {
   const result = skuResult.value
-  if (!result || isProductCollected.value) {
+  if (!result || collectionBusy.value) {
+    return
+  }
+  if (isProductCollected.value) {
+    if (result.collectId === 'collected') {
+      toast.warning('请刷新页面后再取消收藏')
+      return
+    }
+    const outcome = await removeFromCollection(result.productNo, result.productId, result.collectId)
+    // 取消成功后本地标记为未收藏，星标立即熄灭
+    if (outcome.ok) {
+      result.collectId = '0'
+    }
     return
   }
   const outcome = await addToCollection(result.productNo)
+  // 收藏接口只认货号，成功后就地更新收藏标记（真实 collect_id 或占位值）
   if (outcome.ok) {
-    collectId.value = outcome.collectId ?? 'collected'
+    result.collectId = outcome.collectId ?? 'collected'
   }
 }
 
@@ -418,13 +423,8 @@ const handleRetry = () => {
 
 // 加载 SKU 数据
 const loadSkuData = async () => {
-  if (!productNo.value) return
-  await getProductSkus(productNo.value)
-  const productId = skuResult.value?.productId
-  if (productId) {
-    // 不阻塞主流程：星标晚一点亮没关系
-    void loadCollectState(productId)
-  }
+  if (!productId.value) return
+  await getProductSkus(productId.value)
 }
 
 // 页面加载时获取数据
@@ -433,7 +433,7 @@ onMounted(() => {
 })
 
 // 监听路由参数变化
-watch(productNo, () => {
+watch(productId, () => {
   loadSkuData()
 })
 </script>

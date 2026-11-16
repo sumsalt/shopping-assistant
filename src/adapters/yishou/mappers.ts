@@ -13,7 +13,6 @@ import type {
   ProductSkuResult,
   SkuInfo,
   StockCheckResult,
-  YishouCartDetailData,
   YishouCollectionGoodsData,
   YishouGoodsData,
   YishouTabGoodsData,
@@ -250,24 +249,47 @@ export const mapTabItemToResult = (data: YishouTabGoodsData): CollectionStockRes
   };
 };
 
-/** 商品详情 → SKU 列表 */
-export const mapCartDetailToSkuResult = (data: YishouCartDetailData): ProductSkuResult => {
+/**
+ * 颜色名清洗
+ *
+ * 登录态的 `attribute[].color` 会带「-现货」后缀（匿名态没有），
+ * 同一商品换个账号展示就变样，这里统一去掉实测到的后缀。
+ */
+const stripStockSuffix = (color: string): string =>
+  typeof color === 'string' && color.endsWith('-现货')
+    ? color.slice(0, -'-现货'.length)
+    : color;
+
+/**
+ * 商品详情（`get_goods_info_v2`）→ SKU 列表
+ *
+ * 详情页只调这一个接口：SKU 树、价格、库存、收藏标记一次拿全。
+ * 与 `mapCartDetailToSkuResult` 的差别只有两处：
+ *   1. 匿名态 `shop_price` 是零售价（不是降级的 `??.??`），价格必须改读 `alone_price`；
+ *   2. 颜色名要洗掉「-现货」后缀。
+ */
+export const mapGoodsToSkuResult = (
+  data: YishouGoodsData,
+  options: { guest?: boolean } = {}
+): ProductSkuResult => {
+  const guest = Boolean(options.guest);
   const skuList: SkuInfo[] = [];
   const colors: string[] = [];
   const sizesSet = new Set<string>();
 
   for (const colorAttr of data.attribute || []) {
-    colors.push(colorAttr.color);
+    const color = stripStockSuffix(colorAttr.color);
+    colors.push(color);
 
     for (const item of colorAttr.item || []) {
       sizesSet.add(item.size);
 
-      const stock = Number.parseInt(item.stock, 10) || 0;
-      const saleStock = Number.parseInt(item.sale_stock, 10) || 0;
+      const stock = Number(item.stock) || 0;
+      const saleStock = Number(item.sale_stock) || 0;
 
       skuList.push({
         skuId: item.sku,
-        color: colorAttr.color,
+        color,
         colorId: colorAttr.color_id,
         size: item.size,
         stock,
@@ -278,21 +300,32 @@ export const mapCartDetailToSkuResult = (data: YishouCartDetailData): ProductSku
     }
   }
 
+  const shopPrice = toOptionalNumber(data.shop_price);
+  const alonePrice = toOptionalNumber(data.alone_price);
+  // 匿名态读 shop_price 会拿到零售价，必须优先 alone_price
+  const useAlonePrice = guest || !shopPrice || shopPrice <= 0;
+  const price = (useAlonePrice ? alonePrice : shopPrice) ?? 0;
+
   return {
     platform: 'yishou',
-    productId: data.goods_id,
+    productId: String(data.goods_id ?? ''),
     productName: data.goods_name,
     productNo: data.goods_no,
-    price: Number.parseFloat(data.shop_price) || 0,
+    price,
+    ...(guest ? { priceNote: '游客参考价' } : {}),
     productImage: data.goods_thumb,
-    productUrl: goodsUrl(data.goods_id),
-    sales: Number.parseInt(data.sales, 10) || 0,
+    productUrl: goodsUrl(String(data.goods_id ?? '')),
+    sales: Number.parseInt(data.sales ?? '', 10) || 0,
     colors,
     sizes: Array.from(sizesSet),
     skuList,
     inStockSkuCount: skuList.filter(sku => sku.inStock).length,
     totalSkuCount: skuList.length,
-    restrictionNumber: data.restriction_number,
+    restrictionNumber:
+      typeof data.restriction_number === 'number' ? data.restriction_number : -1,
+    ...(data.collect_id !== undefined && data.collect_id !== ''
+      ? { collectId: String(data.collect_id) }
+      : {}),
   };
 };
 

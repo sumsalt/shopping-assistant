@@ -83,9 +83,14 @@ return mapXxx(data);
 
 ```
 地址 → SKU → prepareCheckout（协议层一次做完）→ createOrder
+
 prepareCheckout = add_cart_goods_info → add_goods_to_cart → get_carts_by_supply
                  → cart/activities → confirm_order_v4
 ```
+
+> 商品详情页（本站 `/stock/{goods_id}`）的 SKU 列表不再走 `wechat/add_cart_goods_info`，
+> 改成和 App 详情页同一个接口 `get_goods_info_v2`：一次请求拿全 SKU 树、价格、
+> 库存与 `collect_id`，且匿名可用（价格回落 `alone_price`，标注「游客参考价」）。
 
 四个接口的 `selected` 结构各不相同，全部收敛在 `checkout.ts` 的纯函数里（契约单测锁死）：
 
@@ -230,7 +235,7 @@ payload 顶层，新 stock/price 任务固化到 record；**老任务没有 `acc
 | 任务 | 请求身份 | 桶 |
 |---|---|---|
 | 到货检测（全部规格） | 匿名（`toAnonymousAdapterConfig` 剔除凭证） | 1s |
-| 到货检测（限定规格） | 登录态（查 SKU 明细必须带凭证） | 5s |
+| 到货检测（限定规格） | 匿名（SKU 明细走 `get_goods_info_v2`，免登录） | 1s |
 | 到货下单 | 登录态，但 `skipGate` | 不排队 |
 | Tab 监控 | 匿名（配置本身无凭证） | 1s |
 | 价格监控 | 登录态（强制） | 5s |
@@ -245,7 +250,7 @@ payload 顶层，新 stock/price 任务固化到 record；**老任务没有 `acc
 
 - **按规格监控**：任务配置 `skus` 后，检测会额外查一次 SKU 明细，
   只有所选规格 `saleStock > 0` 才算到货；商品整体有货但所选规格没货时只置 `skuWaiting`，
-  不发邮件、不下单。该接口拒绝匿名，所以这类任务必须带登录态，检测进 5 秒桶。
+  不发邮件、不下单。SKU 明细已改走 `get_goods_info_v2`（匿名可查），这类任务不再需要登录态。
 - **多规格合单**：优先用任务配置的 `skus`（可多选），其次兼容旧的 `autoOrder.sku`，
   都没有时全部规格参与。按规格顺序分配件数，需求 5 件、蓝色 1 件、黑色 1 件时，
   一次加购带上 `[{蓝色,1},{黑色,1}]`，结算与建单都是同一份明细，
@@ -315,6 +320,20 @@ payload 顶层，新 stock/price 任务固化到 record；**老任务没有 `acc
   由 `formatOrderAttribute` 摊平成「粉色 M ×1 / 灰色 均码 ×2」，解析失败再回退 `selected`。
 - 页面 `/orders` 与收藏夹同一套账号口径：默认当前账号，`?accountId=` 临时查看指定账号，
   服务端同样校验归属与 `request_profile`，不改变当前使用账号。
+
+### 收藏 / 取消收藏（写操作）
+
+- 加入：`POST /users/add_goods_collection`，按 `goods_no` 收；iOS form
+  `app_code=0&goods_no=xxx`，Android H5 用 JSON，服务端两种都认。成功回 `collect_id`
+  （后续取消收藏要用它），重复收藏回业务错误「该商品已收藏」。
+- 取消：`POST /users/del_goods_collection`，JSON body
+  `{goods_no, goods_id, collect_id, token, uid, version_name}`（抓包 7.77.00 Android）。
+  定位收藏条目靠 `goods_no` + `collect_id`，`collect_id` 缺失则服务端无法移除；
+  `token`/`uid`/`version_name` 由账号快照注入、签名同其他接口。适配器只补
+  `goods_no` + `collect_id`（+ 抓包也带的 `goods_id`），两种操作都跳过闸门。
+- 页面三处入口：详情页星标（已收藏可取消）、Tab 卡片左上角星标、收藏夹卡片
+  垃圾桶按钮。取消成功后就地更新本地 `collectId`（详情/Tab 置 `'0'`、收藏夹移除卡片），
+  不等下一轮列表刷新。临时查看他人账号（`?accountId=`）时收藏页不暴露取消入口。
 
 ## 五、抓包存什么
 

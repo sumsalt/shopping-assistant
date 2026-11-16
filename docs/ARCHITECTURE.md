@@ -175,7 +175,7 @@ npx tsx scripts/migrate-tasks-v2.ts --apply     # 先 VACUUM INTO 备份，再�
 |---|---|
 | `components/task/TaskCard.vue` | 唯一的任务卡片：状态、目标、badges、stats、事件、操作 |
 | `components/task/TaskEventList.vue` | 唯一的事件列表，按 `tone` 上色 |
-| `components/task/TaskTarget.vue` | 目标展示，商品有货号时跳 `/stock/{productNo}` |
+| `components/task/TaskTarget.vue` | 目标展示，商品目标跳 `/stock/{goods_id}` |
 | `composables/useTaskList.ts` | 四类任务列表页共用：加载 / 删除 / 重启 / busy |
 | `composables/useAutoOrderForm.ts` | 价格与到货监控共用的自动下单表单（件数、地址、规格、预检） |
 | `composables/useTabSeen.ts` | Tab 累计商品分页查询 |

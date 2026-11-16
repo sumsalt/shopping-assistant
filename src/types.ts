@@ -98,6 +98,16 @@ export interface YishouGoodsData {
   coupons_new?: YishouCouponNew[];
   /** 登录态检查标记（仅登录态返回） */
   check_status?: string;
+  /** 颜色-尺码-SKU 库存树（`get_goods_info_v2` 与加购详情接口结构一致） */
+  attribute?: YishouColorAttribute[];
+  /** 销量 */
+  sales?: string;
+  /** 累计销量 */
+  sales_total?: string;
+  /** 限购数量，-1 表示不限购 */
+  restriction_number?: number;
+  /** 限购提示文案 */
+  restriction_text?: string;
 }
 
 /**
@@ -298,10 +308,10 @@ export interface YishouSkuItem {
   size: string;
   /** SKU ID */
   sku: string;
-  /** 库存数量 */
-  stock: string;
-  /** 可售库存 */
-  sale_stock: string;
+  /** 库存数量（`get_goods_info_v2` 返回数字，加购详情接口返回字符串） */
+  stock: string | number;
+  /** 可售库存（同上，两种接口类型不一致） */
+  sale_stock: string | number;
   /** 排序 */
   sort: string;
   /** SKU 标签 */
@@ -330,37 +340,6 @@ export interface YishouColorAttribute {
   item: YishouSkuItem[];
 }
 
-/**
- * 一手商品详情数据
- */
-export interface YishouCartDetailData {
-  /** 商品ID */
-  goods_id: string;
-  /** 商品货号 */
-  goods_no: string;
-  /** 商品名称 */
-  goods_name: string;
-  /** 拿货价 */
-  shop_price: string;
-  /** 商品缩略图 */
-  goods_thumb: string;
-  /** 销量 */
-  sales: string;
-  /** 颜色（逗号分隔） */
-  color: string;
-  /** 尺码（逗号分隔） */
-  size: string;
-  /** 是否补货中 */
-  is_replenish: string;
-  /** 颜色尺码属性列表 */
-  attribute: YishouColorAttribute[];
-  /** 限购数量，-1表示不限购 */
-  restriction_number: number;
-  /** 限购提示文案 */
-  restriction_text: string;
-  /** 已购数量 */
-  buy_number: number;
-}
 
 /**
  * 通用 SKU 信息（转换后）
@@ -398,6 +377,8 @@ export interface ProductSkuResult {
   productNo: string;
   /** 价格 */
   price: number;
+  /** 价格口径说明（匿名查询时为「游客参考价」） */
+  priceNote?: string;
   /** 商品主图 */
   productImage: string;
   /** 商品链接 */
@@ -416,6 +397,12 @@ export interface ProductSkuResult {
   totalSkuCount: number;
   /** 限购数量，-1表示不限购 */
   restrictionNumber: number;
+  /**
+   * 一手收藏标记（`get_goods_info_v2` 原样透传）
+   *
+   * `"0"` 表示未收藏，非 0 数字是 collect_id；匿名请求恒为 `"0"`。
+   */
+  collectId?: string;
 }
 
 // ==================== 价格相关类型 ====================

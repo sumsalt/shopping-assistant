@@ -63,8 +63,8 @@ export type {
 export { httpRequest, httpPost } from './utils/http';
 
 // 导出库存查询主函数
-export { checkStock, checkCollectionStock, getProductSkus, getOrderList, addProductToCollection } from './stock-check';
-export type { CheckStockOptions, CollectionStockRequest, ProductSkuRequest, OrderListRequest, AddCollectionRequest } from './stock-check';
+export { checkStock, checkCollectionStock, getProductSkus, getOrderList, addProductToCollection, removeProductFromCollection } from './stock-check';
+export type { CheckStockOptions, CollectionStockRequest, ProductSkuRequest, OrderListRequest, AddCollectionRequest, RemoveCollectionRequest } from './stock-check';
 
 // 导出关键词商品搜索（类型 KeywordSearchItem / KeywordSearchResult 由 export * from './types' 带出）
 export { isNumericProductQuery, searchGoodsByKeyword } from './goods-search';

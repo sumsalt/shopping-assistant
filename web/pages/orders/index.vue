@@ -125,13 +125,13 @@
         <!-- 商品明细 -->
         <div class="divide-y divide-gray-100">
           <component
-            :is="item.goodsNo ? 'button' : 'div'"
+            :is="item.goodsId ? 'button' : 'div'"
             v-for="item in order.items"
             :key="`${order.orderSn}-${item.goodsId}-${item.specText}`"
-            :type="item.goodsNo ? 'button' : undefined"
+            :type="item.goodsId ? 'button' : undefined"
             class="w-full flex gap-3 px-4 py-3 text-left"
-            :class="item.goodsNo ? 'hover:bg-gray-50 transition-colors' : ''"
-            @click="item.goodsNo && goToProduct(item.goodsNo)"
+            :class="item.goodsId ? 'hover:bg-gray-50 transition-colors' : ''"
+            @click="item.goodsId && goToProduct(item.goodsId)"
           >
             <img
               v-if="item.goodsImage"
@@ -257,8 +257,9 @@ const statusVariant = (name: string): 'default' | 'success' | 'warning' | 'dange
   return 'default'
 }
 
-const goToProduct = (productNo: string) => {
-  navigateTo(`/stock/${productNo}`)
+/** 商品行跳站内详情页（goods_id，与 App 详情页一致） */
+const goToProduct = (productId: string) => {
+  navigateTo(`/stock/${productId}`)
 }
 
 onMounted(() => {

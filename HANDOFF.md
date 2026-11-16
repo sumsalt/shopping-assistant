@@ -140,7 +140,7 @@ web/utils/               前端纯工具（时长选项、格式化、任务筛�
 |---|---|
 | `/` | 功能入口宫格 + 未选账号提醒 |
 | `/stock/check` | 库存查询：纯数字查单个商品；含文字走关键词搜索（结果新窗口开详情） |
-| `/stock/[productNo]` | 商品详情：SKU、价格、一键下单、价格监控入口 |
+| `/stock/[productId]` | 商品详情：按 goods_id 进（与 App 一致），只调 `get_goods_info_v2`，匿名可看游客价 |
 | `/monitor` | 到货监控任务 |
 | `/price-monitor` | 价格监控任务 |
 | `/tab-monitor` | Tab 监控任务 |

@@ -54,8 +54,8 @@ export interface PrepareCheckoutInput {
 export interface AutoOrderAdapter {
   /** 收货地址列表 */
   getAddresses(): Promise<YishouAddress[]>;
-  /** 商品 SKU 列表 */
-  getProductSkus(productNo: string): Promise<ProductSkuResult>;
+  /** 商品 SKU 列表（按 goods_id 查，走商品详情接口） */
+  getProductSkus(productId: string): Promise<ProductSkuResult>;
   /** 准备结算：加购 → 购物车明细 → 算折 → 结算确认，产出业务结论 + 不透明协议上下文 */
   prepareCheckout(input: PrepareCheckoutInput): Promise<CheckoutReady>;
   /** 用 prepareCheckout 的协议上下文建单 */
@@ -70,7 +70,7 @@ export interface AutoOrderAdapter {
 export interface PlaceOrderParams {
   /** 商品 ID（goods_id） */
   goodsId: string;
-  /** 商品货号（goods_no），查 SKU 用 */
+  /** 商品货号（goods_no），收藏与下单入参用 */
   goodsNo: string;
   /** 自动下单配置 */
   config: AutoOrderConfig;
@@ -292,7 +292,7 @@ const prepareOrder = async (
 
     // ② 规格：指定了 SKU 就只在这些里挑，否则全部规格都可参与
     stage = 'sku';
-    const skuResult = await adapter.getProductSkus(goodsNo);
+    const skuResult = await adapter.getProductSkus(goodsId);
     const candidates = wantedSkus.length
       ? skuResult.skuList.filter(item => wantedSkus.includes(item.skuId))
       : config.sku

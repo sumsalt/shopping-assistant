@@ -97,7 +97,7 @@
           <span class="shrink-0 ml-3">共 {{ seenTotal }} 个</span>
         </div>
         <p v-if="isMobileViewport" class="text-xs text-gray-400">
-          点击商品查看本站库存详情；左上角星标可加入一手收藏夹，右上角「App」在 App 内打开。
+          点击商品查看本站库存详情；左上角星标可加入 / 取消一手收藏夹，右上角「App」在 App 内打开。
         </p>
 
         <div v-if="seenLoading" class="py-12 text-center text-sm text-gray-500">
@@ -128,9 +128,9 @@
                     : 'bg-black/45 text-white active:bg-black/70',
                   addingNo === item.productNo ? 'animate-pulse' : '',
                 ]"
-                :disabled="addingNo === item.productNo || isSeenCollected(item)"
-                :title="isSeenCollected(item) ? '已在一手收藏夹' : '加入一手收藏夹'"
-                @click.stop="addSeenToCollection(item)"
+                :disabled="seenCollectionBusy(item)"
+                :title="isSeenCollected(item) ? '从一手收藏夹移除' : '加入一手收藏夹'"
+                @click.stop="handleSeenCollection(item)"
               >
                 <svg
                   class="h-3.5 w-3.5"
@@ -250,9 +250,14 @@ const { danger: confirmDelete, warning: confirmRestart, confirm: confirmSeenBlac
   useConfirmDialog()
 const toast = useToast()
 const { addingNo, addToCollection } = useCollectionAdd()
+const { removingNo, removeFromCollection } = useCollectionRemove()
 
 /** 已收藏判断：用抓取时落盘的 collect_id，老记录没有该字段就按未收藏展示 */
 const isSeenCollected = (item: TabSeenProductItem): boolean => isCollectedId(item.collectId)
+
+/** 星标忙碌态：加/删共用，避免同一商品两个请求打架 */
+const seenCollectionBusy = (item: TabSeenProductItem): boolean =>
+  Boolean(item.productNo) && (addingNo.value === item.productNo || removingNo.value === item.productNo)
 
 const showAddDialog = ref(false)
 
@@ -381,9 +386,9 @@ const formatSeenTitle = (item: TabSeenProductItem): string => {
 }
 
 // 系统内 SKU 详情页地址：一手外链已不可用，统一跳到本站详情页
-// 老记录没有货号（productNo）时无法查询 SKU，不做跳转
+// 按 goods_id 跳转，老快照只有 id 也能进详情
 const seenDetailPath = (item: TabSeenProductItem): string =>
-  item.productNo ? `/stock/${encodeURIComponent(item.productNo)}` : ''
+  item.productId ? `/stock/${encodeURIComponent(item.productId)}` : ''
 
 const openSeenApp = (item: TabSeenProductItem) => {
   openYishouProduct(item.productId, item.productNo, () => {
@@ -392,9 +397,21 @@ const openSeenApp = (item: TabSeenProductItem) => {
   })
 }
 
-/** 卡片右上角「收藏」：加入当前账号的一手收藏夹 */
-const addSeenToCollection = async (item: TabSeenProductItem) => {
-  if (!item.productNo || isSeenCollected(item)) return
+/** 卡片左上角星标：未收藏则加入、已收藏则移出，都针对当前账号 */
+const handleSeenCollection = async (item: TabSeenProductItem) => {
+  if (!item.productNo || seenCollectionBusy(item)) return
+  if (isSeenCollected(item)) {
+    if (item.collectId === 'collected') {
+      toast.warning('请刷新页面后再取消收藏')
+      return
+    }
+    const outcome = await removeFromCollection(item.productNo, item.productId, item.collectId)
+    // 取消成功后写回条目：collectId 归零，星标熄灭
+    if (outcome.ok) {
+      item.collectId = '0'
+    }
+    return
+  }
   const outcome = await addToCollection(item.productNo)
   // 收藏结果写回当前条目：拿到真实 collect_id 就用它，重复收藏时用占位值标记已收藏
   if (outcome.ok) {

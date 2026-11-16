@@ -18,7 +18,6 @@ import type {
   ProductSkuResult,
   StockCheckResult,
   AddToCollectionResult,
-  YishouCartDetailData,
   YishouCollectionGoodsData,
   YishouGoodsData,
   YishouTabGoodsData,
@@ -30,8 +29,8 @@ import * as EP from './endpoints';
 import { YishouClient, withErrorContext } from './client';
 import { YishouOrderApi } from './order-api';
 import {
-  mapCartDetailToSkuResult,
   mapCollectionItemToResult,
+  mapGoodsToSkuResult,
   mapKeywordSearchResult,
   mapTabItemToResult,
   mapToPriceSnapshot,
@@ -177,6 +176,33 @@ export class YishouAdapter extends BaseAdapter {
     return { collectId };
   }
 
+  /**
+   * 从收藏夹移除（抓包：POST /users/del_goods_collection，JSON 形态）
+   *
+   * 抓包体 `{version_name, goods_no, goods_id, collect_id, token, uid}`：
+   * version_name/token/uid 由 writeClient 从账号快照自动注入、签名同理，
+   * 这里只补业务三件套 goods_no + collect_id（+ 抓包也带的 goods_id）。
+   * collect_id 决定移除哪一条收藏，缺它服务端无法定位。
+   */
+  async removeCollection(productNo: string, collectId: string, productId?: string): Promise<void> {
+    const no = String(productNo || '').trim();
+    const cid = String(collectId || '').trim();
+    if (!no || !cid) {
+      throw new StockCheckError(StockCheckErrorType.API_ERROR, '缺少商品货号或收藏 ID，无法取消收藏');
+    }
+    if (!this.writeClient.hasAuth) {
+      throw new StockCheckError(StockCheckErrorType.AUTH_REQUIRED, '取消收藏需要登录态，请先选择账号');
+    }
+
+    await this.writeClient
+      .post(EP.DEL_COLLECTION, {
+        goods_no: no,
+        ...(productId ? { goods_id: String(productId) } : {}),
+        collect_id: cid,
+      })
+      .catch(withErrorContext('取消收藏失败'));
+  }
+
   /** 获取 H5 Tab 商品列表 */
   async getTabGoodsList(
     tabId: string,
@@ -228,18 +254,26 @@ export class YishouAdapter extends BaseAdapter {
       .catch(withErrorContext('关键词搜索失败'));
   }
 
-  /** 获取商品 SKU 列表 */
-  async getProductSkus(productNo: string): Promise<ProductSkuResult> {
+  /**
+   * 获取商品 SKU 列表（商品详情 `get_goods_info_v2`）
+   *
+   * 详情页只调这一个接口：SKU 树、价格、库存、收藏标记一次拿全。
+   * 该接口匿名可用，未登录时价格回落成游客参考价（读 alone_price），
+   * 所以这里不再要求登录态。
+   */
+  async getProductSkus(productId: string): Promise<ProductSkuResult> {
+    const id = String(productId || '').trim();
+    if (!id) {
+      throw new StockCheckError(StockCheckErrorType.API_ERROR, '缺少商品 ID');
+    }
+
+    const guest = !this.client.hasAuth;
     try {
-      const data = await this.directClient.post<YishouCartDetailData>(EP.GOODS_DETAIL, {
-        goods_no: productNo,
-        from_page: '1',
-      });
-      if (!data) throw notFound(productNo);
-      return mapCartDetailToSkuResult(data);
+      const data = await this.fetchGoods(id);
+      return mapGoodsToSkuResult(data, { guest });
     } catch (error) {
       if (error instanceof StockCheckError && error.type === StockCheckErrorType.PRODUCT_NOT_FOUND) {
-        throw notFound(productNo);
+        throw notFound(id);
       }
       throw withErrorContext('获取商品 SKU 失败')(error);
     }

@@ -3,8 +3,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { isInStock, getStockMessage, mapToStockResult, isCollectionItemInStock, getCollectionItemMessage, mapCollectionItemToResult, mapCartDetailToSkuResult, mapToPriceSnapshot, mapTabItemToResult } from './index';
-import type { YishouGoodsData, YishouCollectionGoodsData, YishouCartDetailData } from '../../types';
+import { isInStock, getStockMessage, mapToStockResult, isCollectionItemInStock, getCollectionItemMessage, mapCollectionItemToResult, mapGoodsToSkuResult, mapToPriceSnapshot, mapTabItemToResult } from './index';
+import type { YishouGoodsData, YishouCollectionGoodsData } from '../../types';
 
 // 创建测试用的商品数据工厂函数
 const createMockGoodsData = (overrides: Partial<YishouGoodsData> = {}): YishouGoodsData => ({
@@ -283,7 +283,7 @@ describe('mapCollectionItemToResult - 收藏夹商品数据转换', () => {
 // ==================== SKU 数据转换测试 ====================
 
 // 创建测试用的商品详情数据工厂函数
-const createMockCartDetailData = (overrides: Partial<YishouCartDetailData> = {}): YishouCartDetailData => ({
+const createMockSkuGoodsData = (overrides: Partial<YishouGoodsData> = {}): YishouGoodsData => ({
   goods_id: '269437752',
   goods_no: '1348205483',
   goods_name: '测试商品详情',
@@ -292,10 +292,11 @@ const createMockCartDetailData = (overrides: Partial<YishouCartDetailData> = {})
   sales: '22',
   color: '黑色、白色',
   size: 'S/M、L/XL',
-  is_replenish: '0',
+  goods_status: '1',
+  is_on_sale: '1',
+  is_stockout: '0',
+  remind_off_sale: '',
   restriction_number: -1,
-  restriction_text: '已达最大限购数量',
-  buy_number: 0,
   attribute: [
     {
       color: '黑色',
@@ -359,10 +360,10 @@ const createMockCartDetailData = (overrides: Partial<YishouCartDetailData> = {})
   ...overrides,
 });
 
-describe('mapCartDetailToSkuResult - SKU 数据转换', () => {
+describe('mapGoodsToSkuResult - SKU 数据转换', () => {
   it('应正确转换商品详情数据为 SKU 查询结果', () => {
-    const data = createMockCartDetailData();
-    const result = mapCartDetailToSkuResult(data);
+    const data = createMockSkuGoodsData();
+    const result = mapGoodsToSkuResult(data);
 
     expect(result.platform).toBe('yishou');
     expect(result.productId).toBe('269437752');
@@ -374,15 +375,15 @@ describe('mapCartDetailToSkuResult - SKU 数据转换', () => {
   });
 
   it('应正确提取所有颜色', () => {
-    const data = createMockCartDetailData();
-    const result = mapCartDetailToSkuResult(data);
+    const data = createMockSkuGoodsData();
+    const result = mapGoodsToSkuResult(data);
 
     expect(result.colors).toEqual(['黑色', '白色']);
   });
 
   it('应正确提取所有尺码（去重）', () => {
-    const data = createMockCartDetailData();
-    const result = mapCartDetailToSkuResult(data);
+    const data = createMockSkuGoodsData();
+    const result = mapGoodsToSkuResult(data);
 
     expect(result.sizes).toContain('S/M');
     expect(result.sizes).toContain('L/XL');
@@ -390,16 +391,16 @@ describe('mapCartDetailToSkuResult - SKU 数据转换', () => {
   });
 
   it('应正确生成 SKU 列表', () => {
-    const data = createMockCartDetailData();
-    const result = mapCartDetailToSkuResult(data);
+    const data = createMockSkuGoodsData();
+    const result = mapGoodsToSkuResult(data);
 
     expect(result.skuList.length).toBe(4);
     expect(result.totalSkuCount).toBe(4);
   });
 
   it('应正确判断 SKU 是否有货', () => {
-    const data = createMockCartDetailData();
-    const result = mapCartDetailToSkuResult(data);
+    const data = createMockSkuGoodsData();
+    const result = mapGoodsToSkuResult(data);
 
     // 黑色 S/M 有货（saleStock: 998）
     const blackSM = result.skuList.find(sku => sku.color === '黑色' && sku.size === 'S/M');
@@ -413,16 +414,16 @@ describe('mapCartDetailToSkuResult - SKU 数据转换', () => {
   });
 
   it('应正确计算有货 SKU 数量', () => {
-    const data = createMockCartDetailData();
-    const result = mapCartDetailToSkuResult(data);
+    const data = createMockSkuGoodsData();
+    const result = mapGoodsToSkuResult(data);
 
     // 黑色 S/M(998) + 黑色 L/XL(997) + 白色 L/XL(500) = 3 个有货
     expect(result.inStockSkuCount).toBe(3);
   });
 
   it('当 attribute 为空时，应返回空的 SKU 列表', () => {
-    const data = createMockCartDetailData({ attribute: [] });
-    const result = mapCartDetailToSkuResult(data);
+    const data = createMockSkuGoodsData({ attribute: [] });
+    const result = mapGoodsToSkuResult(data);
 
     expect(result.skuList).toEqual([]);
     expect(result.colors).toEqual([]);
@@ -432,20 +433,20 @@ describe('mapCartDetailToSkuResult - SKU 数据转换', () => {
   });
 
   it('当价格为无效字符串时，应返回 0', () => {
-    const data = createMockCartDetailData({ shop_price: 'invalid' });
-    const result = mapCartDetailToSkuResult(data);
+    const data = createMockSkuGoodsData({ shop_price: 'invalid' });
+    const result = mapGoodsToSkuResult(data);
     expect(result.price).toBe(0);
   });
 
   it('当销量为无效字符串时，应返回 0', () => {
-    const data = createMockCartDetailData({ sales: 'invalid' });
-    const result = mapCartDetailToSkuResult(data);
+    const data = createMockSkuGoodsData({ sales: 'invalid' });
+    const result = mapGoodsToSkuResult(data);
     expect(result.sales).toBe(0);
   });
 
   it('SKU 应包含正确的颜色图片', () => {
-    const data = createMockCartDetailData();
-    const result = mapCartDetailToSkuResult(data);
+    const data = createMockSkuGoodsData();
+    const result = mapGoodsToSkuResult(data);
 
     const blackSku = result.skuList.find(sku => sku.color === '黑色');
     expect(blackSku?.colorImage).toBe('https://example.com/black_thumb.jpg');

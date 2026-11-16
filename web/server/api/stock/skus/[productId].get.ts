@@ -1,6 +1,10 @@
 /**
  * SKU 查询 API
- * GET /api/stock/skus/:productNo
+ * GET /api/stock/skus/:productId
+ *
+ * 底层只调 `get_goods_info_v2`（与 App 详情页同一个接口），一次拿全 SKU、价格、
+ * 库存和收藏标记。该接口匿名可用：当前账号有登录态时价格是拿货价，没有登录态
+ * 时回落成游客参考价（`priceNote` 标注），因此这里不再强制要求登录态。
  */
 
 import { getProductSkus } from '@core'
@@ -16,46 +20,30 @@ export default defineEventHandler(async (event) => {
       return createErrorResponse(ErrorCode.UNAUTHORIZED, '请先登录')
     }
 
-    // 获取路由参数
-    const productNo = getRouterParam(event, 'productNo')
-
-    if (!productNo) {
-      return createErrorResponse(ErrorCode.INVALID_PARAMS, '商品货号不能为空')
+    const productId = getRouterParam(event, 'productId')
+    if (!productId) {
+      return createErrorResponse(ErrorCode.INVALID_PARAMS, '商品 ID 不能为空')
     }
 
-    // 规格明细接口拒绝匿名（实测返回「请先登录」），必须用登录态快照。
-    // 纯到货提醒的用户如果没选账号，前端不会调用这个接口，按「全部规格」处理。
-    const { config: adapterConfig, hasCredential } = resolveAdapterConfigForUser(
-      currentUser.username,
-      true
-    )
-    if (!hasCredential) {
-      return createErrorResponse(
-        ErrorCode.AUTH_REQUIRED,
-        '查询规格需要一手登录态，请先在账号管理中选择带登录态的账号'
-      )
-    }
+    // 有登录态就用登录态（拿货价 + 真实收藏状态），没有也能查（游客参考价）
+    const { config: adapterConfig } = resolveAdapterConfigForUser(currentUser.username, true)
 
-    // 构建请求参数
     const request: ProductSkuRequest = {
       platform: 'yishou',
-      productNo: productNo,
+      productId,
     }
 
-    // 调用核心库获取 SKU
     const result: ProductSkuResult = await getProductSkus(request, { adapterConfig })
 
     return createSuccessResponse(result)
   } catch (error: unknown) {
     console.error('SKU 查询失败:', error)
 
-    // 处理核心库错误
     if (error && typeof error === 'object' && 'type' in error) {
       const stockError = error as StockCheckError
       return createErrorResponse(stockError.type, stockError.message)
     }
 
-    // 未知错误
     const errorMessage = error instanceof Error ? error.message : '未知错误'
     return createErrorResponse(ErrorCode.UNKNOWN_ERROR, errorMessage)
   }

@@ -42,8 +42,8 @@ export interface CollectionStockRequest {
 export interface ProductSkuRequest {
   /** 平台类型 */
   platform: Platform;
-  /** 商品货号 */
-  productNo: string;
+  /** 商品 ID（一手平台对应 goods_id，与 App 详情页一致） */
+  productId: string;
 }
 
 /**
@@ -197,7 +197,7 @@ export const getOrderList = async (
  * @example
  * ```typescript
  * const result = await getProductSkus(
- *   { platform: 'yishou', productNo: '1349201542' },
+ *   { platform: 'yishou', productId: '341451565' },
  *   { adapterConfig: { uid: 'xxx', token: 'xxx' } }
  * );
  * 
@@ -218,7 +218,7 @@ export const getProductSkus = async (
   request: ProductSkuRequest,
   options: CheckStockOptions = {}
 ): Promise<ProductSkuResult> => {
-  const { platform, productNo } = request;
+  const { platform, productId } = request;
   const { adapterConfig = {} } = options;
 
   // 校验参数
@@ -229,10 +229,10 @@ export const getProductSkus = async (
     );
   }
 
-  if (!productNo) {
+  if (!productId) {
     throw new StockCheckError(
       StockCheckErrorType.API_ERROR,
-      '缺少必要参数: productNo'
+      '缺少必要参数: productId'
     );
   }
 
@@ -240,7 +240,7 @@ export const getProductSkus = async (
   const adapter = getAdapter(platform, adapterConfig);
 
   // 调用适配器获取商品 SKU
-  return adapter.getProductSkus(productNo);
+  return adapter.getProductSkus(productId);
 };
 
 /**
@@ -283,4 +283,49 @@ export const addProductToCollection = async (
   }
 
   return adapter.addCollection(productNo);
+};
+
+/**
+ * 从收藏夹移除请求参数
+ */
+export interface RemoveCollectionRequest {
+  /** 平台类型 */
+  platform: Platform;
+  /** 商品货号（一手 del 接口按 goods_no 收） */
+  productNo: string;
+  /** 收藏条目 ID（一手 del 接口按 collect_id 收） */
+  collectId: string;
+  /** 商品 ID（可选，抓包同时带 goods_id，有则带上对齐真机） */
+  productId?: string;
+}
+
+/**
+ * 从一手收藏夹移除商品
+ *
+ * 必须带登录态；collect_id 是定位收藏条目的关键字段，缺它一手无法移除。
+ * 商品已不在收藏夹时一手返回业务错误，这里原样抛出由调用方决定提示文案。
+ */
+export const removeProductFromCollection = async (
+  request: RemoveCollectionRequest,
+  options: CheckStockOptions = {}
+): Promise<void> => {
+  const { platform, productNo, collectId, productId } = request;
+  const { adapterConfig = {} } = options;
+
+  if (!platform) {
+    throw new StockCheckError(StockCheckErrorType.API_ERROR, '缺少必要参数: platform');
+  }
+  if (!productNo) {
+    throw new StockCheckError(StockCheckErrorType.API_ERROR, '缺少必要参数: productNo');
+  }
+  if (!collectId) {
+    throw new StockCheckError(StockCheckErrorType.API_ERROR, '缺少必要参数: collectId');
+  }
+
+  const adapter = getAdapter(platform, adapterConfig);
+  if (typeof adapter.removeCollection !== 'function') {
+    throw new StockCheckError(StockCheckErrorType.API_ERROR, '当前平台不支持取消收藏');
+  }
+
+  return adapter.removeCollection(productNo, collectId, productId);
 };
