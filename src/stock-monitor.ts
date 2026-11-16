@@ -331,6 +331,15 @@ export const createCancellableMonitor = (
         }
 
         try {
+          // 每轮重置瞬时状态，与价格监控口径一致：
+          // error（检测/邮件失败）和 orderError（下单失败）都只代表「最近一轮」，
+          // 下一轮成功或不再尝试时自动从卡片消失，不会一直挂着旧错误。
+          // 注意：非 retryable 的下单失败在本轮 break 结束任务，清空发生在下一轮开头、
+          // 那时循环已经不会再来，因此最终失败原因仍会被保留。
+          result.error = undefined;
+          result.orderError = undefined;
+          result.emailSent = undefined;
+
           const checkResult: StockCheckResult = await checkStock(task.request, {
             adapterConfig: detectionConfig,
           });

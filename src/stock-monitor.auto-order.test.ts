@@ -271,4 +271,91 @@ describe('库存监控 × 自动下单', () => {
     expect(contexts.length).toBeGreaterThan(0)
     expect(contexts.every(ctx => ctx.accountKey === undefined)).toBe(true)
   })
+
+  const startWithResults = () => {
+    const results: MonitorResult[] = []
+    const { controller, promise } = createCancellableMonitor(
+      task,
+      {
+        interval: 2,
+        duration: 3600,
+        adapterConfig: { uid: '20478621', token: 'token' },
+        autoOrder: autoOrderConfig,
+      },
+      undefined,
+      result => results.push({ ...result })
+    )
+    return { controller, promise, results }
+  }
+
+  it('检测错误在下一轮成功后被清空，不一直挂在卡片上', async () => {
+    // 第一轮抛错写入 error，第二轮恢复成功
+    mocks.checkStock
+      .mockRejectedValueOnce(new Error('请求超时（10000ms）'))
+      .mockResolvedValue({
+        platform: 'yishou',
+        productId: '338956151',
+        productName: '测试商品',
+        productNo: '1381301740',
+        inStock: false,
+        price: 53.81,
+        productUrl: '',
+        productImage: '',
+        message: '无货',
+      })
+
+    const { controller, promise, results } = startWithResults()
+    await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(2_000)
+    controller.abort()
+    await promise
+
+    // 第一轮确实记录了错误
+    expect(results[0].error).toBe('请求超时（10000ms）')
+    // 最后一轮（成功检测）里 error 应被清空
+    expect(results[results.length - 1].error).toBeUndefined()
+  })
+
+  it('下单失败后商品转无货时，orderError 不再残留', async () => {
+    // 第一轮有货且下单失败（可重试），第二轮转为无货（不进入下单分支）
+    mocks.checkStock
+      .mockResolvedValueOnce({
+        platform: 'yishou',
+        productId: '338956151',
+        productName: '测试商品',
+        productNo: '1381301740',
+        inStock: true,
+        price: 53.81,
+        productUrl: '',
+        productImage: '',
+        message: '有货',
+      })
+      .mockResolvedValue({
+        platform: 'yishou',
+        productId: '338956151',
+        productName: '测试商品',
+        productNo: '1381301740',
+        inStock: false,
+        price: 53.81,
+        productUrl: '',
+        productImage: '',
+        message: '无货',
+      })
+    mocks.placeAutoOrder.mockResolvedValue({
+      success: false,
+      stage: 'sku',
+      retryable: true,
+      message: '该商品当前没有可售规格',
+    })
+
+    const { controller, promise, results } = startWithResults()
+    await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(2_000)
+    controller.abort()
+    await promise
+
+    // 第一轮下单失败写入 orderError，第二轮无货不重试、orderError 应被清空
+    expect(results[0].orderError).toBe('该商品当前没有可售规格')
+    expect(results[results.length - 1].orderError).toBeUndefined()
+  })
 })
