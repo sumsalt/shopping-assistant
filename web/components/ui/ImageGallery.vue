@@ -3,7 +3,7 @@
     <!-- 单张大主图：cover 裁剪铺满，点击进全屏预览（预览里可切到其余图片） -->
     <button
       type="button"
-      class="relative w-full aspect-[4/3] rounded-lg overflow-hidden border border-gray-200 bg-gray-100 group focus:outline-none focus:ring-2 focus:ring-red-400 cursor-pointer"
+      class="relative w-full aspect-[4/5] rounded-lg overflow-hidden border border-gray-200 bg-gray-100 group focus:outline-none focus:ring-2 focus:ring-red-400 cursor-pointer"
       :aria-label="`查看商品图片，共 ${images.length} 张，点击放大`"
       @click="openPreview(0)"
     >
