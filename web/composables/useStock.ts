@@ -58,6 +58,10 @@ interface ProductSkuResult {
   saleNote?: string
   /** 发货 / 清仓提醒 */
   remindNote?: string
+  /** 可领红包（平台/档口/专场），仅登录态返回 */
+  coupons: Array<{ couponId: string; typeTitle: string; title: string }>
+  /** 新版满减券（满 threshold 减 reduce），仅登录态返回 */
+  couponsNew: Array<{ couponId: string; threshold: number; reduce: number }>
   sales: number
   colors: string[]
   sizes: string[]

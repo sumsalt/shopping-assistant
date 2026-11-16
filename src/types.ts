@@ -451,6 +451,10 @@ export interface ProductSkuResult {
   saleNote?: string;
   /** 发货 / 清仓提醒 */
   remindNote?: string;
+  /** 可领红包（平台/档口/专场），仅登录态返回 */
+  coupons: CouponInfo[];
+  /** 新版满减券（满 threshold 减 reduce），仅登录态返回 */
+  couponsNew: CouponNewInfo[];
   /** 销量 */
   sales: number;
   /** 可用颜色列表 */

@@ -38,6 +38,8 @@ const skuResult = (saleStocks: number[]): ProductSkuResult => ({
   images: [],
   tags: [],
   props: [],
+  coupons: [],
+  couponsNew: [],
   sales: 0,
   colors: ['蓝色', '黑色'],
   sizes: ['M', 'L'],

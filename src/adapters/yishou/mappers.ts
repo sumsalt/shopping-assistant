@@ -334,6 +334,18 @@ export const mapGoodsToSkuResult = (
 
   const tags = (data.goods_tags || []).filter(tag => typeof tag === 'string' && tag.trim() !== '');
 
+  // 优惠券：与价格快照同口径，红包 + 新版满减券（仅登录态返回，游客态为空数组）
+  const coupons = (data.coupons ?? []).map(coupon => ({
+    couponId: String(coupon.coupon_id ?? ''),
+    typeTitle: coupon.coupon_type_title ?? '',
+    title: coupon.coupon_title ?? '',
+  }));
+  const couponsNew = (data.coupons_new ?? []).map(coupon => ({
+    couponId: String(coupon.coupon_id ?? ''),
+    threshold: Number(coupon.condition_goods_amount) || 0,
+    reduce: Number(coupon.reduce_amount) || 0,
+  }));
+
   const provider = data.provider;
   const providerName = provider?.provider_name || provider?.stall_name || '';
   const providerMarket = provider?.provider_market || '';
@@ -367,6 +379,8 @@ export const mapGoodsToSkuResult = (
     ...(data.origin_name ? { originName: data.origin_name } : {}),
     ...(data.sale_note || data.desc ? { saleNote: data.sale_note || data.desc } : {}),
     ...(data.remind_note ? { remindNote: data.remind_note } : {}),
+    coupons,
+    couponsNew,
     sales: Number.parseInt(data.sales ?? '', 10) || 0,
     colors,
     sizes: Array.from(sizesSet),

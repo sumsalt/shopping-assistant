@@ -617,3 +617,41 @@ describe('mapGoodsToSkuResult - 图集与详情展示字段', () => {
     expect(result.props).toEqual([]);
   });
 });
+
+describe('mapGoodsToSkuResult - 优惠券', () => {
+  it('映射可领红包与新版满减券', () => {
+    const result = mapGoodsToSkuResult(
+      createMockSkuGoodsData({
+        coupons: [
+          { coupon_id: '269120', coupon_type_title: '平台红包', coupon_title: '商品参与满减' },
+          { coupon_id: '269121', coupon_type_title: '档口红包', coupon_title: '关注领券' },
+        ],
+        coupons_new: [
+          { coupon_id: '284446', condition_goods_amount: '1500', reduce_amount: '600' },
+          { coupon_id: '284447', condition_goods_amount: '800', reduce_amount: '300' },
+        ],
+      })
+    );
+    expect(result.coupons).toEqual([
+      { couponId: '269120', typeTitle: '平台红包', title: '商品参与满减' },
+      { couponId: '269121', typeTitle: '档口红包', title: '关注领券' },
+    ]);
+    expect(result.couponsNew).toEqual([
+      { couponId: '284446', threshold: 1500, reduce: 600 },
+      { couponId: '284447', threshold: 800, reduce: 300 },
+    ]);
+  });
+
+  it('无券或脏数据时返回空数组，不产生 NaN', () => {
+    const empty = mapGoodsToSkuResult(createMockSkuGoodsData());
+    expect(empty.coupons).toEqual([]);
+    expect(empty.couponsNew).toEqual([]);
+
+    const dirty = mapGoodsToSkuResult(
+      createMockSkuGoodsData({
+        coupons_new: [{ coupon_id: 'x', condition_goods_amount: 'bad', reduce_amount: '' }],
+      })
+    );
+    expect(dirty.couponsNew).toEqual([{ couponId: 'x', threshold: 0, reduce: 0 }]);
+  });
+});

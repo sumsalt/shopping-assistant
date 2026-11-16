@@ -82,6 +82,31 @@
                 class="text-xs font-normal text-gray-500"
               >{{ skuResult.priceNote }}</span>
             </div>
+
+            <!-- 优惠券：满减券 + 可领红包（仅登录态有数据） -->
+            <div
+              v-if="skuResult.couponsNew?.length || skuResult.coupons?.length"
+              class="flex flex-wrap items-center gap-2 pt-1"
+            >
+              <template v-for="c in skuResult.couponsNew" :key="`new-${c.couponId}`">
+                <span
+                  v-if="c.threshold > 0 && c.reduce > 0"
+                  class="inline-flex items-center gap-1 rounded border border-red-300 bg-red-50 px-2 py-0.5 text-xs font-medium text-red-600"
+                >
+                  <span class="font-semibold">满减券</span>
+                  <span>满 ¥{{ c.threshold }} 减 ¥{{ c.reduce }}</span>
+                </span>
+              </template>
+              <span
+                v-for="c in skuResult.coupons"
+                :key="`coupon-${c.couponId}`"
+                class="inline-flex items-center gap-1 rounded border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs text-amber-700"
+              >
+                <span class="font-semibold">{{ c.typeTitle || '红包' }}</span>
+                <span v-if="c.title" class="text-amber-600">{{ c.title }}</span>
+              </span>
+            </div>
+
             <div class="flex items-center gap-4 text-sm text-gray-500">
               <span>销量：{{ formatSales(skuResult.sales) }}</span>
               <span>颜色：{{ skuResult.colors.length }} 种</span>
