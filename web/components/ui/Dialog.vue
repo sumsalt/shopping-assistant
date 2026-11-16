@@ -115,6 +115,70 @@ const emit = defineEmits<{
   'update:open': [value: boolean]
 }>()
 
+// —— 打开时锁定 body 滚动 ——
+// 不锁的话，在弹窗上滑动会滚动穿透到背景页：页面一滚，移动端地址栏收缩、
+// fixed 的参照视口跟着变，蒙层和弹窗会一起「往上跑」。
+// 多个弹窗可能叠加，用计数避免一个关闭把另一个的锁也解了。
+let openDialogCount = 0
+let savedBodyOverflow = ''
+let savedBodyPaddingRight = ''
+let localLocked = false
+
+const applyBodyLock = () => {
+  if (typeof document === 'undefined') return
+  openDialogCount += 1
+  if (openDialogCount > 1) return
+  savedBodyOverflow = document.body.style.overflow
+  savedBodyPaddingRight = document.body.style.paddingRight
+  // 补偿滚动条宽度，避免桌面端页面横向跳动
+  const scrollbarGap = window.innerWidth - document.documentElement.clientWidth
+  if (scrollbarGap > 0) document.body.style.paddingRight = `${scrollbarGap}px`
+  document.body.style.overflow = 'hidden'
+}
+
+const releaseBodyLock = () => {
+  if (typeof document === 'undefined') return
+  if (openDialogCount <= 0) return
+  openDialogCount -= 1
+  if (openDialogCount > 0) return
+  document.body.style.overflow = savedBodyOverflow
+  document.body.style.paddingRight = savedBodyPaddingRight
+}
+
+const lockScroll = () => {
+  if (localLocked) return
+  localLocked = true
+  applyBodyLock()
+}
+
+const unlockScroll = () => {
+  if (!localLocked) return
+  localLocked = false
+  releaseBodyLock()
+}
+
+watch(
+  () => props.open,
+  (open) => {
+    if (open) lockScroll()
+    else unlockScroll()
+  },
+  { immediate: true },
+)
+
+// 页面被 keep-alive 缓存（如从弹窗点进商品详情）时先解锁，否则目标页滚不动；
+// 返回时弹窗若还开着，重新锁上。
+onDeactivated(() => {
+  if (props.open) unlockScroll()
+})
+onActivated(() => {
+  if (props.open) lockScroll()
+})
+
+onBeforeUnmount(() => {
+  unlockScroll()
+})
+
 // 点击背景
 const handleBackdropClick = () => {
   if (props.closeOnClickBackdrop) {
