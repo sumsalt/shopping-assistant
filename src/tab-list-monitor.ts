@@ -352,7 +352,7 @@ const compareProductLists = (
  *   {
  *     tabId: '146453',
  *     interval: 60, // 每 1 分钟检查一次
- *     duration: 7200, // 最多运行 2 小时
+ *     duration: 7 * 24 * 60 * 60, // 默认最多运行 7 天
  *     adapterConfig: { uid: 'xxx', token: 'xxx' }
  *   },
  *   (progress) => {
@@ -422,7 +422,7 @@ export const createCancellableTabMonitor = (
     async (): Promise<TabMonitorResult> => {
     const {
       interval = 60,
-      duration = 24 * 60 * 60,
+      duration = 7 * 24 * 60 * 60,
       adapterConfig = {},
       tabId,
       page = 1,

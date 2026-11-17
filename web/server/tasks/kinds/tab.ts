@@ -65,7 +65,7 @@ export const tabDefinition: TaskKindDefinition<TabTaskState> = {
         config: {
           mode: body?.config?.mode === 'diff' ? 'diff' : 'accumulate',
           interval: num(body?.config?.interval, 60),
-          duration: num(body?.config?.duration, 3 * 60 * 60),
+          duration: num(body?.config?.duration, 7 * 24 * 60 * 60),
           ...(activeWindow ? { activeWindow } : {}),
           ...(body?.config?.page !== undefined ? { page: num(body.config.page, 1) } : {}),
           ...(body?.config?.pageSize !== undefined ? { pageSize: num(body.config.pageSize, 20) } : {}),

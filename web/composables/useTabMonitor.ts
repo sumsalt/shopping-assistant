@@ -74,7 +74,7 @@ export const useTabMonitor = () => {
       tabId: config.tabId,
       tabName: config.tabName,
       interval: config.interval || 60, // 默认 1 分钟
-      duration: config.duration || 3 * 60 * 60, // 默认 3 小时
+      duration: config.duration || 7 * 24 * 60 * 60, // 默认 7 天
       page: config.page || 1,
       pageSize: config.pageSize || 20,
       sort: config.sort || 1,
