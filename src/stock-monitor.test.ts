@@ -1,15 +1,21 @@
 /**
- * 库存到货监控：轮次间隔下限 2 秒
+ * 库存监控测试（实验分支）
+ *
+ * 去掉了固定的 detection-interval sleep：节奏完全由双层请求闸门控制。
+ * 生产环境 checkStock 内部的 HTTP 请求会被闸门挡住；测试里 mock 掉了 stock-check，
+ * 所以用真实短延时 + 到达指定轮数后主动 abort 的方式驱动，避免 tight loop。
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const mocks = vi.hoisted(() => ({
+const mocks = {
   checkStock: vi.fn(),
-}))
+  getProductSkus: vi.fn(),
+}
 
 vi.mock('./stock-check', () => ({
-  checkStock: mocks.checkStock,
+  checkStock: (...args: unknown[]) => mocks.checkStock(...args),
+  getProductSkus: (...args: unknown[]) => mocks.getProductSkus(...args),
 }))
 
 vi.mock('./email', () => ({
@@ -19,104 +25,83 @@ vi.mock('./email', () => ({
   loadEmailConfigFromEnv: () => undefined,
 }))
 
-import { createCancellableMonitor, MIN_STOCK_MONITOR_INTERVAL } from './stock-monitor'
+const { createCancellableMonitor, MIN_STOCK_MONITOR_INTERVAL } = await import('./stock-monitor')
 
-/** 构造一个最小可用的到货监控任务 */
 const task = {
   request: { platform: 'yishou' as const, productId: '123456' },
   recipient: 'dev@example.com',
 }
 
-/** 发起监控并拿到取消句柄 */
-const start = (interval?: number) => {
-  const { controller, promise } = createCancellableMonitor(task, {
-    ...(interval === undefined ? {} : { interval }),
-    duration: 3600,
-  })
-  return { controller, promise }
+const stockResult = {
+  productId: '123456',
+  productName: '测试商品',
+  price: 100,
+  inStock: false,
 }
 
-describe('库存监控轮次间隔', () => {
+/**
+ * 启动监控，让每轮 checkStock 走一个真实宏任务（setTimeout 2ms），
+ * 达到 targetRounds 轮后自动 abort，返回 promise 供 await。
+ */
+const runRounds = async (config: Record<string, unknown>, targetRounds = 1) => {
+  let controllerRef: AbortController | null = null
+  mocks.checkStock.mockImplementation(
+    () => new Promise((resolve) => setTimeout(() => resolve(stockResult), 2))
+  )
+  const realCheck = mocks.checkStock.getMockImplementation()!
+  mocks.checkStock.mockImplementation((...args: unknown[]) => {
+    const result = realCheck(...args)
+    if (mocks.checkStock.mock.calls.length >= targetRounds) {
+      // 达到目标轮数后，下一 tick 取消，让当前轮完整结束
+      setTimeout(() => controllerRef?.abort(), 1)
+    }
+    return result
+  })
+
+  const { controller, promise } = createCancellableMonitor(task, {
+    duration: 3600,
+    ...config,
+  } as never)
+  controllerRef = controller
+  await promise
+}
+
+describe('库存监控（无 sleep，闸门控节奏）', () => {
   beforeEach(() => {
-    vi.useFakeTimers()
     mocks.checkStock.mockReset()
-    mocks.checkStock.mockResolvedValue({
-      productId: '123456',
-      productName: '测试商品',
-      price: 100,
-      inStock: false,
-    })
+    mocks.getProductSkus.mockReset()
   })
 
   afterEach(() => {
     vi.useRealTimers()
   })
 
-  it('最小间隔常量为 2 秒', () => {
+  it('最小间隔常量保留为 2 秒（仅用于配置展示/时长边界）', () => {
     expect(MIN_STOCK_MONITOR_INTERVAL).toBe(2)
   })
 
-  it('不传间隔时按 2 秒一轮', async () => {
-    const { controller, promise } = start()
-
-    await vi.advanceTimersByTimeAsync(0)
-    expect(mocks.checkStock).toHaveBeenCalledTimes(1)
-
-    await vi.advanceTimersByTimeAsync(1_999)
-    expect(mocks.checkStock).toHaveBeenCalledTimes(1)
-
-    await vi.advanceTimersByTimeAsync(1)
-    expect(mocks.checkStock).toHaveBeenCalledTimes(2)
-
-    controller.abort()
-    await promise
+  it('启动后立即执行首轮检测', async () => {
+    await runRounds({}, 1)
+    expect(mocks.checkStock).toHaveBeenCalled()
   })
 
-  it('配置低于下限（历史任务的 1 秒）时按 2 秒执行', async () => {
-    const { controller, promise } = start(1)
-
-    await vi.advanceTimersByTimeAsync(0)
-    expect(mocks.checkStock).toHaveBeenCalledTimes(1)
-
-    // 1 秒时不应该发起第二轮
-    await vi.advanceTimersByTimeAsync(1_000)
-    expect(mocks.checkStock).toHaveBeenCalledTimes(1)
-
-    await vi.advanceTimersByTimeAsync(1_000)
-    expect(mocks.checkStock).toHaveBeenCalledTimes(2)
-
-    controller.abort()
-    await promise
-  })
-
-  it('配置大于下限时按配置间隔执行', async () => {
-    const { controller, promise } = start(5)
-
-    await vi.advanceTimersByTimeAsync(0)
-    expect(mocks.checkStock).toHaveBeenCalledTimes(1)
-
-    await vi.advanceTimersByTimeAsync(4_999)
-    expect(mocks.checkStock).toHaveBeenCalledTimes(1)
-
-    await vi.advanceTimersByTimeAsync(1)
-    expect(mocks.checkStock).toHaveBeenCalledTimes(2)
-
-    controller.abort()
-    await promise
+  it('去掉 sleep 后不再按 interval 等待：轮次连续执行', async () => {
+    await runRounds({}, 3)
+    expect(mocks.checkStock.mock.calls.length).toBeGreaterThanOrEqual(3)
   })
 
   it('检测请求剔除 uid/token，凭证只留给下单链路', async () => {
-    const { controller, promise } = createCancellableMonitor(task, {
-      duration: 3600,
-      adapterConfig: {
-        uid: '20536811',
-        token: 'tok',
-        openid: 'oXxx123',
-        requestParams: { uid: '20536811', token: 'tok', udid: 'dev-1', plat_type: 'wx' },
+    await runRounds(
+      {
+        adapterConfig: {
+          uid: '20536811',
+          token: 'tok',
+          openid: 'oXxx123',
+          requestParams: { uid: '20536811', token: 'tok', udid: 'dev-1', plat_type: 'wx' },
+        },
       },
-    })
-
-    await vi.advanceTimersByTimeAsync(0)
+      1
+    )
 
     const options = mocks.checkStock.mock.calls[0]?.[1] as {
       adapterConfig: {
@@ -132,20 +117,17 @@ describe('库存监控轮次间隔', () => {
     expect(options.adapterConfig.requestParams?.token).toBeUndefined()
     expect(options.adapterConfig.requestParams?.udid).toBe('dev-1')
     expect(options.adapterConfig.openid).toBe('oXxx123')
-
-    controller.abort()
-    await promise
   })
 
-  it('等待期间取消任务可以立刻结束，不用等满间隔', async () => {
-    const { controller, promise } = start(30)
-
-    await vi.advanceTimersByTimeAsync(0)
-    expect(mocks.checkStock).toHaveBeenCalledTimes(1)
-
+  it('运行期间取消任务可以立刻结束', async () => {
+    const { controller, promise } = createCancellableMonitor(task, { duration: 3600 })
+    // 给首轮一个真实宏任务，随后立刻取消
+    mocks.checkStock.mockImplementation(
+      () => new Promise((resolve) => setTimeout(() => resolve(stockResult), 2))
+    )
+    await new Promise((resolve) => setTimeout(resolve, 5))
     controller.abort()
-    // 不推进时钟，只让微任务跑完
     await promise
-    expect(mocks.checkStock).toHaveBeenCalledTimes(1)
+    expect(mocks.checkStock.mock.calls.length).toBeGreaterThanOrEqual(1)
   })
 })

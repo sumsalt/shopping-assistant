@@ -293,13 +293,6 @@ export type PriceProgressCallback = (progress: PriceMonitorProgress) => void;
 export type PriceResultCallback = (result: PriceMonitorResult) => void;
 
 /**
- * 睡眠函数
- */
-const sleep = (ms: number): Promise<void> => {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-};
-
-/**
  * 比较两次价格快照
  *
  * @param previous 上一次快照
@@ -476,9 +469,8 @@ export const createCancellablePriceMonitor = (
         throw new Error('监控商品不能为空');
       }
 
-      if (interval < MIN_PRICE_MONITOR_INTERVAL) {
-        throw new Error(`检测间隔不能小于 ${MIN_PRICE_MONITOR_INTERVAL} 秒`);
-      }
+      // 实验分支：interval 仅保留为任务配置字段用于展示，不再驱动 sleep；
+      // 实际请求节奏完全由双层请求闸门（IP 1s + UID 1s）控制。
 
       if (duration !== undefined && duration <= 0) {
         throw new Error('循环总时长必须大于 0');
@@ -803,12 +795,13 @@ export const createCancellablePriceMonitor = (
         }
 
         const elapsedAfterRound = Math.floor((Date.now() - startTime) / 1000);
+        // 时长边界守卫：不开启一个注定超出总时长的轮次（非 pacing，interval 只作边界预估）。
         if (duration && elapsedAfterRound + interval >= duration) {
           break;
         }
 
-        // 轮次间隔 + 0~2 秒随机抖动
-        await sleep(interval * 1000 + Math.random() * 2000);
+        // 实验分支：不再按 interval 固定 sleep。
+        // 下一轮立即进入，getPriceInfo 里的请求会被双层闸门挡住，节奏完全由闸门控制。
       }
 
       return result;

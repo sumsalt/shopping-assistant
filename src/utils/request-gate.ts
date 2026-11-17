@@ -1,25 +1,28 @@
 /**
- * 全局请求闸门
+ * 双层全局请求闸门（实验分支：验证一手风控策略）
  *
- * 只对「后台监控任务」生效：监控循环在执行前用 {@link runWithGateContext} 打上任务上下文，
- * HTTP 出口（utils/http.ts）检测到上下文时才排队取令牌；没有上下文的请求
+ * 每个后台监控请求必须依次通过两层令牌，两层都拿到才允许发出：
+ * - IP 层（`ip:<出口IP>`）：同一出口 IP 的最小间隔，默认 1 秒。
+ *   所有请求都过这一层，包括登录态——这正是「按 IP 限流」的核心。
+ * - UID 层（`uid:<账号键>`）：同一账号的最小间隔，默认 1 秒。
+ *   登录态请求进 `uid:<uid>`，匿名请求进全局 `uid:anon`。
+ *
+ * 与旧版（登录 5s / 匿名 1s 的单桶）的区别：
+ * - 旧版分叉成 auth/anon 两个桶，登录态根本不占 IP 维度；
+ * - 新版所有请求统一先过 IP 桶，再多过一层 UID 桶，两层间隔都是 1 秒。
+ *
+ * 只对「后台监控任务」生效：监控循环在执行前用 {@link runWithGateContext} 打上上下文，
+ * HTTP 出口（utils/http.ts）检测到上下文时才排队；没有上下文的请求
  * （用户手动查询、创建任务时的基线拉取等）直接放行，不受任何限制。
- *
- * 分桶规则（以「本次请求实际带的凭证」为准，由适配器在请求级声明）：
- * - 带 uid + token：按账号分桶，默认 5 秒放行一次，多账号互不影响
- * - 不带凭证：所有匿名请求共享一个桶，默认 1 秒放行一次（同出口 IP 共享配额）
- *
- * 桶键与请求身份保持一致很重要：给匿名请求排 5 秒桶会让检测变慢，
- * 给登录请求排 1 秒桶则会用匿名配额去打账号接口。
- *
- * 公平策略：每个任务一个 FIFO 子队列，令牌就绪时按任务轮转（round-robin）取队首，
- * 大任务不会饿死小任务；同一任务同一时刻只有 1 个在途请求（任务循环本身串行）。
  */
 
 import { AsyncLocalStorage } from 'node:async_hooks';
 
 /** 任务类型 */
 export type GateTaskKind = 'stock' | 'price' | 'tab';
+
+/** 请求闸门层级 */
+export type GateScope = 'ip' | 'uid';
 
 /** 请求闸门上下文（由监控循环注入） */
 export interface GateContext {
@@ -28,12 +31,18 @@ export interface GateContext {
   /** 任务类型，仅用于统计展示 */
   kind?: GateTaskKind;
   /**
-   * 登录态标识（uid）；为空表示匿名请求，走匿名桶
+   * 登录态标识（uid）；为空表示匿名请求，进全局 `uid:anon` 桶。
    *
-   * 由 HTTP 出口按请求实际凭证覆盖（`HttpRequestOptions.accountKey`），
-   * 任务上下文一般不必设置，保留字段用于显式覆盖。
+   * 由 HTTP 出口按请求实际凭证覆盖（`HttpRequestOptions.accountKey`）。
    */
   accountKey?: string;
+  /**
+   * 出口 IP（本机网卡地址 / localAddress）。
+   *
+   * 决定进哪个 IP 桶：不同出口 IP 互不影响，未指定时进全局 `ip:default`。
+   * 由 HTTP 出口按请求实际使用的 localAddress 覆盖。
+   */
+  localAddress?: string;
 }
 
 const storage = new AsyncLocalStorage<GateContext>();
@@ -51,12 +60,16 @@ export const getGateContext = (): GateContext | undefined => storage.getStore();
 
 /** 闸门参数 */
 export interface GateOptions {
-  /** 有登录态：同一账号的两次请求最小间隔（毫秒） */
-  authIntervalMs: number;
-  /** 无登录态：全局两次请求最小间隔（毫秒） */
-  anonIntervalMs: number;
+  /** IP 桶：同一出口 IP 两次请求的最小间隔（毫秒） */
+  ipIntervalMs: number;
+  /** UID 桶：同一账号两次请求的最小间隔（毫秒） */
+  uidIntervalMs: number;
   /** 单个请求最长排队时间（毫秒），超时抛 GateTimeoutError */
   maxWaitMs: number;
+  /** @deprecated 兼容别名，等价于 uidIntervalMs */
+  authIntervalMs?: number;
+  /** @deprecated 兼容别名，等价于 ipIntervalMs */
+  anonIntervalMs?: number;
 }
 
 const readEnvInt = (name: string, fallback: number): number => {
@@ -68,25 +81,43 @@ const readEnvInt = (name: string, fallback: number): number => {
   return Number.isFinite(value) && value >= 0 ? value : fallback;
 };
 
+// 实验分支：两层都压到 1 秒，用来观察一手的风控阈值
 const options: GateOptions = {
-  authIntervalMs: readEnvInt('GATE_AUTH_INTERVAL_MS', 5_000),
-  anonIntervalMs: readEnvInt('GATE_ANON_INTERVAL_MS', 1_000),
+  ipIntervalMs: readEnvInt('GATE_IP_INTERVAL_MS', 1_000),
+  uidIntervalMs: readEnvInt('GATE_UID_INTERVAL_MS', 1_000),
   maxWaitMs: readEnvInt('GATE_MAX_WAIT_MS', 10 * 60_000),
+  // 兼容别名初值，让旧消费者也能读到当前值
+  authIntervalMs: readEnvInt('GATE_UID_INTERVAL_MS', 1_000),
+  anonIntervalMs: readEnvInt('GATE_IP_INTERVAL_MS', 1_000),
 };
+
+/** 把兼容别名同步成当前实际值 */
+const syncAliases = () => {
+  options.authIntervalMs = options.uidIntervalMs;
+  options.anonIntervalMs = options.ipIntervalMs;
+};
+syncAliases();
 
 /**
  * 调整闸门参数（运行时可调用，例如从前端设置页下发生效）
  */
 export const configureRequestGate = (patch: Partial<GateOptions>): GateOptions => {
-  if (typeof patch.authIntervalMs === 'number' && patch.authIntervalMs >= 0) {
-    options.authIntervalMs = patch.authIntervalMs;
+  if (typeof patch.ipIntervalMs === 'number' && patch.ipIntervalMs >= 0) {
+    options.ipIntervalMs = patch.ipIntervalMs;
+  } else if (typeof patch.anonIntervalMs === 'number' && patch.anonIntervalMs >= 0) {
+    // 兼容旧字段：anonIntervalMs 现在映射到 IP 桶
+    options.ipIntervalMs = patch.anonIntervalMs;
   }
-  if (typeof patch.anonIntervalMs === 'number' && patch.anonIntervalMs >= 0) {
-    options.anonIntervalMs = patch.anonIntervalMs;
+  if (typeof patch.uidIntervalMs === 'number' && patch.uidIntervalMs >= 0) {
+    options.uidIntervalMs = patch.uidIntervalMs;
+  } else if (typeof patch.authIntervalMs === 'number' && patch.authIntervalMs >= 0) {
+    // 兼容旧字段：authIntervalMs 现在映射到 UID 桶
+    options.uidIntervalMs = patch.authIntervalMs;
   }
   if (typeof patch.maxWaitMs === 'number' && patch.maxWaitMs > 0) {
     options.maxWaitMs = patch.maxWaitMs;
   }
+  syncAliases();
   // 间隔变化后，已有桶需要按新间隔重新排期
   for (const bucket of buckets.values()) {
     bucket.intervalMs = bucket.intervalMsFor();
@@ -122,8 +153,7 @@ interface Waiter {
 
 interface Bucket {
   key: string;
-  /** 是否走登录态配额 */
-  authenticated: boolean;
+  scope: GateScope;
   /** 当前生效的间隔（动态读取，方便运行时调整） */
   intervalMs: number;
   intervalMsFor: () => number;
@@ -142,23 +172,17 @@ interface Bucket {
 
 const buckets = new Map<string, Bucket>();
 
-const bucketKeyOf = (accountKey?: string): string =>
-  accountKey && accountKey.trim() ? `auth:${accountKey.trim()}` : 'anon';
-
-const getBucket = (context: GateContext): Bucket => {
-  const key = bucketKeyOf(context.accountKey);
+const getBucket = (key: string, scope: GateScope): Bucket => {
   const existing = buckets.get(key);
   if (existing) {
     return existing;
   }
 
-  const authenticated = key !== 'anon';
   const bucket: Bucket = {
     key,
-    authenticated,
-    intervalMs: authenticated ? options.authIntervalMs : options.anonIntervalMs,
-    intervalMsFor: () =>
-      authenticated ? options.authIntervalMs : options.anonIntervalMs,
+    scope,
+    intervalMs: scope === 'ip' ? options.ipIntervalMs : options.uidIntervalMs,
+    intervalMsFor: () => (scope === 'ip' ? options.ipIntervalMs : options.uidIntervalMs),
     lastGrantAt: 0,
     queues: new Map(),
     order: [],
@@ -246,14 +270,8 @@ const drain = (bucket: Bucket): void => {
   }
 };
 
-/**
- * 申请一次请求配额
- *
- * 仅在存在任务上下文时由 HTTP 出口调用；返回的 Promise resolve 后才允许发请求。
- * 排队超过 {@link GateOptions.maxWaitMs} 会 reject，调用方应视为一次任务失败而非无限挂起。
- */
-export const acquireRequestSlot = (context: GateContext): Promise<void> => {
-  const bucket = getBucket(context);
+/** 在单个桶里申请一次配额 */
+const acquireBucket = (bucket: Bucket, context: GateContext): Promise<void> => {
   const now = Date.now();
 
   // 无人排队且距上次放行已够间隔：直接放行
@@ -309,6 +327,22 @@ export const acquireRequestSlot = (context: GateContext): Promise<void> => {
   });
 };
 
+/**
+ * 申请一次请求配额：依次通过 IP 层和 UID 层
+ *
+ * 仅在存在任务上下文时由 HTTP 出口调用；两层都 resolve 后才允许发请求。
+ * 排队超过 {@link GateOptions.maxWaitMs} 会 reject，调用方应视为一次任务失败而非无限挂起。
+ */
+export const acquireRequestSlot = async (context: GateContext): Promise<void> => {
+  // 第一层：出口 IP。未指定 localAddress 时所有请求共享 ip:default
+  const address = context.localAddress?.trim() || 'default';
+  await acquireBucket(getBucket(`ip:${address}`, 'ip'), context);
+
+  // 第二层：账号。登录态进 uid:<uid>，匿名进全局 uid:anon
+  const uid = context.accountKey?.trim() || 'anon';
+  await acquireBucket(getBucket(`uid:${uid}`, 'uid'), context);
+};
+
 /** 单个任务的排队统计 */
 export interface GateTaskStats {
   taskId: string;
@@ -320,6 +354,7 @@ export interface GateTaskStats {
 /** 单个桶的统计 */
 export interface GateBucketStats {
   key: string;
+  scope: GateScope;
   authenticated: boolean;
   intervalMs: number;
   pending: number;
@@ -368,7 +403,8 @@ export const getGateStats = (): GateStats => {
 
     list.push({
       key: bucket.key,
-      authenticated: bucket.authenticated,
+      scope: bucket.scope,
+      authenticated: bucket.scope === 'uid' && bucket.key !== 'uid:anon',
       intervalMs: bucket.intervalMs,
       pending: bucketPending,
       granted: bucket.granted,

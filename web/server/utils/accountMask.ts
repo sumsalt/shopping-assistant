@@ -15,6 +15,8 @@ export interface AccountView {
   title: string
   uin: string
   remark: string
+  /** 出口网卡绑定的本机 IP（多公网 IP 场景） */
+  localAddress: string
   /** 是否已保存密码 */
   hasPassword: boolean
   /** 是否已保存 token */
@@ -108,6 +110,7 @@ export const toAccountView = (record: AccountRecord): AccountView => {
     title: record.title,
     uin: record.uin,
     remark: record.remark,
+    localAddress: record.localAddress ?? '',
     hasPassword: Boolean(record.password),
     hasToken: Boolean(record.token),
     passwordMask: maskPassword(record.password),

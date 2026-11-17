@@ -96,6 +96,7 @@ describe('toAccountView - 标签与掩码', () => {
     uin: '20478621',
     token: 'a878dabfb1eaf3d4acf19fa3f81f9cef',
     remark: '主号',
+    localAddress: '',
     isVerified: true,
     isNewUser: false,
     hasOrdered: true,

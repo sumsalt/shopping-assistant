@@ -2,6 +2,8 @@
  * HTTP 请求工具
  */
 
+import http from 'node:http';
+import https from 'node:https';
 import axios, { type AxiosRequestConfig, type AxiosResponse } from 'axios';
 import { StockCheckError, StockCheckErrorType } from '../types';
 import { acquireRequestSlot, GateTimeoutError, getGateContext } from './request-gate';
@@ -30,10 +32,17 @@ export interface HttpRequestOptions {
   /**
    * 本次请求的限流身份
    *
-   * 决定进哪个桶：有值进 `auth:<accountKey>`，空串进全局匿名桶。
+   * 决定进哪个 UID 桶：有值进 `uid:<accountKey>`，空串进全局 `uid:anon` 桶。
    * 适配器按「这次请求到底带没带 uid/token」传入，避免任务上下文与请求身份对不上。
    */
   accountKey?: string;
+  /**
+   * 本次请求使用的出口 IP（本机网卡 localAddress）
+   *
+   * 决定进哪个 IP 桶：不同出口 IP 互不影响，未指定进 `ip:default`。
+   * 由适配器按账号配置的网卡地址传入。
+   */
+  localAddress?: string;
 }
 
 /**
@@ -69,6 +78,7 @@ export const httpRequest = async <T>(
     timeout = 10000,
     proxyUrl,
     skipGate = false,
+    localAddress,
   } = options;
 
   const axiosConfig: AxiosRequestConfig = {
@@ -78,6 +88,18 @@ export const httpRequest = async <T>(
     headers,
     proxy: proxyUrl ? createProxyConfig(proxyUrl) : false,
   };
+
+  // 出口网卡绑定：localAddress 必须是本机某块网卡上真实存在的 IP，
+  // 否则 Node 会抛 EADDRNOTAVAIL。未配置时不设置 agent，走系统默认路由。
+  // 注意：走 HTTP/HTTPS 代理时 localAddress 绑的是到代理的这条连接，需按实际网络拓扑评估。
+  if (localAddress) {
+    const urlObj = new URL(url);
+    if (urlObj.protocol === 'https:') {
+      axiosConfig.httpsAgent = new https.Agent({ localAddress });
+    } else {
+      axiosConfig.httpAgent = new http.Agent({ localAddress });
+    }
+  }
 
   // 处理请求体
   if (method === 'POST' && body) {
@@ -96,12 +118,14 @@ export const httpRequest = async <T>(
   // 用户手动触发的请求（无上下文）直接放行，不受任何限制。
   const gateContext = getGateContext();
   if (gateContext && !skipGate) {
-    // 分桶跟着「本次请求实际带的凭证」走：请求级声明优先于任务上下文，
-    // 否则会出现「匿名请求排 5 秒桶」或「登录请求排 1 秒桶」的错配。
-    const scopedContext =
-      options.accountKey === undefined
-        ? gateContext
-        : { ...gateContext, accountKey: options.accountKey };
+    // 两层分桶都跟着「本次请求实际的属性」走：请求级声明优先于任务上下文。
+    // - accountKey 决定 UID 桶（登录 uid / 匿名 anon）；
+    // - localAddress 决定 IP 桶（账号绑定的出口网卡 / 默认）。
+    const scopedContext = {
+      ...gateContext,
+      ...(options.accountKey !== undefined ? { accountKey: options.accountKey } : {}),
+      ...(options.localAddress !== undefined ? { localAddress: options.localAddress } : {}),
+    };
     try {
       await acquireRequestSlot(scopedContext);
     } catch (error) {

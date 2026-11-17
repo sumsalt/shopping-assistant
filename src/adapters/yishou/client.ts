@@ -109,8 +109,11 @@ export class YishouClient {
         : {}),
       ...(this.options.skipGate ? { skipGate: true } : {}),
       ...(this.options.timeout ? { timeout: this.options.timeout } : {}),
-      // 限流身份由这次请求实际带的凭证决定：带 uid+token 进账号桶（5s），
-      // 不带进匿名桶（1s）。任务层不再自己声明，避免两处口径不一致。
+      ...(this.profile.localAddress ? { localAddress: this.profile.localAddress } : {}),
+      // 两层限流身份都由这次请求的实际属性决定：
+      // - accountKey → UID 桶（登录 uid / 匿名 anon）
+      // - localAddress → IP 桶（账号绑定的出口网卡 / 默认）
+      // 任务层不再自己声明，避免两处口径不一致。
       accountKey: this.profile.hasAuth ? this.profile.uid : '',
     });
   }

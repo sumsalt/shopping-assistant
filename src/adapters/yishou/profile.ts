@@ -51,6 +51,8 @@ export interface RequestProfile {
   headers: Readonly<Record<string, string>>;
   /** 代理地址（仅在启用且有值时存在） */
   proxyUrl?: string;
+  /** 出口网卡绑定的本机 IP（localAddress），按账号手动分配 */
+  localAddress?: string;
   /** 登录凭证（匿名时为空字符串） */
   uid: string;
   token: string;
@@ -241,6 +243,7 @@ export const resolveRequestProfile = (config: AdapterConfig = {}): RequestProfil
     params,
     headers,
     proxyUrl: config.proxyEnabled === '1' && config.proxyUrl ? config.proxyUrl : undefined,
+    localAddress: config.localAddress || undefined,
     uid,
     token,
     hasAuth: Boolean(uid && token),

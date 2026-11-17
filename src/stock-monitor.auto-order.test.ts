@@ -1,5 +1,8 @@
 /**
  * 库存监控 × 自动下单：成功、可重试失败、不可重试失败
+ *
+ * 实验分支去掉了固定 sleep，节奏由双层闸门控制。测试里 mock 掉了 stock-check（不再过闸门），
+ * 因此用「result 回调里数轮数、达到目标轮数就 abort」的方式自我终止，避免 tight loop。
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -48,9 +51,30 @@ const autoOrderConfig = {
   num: 1,
 }
 
-/** 发起一个开启了自动下单的监控 */
-const start = (autoOrder = autoOrderConfig) => {
+const inStockResult = {
+  platform: 'yishou',
+  productId: '338956151',
+  productName: '测试商品',
+  productNo: '1381301740',
+  inStock: true,
+  price: 53.81,
+  productUrl: '',
+  productImage: '',
+  message: '有货',
+}
+
+const outOfStockResult = { ...inStockResult, inStock: false, message: '无货' }
+
+/**
+ * 启动监控，跑到 targetRounds 轮后由 result 回调主动 abort 自我终止。
+ * 返回最终 result 与每轮结果快照。
+ */
+const startAndRun = async (
+  config: Record<string, unknown> = {},
+  targetRounds = 1
+): Promise<{ result: MonitorResult; results: MonitorResult[] }> => {
   const results: MonitorResult[] = []
+  let controllerRef: AbortController | null = null
 
   const { controller, promise } = createCancellableMonitor(
     task,
@@ -58,18 +82,25 @@ const start = (autoOrder = autoOrderConfig) => {
       interval: 2,
       duration: 3600,
       adapterConfig: { uid: '20478621', token: 'token' },
-      autoOrder,
+      autoOrder: autoOrderConfig,
+      ...config,
     },
     undefined,
-    result => results.push({ ...result })
+    result => {
+      results.push({ ...result })
+      if (results.length >= targetRounds) {
+        controllerRef?.abort()
+      }
+    }
   )
+  controllerRef = controller
 
-  return { controller, promise, results }
+  const result = await promise
+  return { result, results }
 }
 
 describe('库存监控 × 自动下单', () => {
   beforeEach(() => {
-    vi.useFakeTimers()
     mocks.checkStock.mockReset()
     mocks.placeAutoOrder.mockReset()
     mocks.sendEmail.mockReset()
@@ -77,17 +108,7 @@ describe('库存监控 × 自动下单', () => {
 
     mocks.getOrderAdapter.mockReturnValue({ fake: 'adapter' })
     mocks.sendEmail.mockResolvedValue({ success: true })
-    mocks.checkStock.mockResolvedValue({
-      platform: 'yishou',
-      productId: '338956151',
-      productName: '测试商品',
-      productNo: '1381301740',
-      inStock: true,
-      price: 53.81,
-      productUrl: '',
-      productImage: '',
-      message: '有货',
-    })
+    mocks.checkStock.mockResolvedValue(inStockResult)
   })
 
   afterEach(() => {
@@ -107,13 +128,7 @@ describe('库存监控 × 自动下单', () => {
       message: '已创建待付款订单',
     })
 
-    const { controller, promise } = start()
-    await vi.advanceTimersByTimeAsync(0)
-    // 检测到之后还要走完这一轮的 sleep 才会跳出循环
-    await vi.advanceTimersByTimeAsync(2_000)
-
-    const result = await promise
-    controller.abort()
+    const { result } = await startAndRun({}, 1)
 
     expect(result.detected).toBe(true)
     expect(result.orderSn).toBe('12641415441626')
@@ -140,12 +155,7 @@ describe('库存监控 × 自动下单', () => {
       message: '该商品当前没有可售规格',
     })
 
-    const { controller, promise } = start()
-    await vi.advanceTimersByTimeAsync(0)
-    await vi.advanceTimersByTimeAsync(2_000)
-
-    controller.abort()
-    const result = await promise
+    const { result } = await startAndRun({}, 2)
 
     expect(result.detected).toBe(false)
     expect(result.orderError).toBe('该商品当前没有可售规格')
@@ -161,11 +171,7 @@ describe('库存监控 × 自动下单', () => {
       message: '一手登录态失效：登录已失效',
     })
 
-    const { controller, promise } = start()
-    await vi.advanceTimersByTimeAsync(0)
-
-    const result = await promise
-    controller.abort()
+    const { result } = await startAndRun({}, 1)
 
     expect(result.detected).toBe(false)
     expect(result.orderError).toContain('登录态失效')
@@ -182,29 +188,17 @@ describe('库存监控 × 自动下单', () => {
       message: '建单请求中断，订单可能已生成',
     })
 
-    const { controller, promise } = start()
-    await vi.advanceTimersByTimeAsync(0)
-
-    const result = await promise
-    controller.abort()
+    const { result } = await startAndRun({}, 1)
 
     expect(result.orderUncertain).toBe(true)
-    // 结果未知必须人工核对，不能继续循环
     expect(mocks.checkStock).toHaveBeenCalledTimes(1)
   })
 
   it('没有登录态时降级为普通到货提醒', async () => {
-    const { controller, promise } = createCancellableMonitor(
-      task,
-      { interval: 2, duration: 3600, autoOrder: autoOrderConfig },
-      undefined
+    const { result } = await startAndRun(
+      { adapterConfig: {}, autoOrder: autoOrderConfig },
+      1
     )
-
-    await vi.advanceTimersByTimeAsync(0)
-    await vi.advanceTimersByTimeAsync(2_000)
-
-    const result = await promise
-    controller.abort()
 
     expect(result.detected).toBe(true)
     expect(mocks.placeAutoOrder).not.toHaveBeenCalled()
@@ -220,14 +214,8 @@ describe('库存监控 × 自动下单', () => {
       message: '库存不足',
     })
 
-    const { controller, promise } = start()
-    await vi.advanceTimersByTimeAsync(0)
-    await vi.advanceTimersByTimeAsync(2_000)
-    await vi.advanceTimersByTimeAsync(2_000)
-    controller.abort()
-    const result = await promise
+    const { result } = await startAndRun({}, 3)
 
-    // 冷却 3 分钟内仍然继续检测，但只尝试建单一次
     expect(mocks.checkStock.mock.calls.length).toBeGreaterThanOrEqual(3)
     expect(mocks.placeAutoOrder).toHaveBeenCalledTimes(1)
     expect(result.orderError).toContain('冷却中')
@@ -248,99 +236,31 @@ describe('库存监控 × 自动下单', () => {
         taskId: context?.taskId ?? '',
         accountKey: context?.accountKey,
       })
-      return {
-        platform: 'yishou',
-        productId: '338956151',
-        productName: '测试商品',
-        productNo: '1381301740',
-        inStock: false,
-        price: 53.81,
-        productUrl: '',
-        productImage: '',
-        message: '无货',
-      }
+      return outOfStockResult
     })
 
-    // start() 的 adapterConfig 里有 uid，检测仍然不能带上它
-    const { controller, promise } = start()
-    await vi.advanceTimersByTimeAsync(0)
-    await vi.advanceTimersByTimeAsync(2_000)
-    controller.abort()
-    await promise
+    // startAndRun 的 adapterConfig 里有 uid，检测仍然不能带上它
+    await startAndRun({}, 2)
 
     expect(contexts.length).toBeGreaterThan(0)
     expect(contexts.every(ctx => ctx.accountKey === undefined)).toBe(true)
   })
 
-  const startWithResults = () => {
-    const results: MonitorResult[] = []
-    const { controller, promise } = createCancellableMonitor(
-      task,
-      {
-        interval: 2,
-        duration: 3600,
-        adapterConfig: { uid: '20478621', token: 'token' },
-        autoOrder: autoOrderConfig,
-      },
-      undefined,
-      result => results.push({ ...result })
-    )
-    return { controller, promise, results }
-  }
-
   it('检测错误在下一轮成功后被清空，不一直挂在卡片上', async () => {
-    // 第一轮抛错写入 error，第二轮恢复成功
     mocks.checkStock
       .mockRejectedValueOnce(new Error('请求超时（10000ms）'))
-      .mockResolvedValue({
-        platform: 'yishou',
-        productId: '338956151',
-        productName: '测试商品',
-        productNo: '1381301740',
-        inStock: false,
-        price: 53.81,
-        productUrl: '',
-        productImage: '',
-        message: '无货',
-      })
+      .mockResolvedValue(outOfStockResult)
 
-    const { controller, promise, results } = startWithResults()
-    await vi.advanceTimersByTimeAsync(0)
-    await vi.advanceTimersByTimeAsync(2_000)
-    controller.abort()
-    await promise
+    const { results } = await startAndRun({}, 2)
 
-    // 第一轮确实记录了错误
     expect(results[0].error).toBe('请求超时（10000ms）')
-    // 最后一轮（成功检测）里 error 应被清空
     expect(results[results.length - 1].error).toBeUndefined()
   })
 
   it('下单失败后商品转无货时，orderError 不再残留', async () => {
-    // 第一轮有货且下单失败（可重试），第二轮转为无货（不进入下单分支）
     mocks.checkStock
-      .mockResolvedValueOnce({
-        platform: 'yishou',
-        productId: '338956151',
-        productName: '测试商品',
-        productNo: '1381301740',
-        inStock: true,
-        price: 53.81,
-        productUrl: '',
-        productImage: '',
-        message: '有货',
-      })
-      .mockResolvedValue({
-        platform: 'yishou',
-        productId: '338956151',
-        productName: '测试商品',
-        productNo: '1381301740',
-        inStock: false,
-        price: 53.81,
-        productUrl: '',
-        productImage: '',
-        message: '无货',
-      })
+      .mockResolvedValueOnce(inStockResult)
+      .mockResolvedValue(outOfStockResult)
     mocks.placeAutoOrder.mockResolvedValue({
       success: false,
       stage: 'sku',
@@ -348,13 +268,8 @@ describe('库存监控 × 自动下单', () => {
       message: '该商品当前没有可售规格',
     })
 
-    const { controller, promise, results } = startWithResults()
-    await vi.advanceTimersByTimeAsync(0)
-    await vi.advanceTimersByTimeAsync(2_000)
-    controller.abort()
-    await promise
+    const { results } = await startAndRun({}, 2)
 
-    // 第一轮下单失败写入 orderError，第二轮无货不重试、orderError 应被清空
     expect(results[0].orderError).toBe('该商品当前没有可售规格')
     expect(results[results.length - 1].orderError).toBeUndefined()
   })

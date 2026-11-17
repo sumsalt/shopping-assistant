@@ -16,6 +16,9 @@ const PASSWORD_MAX = 128
 const UIN_MAX = 64
 const TOKEN_MAX = 256
 const REMARK_MAX = 500
+const LOCAL_ADDRESS_MAX = 64
+/** 出口 IP 简单校验：IPv4 / IPv6 字面量，或网卡名（留空表示默认路由） */
+const LOCAL_ADDRESS_RE = /^([0-9]{1,3}\.){3}[0-9]{1,3}$|^[0-9a-fA-F:]+$|^[a-zA-Z][a-zA-Z0-9_-]*$/
 /** 抓包快照上限：防止塞入超大对象 */
 const PROFILE_MAX_KEYS = 120
 const PROFILE_VALUE_MAX = 2048
@@ -154,7 +157,15 @@ export const parseAccountInput = (body: unknown): ParseAccountResult => {
     return { ok: false, error: `备注不能超过 ${REMARK_MAX} 个字符` }
   }
 
-  const value: AccountInput = { phone, title, password, uin, token, remark }
+  const localAddress = readField(raw, 'localAddress')
+  if (localAddress.length > LOCAL_ADDRESS_MAX) {
+    return { ok: false, error: `出口 IP 不能超过 ${LOCAL_ADDRESS_MAX} 个字符` }
+  }
+  if (localAddress && !LOCAL_ADDRESS_RE.test(localAddress)) {
+    return { ok: false, error: '出口 IP 格式不正确（填本机网卡 IP，留空用默认路由）' }
+  }
+
+  const value: AccountInput = { phone, title, password, uin, token, remark, localAddress }
   const isVerified = readOptionalBoolean(raw, 'isVerified')
   const isNewUser = readOptionalBoolean(raw, 'isNewUser')
   const hasOrdered = readOptionalBoolean(raw, 'hasOrdered')

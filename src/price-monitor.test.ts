@@ -97,13 +97,14 @@ describe('createCancellablePriceMonitor - 参数校验', () => {
     recipient: 'test@example.com',
   };
 
-  it('检测间隔小于 60 秒时应拒绝', async () => {
+  it('实验分支：检测间隔不再校验，也不再驱动 sleep（节奏由双层闸门控制）', async () => {
     const { promise } = createCancellablePriceMonitor(task, {
       interval: MIN_PRICE_MONITOR_INTERVAL - 1,
       adapterConfig: { uid: 'u', token: 't' },
     });
 
-    await expect(promise).rejects.toThrow('检测间隔不能小于 60 秒');
+    // 旧版会抛「检测间隔不能小于 60 秒」；新版 interval 只作时长边界预估，不再拒绝
+    await expect(promise).rejects.not.toThrow('检测间隔不能小于 60 秒');
   });
 
   it('缺少 uid / token 时应拒绝', async () => {

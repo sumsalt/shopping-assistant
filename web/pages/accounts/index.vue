@@ -138,6 +138,13 @@
             >
               {{ item.requestChannel === 'app' ? 'App 抓包' : '小程序抓包' }}
             </span>
+            <span
+              v-if="item.localAddress"
+              class="inline-flex items-center rounded-full bg-purple-50 px-2 py-0.5 text-[11px] font-medium text-purple-700 shrink-0"
+              title="该账号请求绑定的出口网卡 IP"
+            >
+              出口 {{ item.localAddress }}
+            </span>
           </div>
           <p v-if="item.title" class="mt-0.5 text-xs text-gray-400 font-mono">{{ item.phone }}</p>
           <p v-if="item.remark" class="mt-2 text-xs text-gray-500 break-all">{{ item.remark }}</p>
@@ -361,6 +368,15 @@
         </UiInput>
         <UiInput v-model="form.uin" label="uin" placeholder="一手账号的 uid（粘贴抓包可自动填）" autocomplete="off" />
         <UiInput v-model="form.token" label="token" :placeholder="editingId ? '留空则不修改' : '一手 token（粘贴抓包可自动填）'" autocomplete="off" />
+        <UiInput
+          v-model="form.localAddress"
+          label="出口网卡 IP"
+          placeholder="例如 10.206.0.5；留空用默认路由"
+          autocomplete="off"
+        />
+        <p class="text-[11px] text-gray-400 -mt-2">
+          多公网 IP 场景下，填本机某块网卡上的 IP，该账号的请求会从这块网卡出去，并在闸门里按 IP 分桶。留空则与其他未指定账号共用默认出口。
+        </p>
         <UiTextarea v-model="form.remark" label="备注" placeholder="例如：主号 / 备用 / 绑定哪个微信" :rows="2" :max-length="500" />
 
         <!-- 粘贴抓包自动识别 -->
@@ -919,6 +935,7 @@ interface AccountForm {
   uin: string
   token: string
   remark: string
+  localAddress: string
   isVerified: boolean
   isNewUser: boolean
   hasOrdered: boolean
@@ -933,6 +950,7 @@ const form = ref<AccountForm>({
   uin: '',
   token: '',
   remark: '',
+  localAddress: '',
   isVerified: false,
   isNewUser: false,
   hasOrdered: false,
@@ -993,6 +1011,7 @@ const resetForm = () => {
     uin: '',
     token: '',
     remark: '',
+    localAddress: '',
     isVerified: false,
     isNewUser: false,
     hasOrdered: false,
@@ -1017,6 +1036,7 @@ const openEdit = (item: AccountItem) => {
     uin: item.uin,
     token: '',
     remark: item.remark,
+    localAddress: item.localAddress || '',
     isVerified: item.isVerified,
     isNewUser: item.isNewUser,
     hasOrdered: item.hasOrdered,
@@ -1087,6 +1107,7 @@ const handleSubmit = async () => {
     uin: form.value.uin.trim(),
     token: form.value.token.trim(),
     remark: form.value.remark.trim(),
+    localAddress: form.value.localAddress.trim(),
     isVerified: form.value.isVerified,
     isNewUser: form.value.isNewUser,
     hasOrdered: form.value.hasOrdered,

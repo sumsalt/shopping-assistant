@@ -28,6 +28,8 @@ export interface AdapterConfig {
   channel?: 'wx' | 'app'
   proxyUrl?: string
   proxyEnabled?: '1' | '0'
+  /** 出口网卡绑定的本机 IP（localAddress），按账号手动分配；空则走系统默认路由 */
+  localAddress?: string
 }
 
 /** 商品引用：任务的目标，创建时落库，之后原样透传 */

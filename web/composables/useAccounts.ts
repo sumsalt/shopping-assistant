@@ -13,6 +13,8 @@ export interface AccountItem {
   title: string
   uin: string
   remark: string
+  /** 出口网卡绑定的本机 IP（多公网 IP 场景） */
+  localAddress: string
   hasPassword: boolean
   hasToken: boolean
   passwordMask: string
@@ -50,6 +52,8 @@ export interface AccountPayload {
   uin?: string
   token?: string
   remark?: string
+  /** 出口网卡 IP；空字符串表示走系统默认路由 */
+  localAddress?: string
   isVerified?: boolean
   isNewUser?: boolean
   hasOrdered?: boolean

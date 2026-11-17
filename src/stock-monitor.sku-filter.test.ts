@@ -2,6 +2,7 @@
  * 库存监控 × 指定规格
  *
  * 只监控所选 SKU：商品整体有货但所选规格都没货时不算到货，也不发邮件 / 不下单。
+ * 实验分支去掉固定 sleep，测试用「result 回调里数轮数、到目标轮就 abort」自我终止。
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -39,7 +40,7 @@ vi.mock('./adapters', () => ({
 }))
 
 import { createCancellableMonitor } from './stock-monitor'
-import type { StockMonitorConfig } from './stock-monitor'
+import type { MonitorResult, StockMonitorConfig } from './stock-monitor'
 
 const task = {
   request: { platform: 'yishou' as const, productId: '338956151' },
@@ -59,62 +60,66 @@ const skuDetail = {
   colors: ['蓝色'],
   sizes: ['M', 'L'],
   skuList: [
-    {
-      skuId: '850000',
-      color: '蓝色',
-      size: 'M',
-      stock: 0,
-      saleStock: 0,
-      inStock: false,
-      colorImage: '',
-    },
-    {
-      skuId: '850001',
-      color: '蓝色',
-      size: 'L',
-      stock: 3,
-      saleStock: 3,
-      inStock: true,
-      colorImage: '',
-    },
+    { skuId: '850000', color: '蓝色', size: 'M', stock: 0, saleStock: 0, inStock: false, colorImage: '' },
+    { skuId: '850001', color: '蓝色', size: 'L', stock: 3, saleStock: 3, inStock: true, colorImage: '' },
   ],
   inStockSkuCount: 1,
   totalSkuCount: 2,
   restrictionNumber: -1,
 }
 
-const start = (config: Partial<StockMonitorConfig> = {}) => {
-  const { controller, promise } = createCancellableMonitor(task, {
-    interval: 2,
-    duration: 3600,
-    // 检测与 SKU 明细都走匿名配置；凭证只留给自动下单链路
-    adapterConfig: { uid: '20478621', token: 'token' },
-    ...config,
-  })
+const inStockResult = {
+  platform: 'yishou',
+  productId: '338956151',
+  productName: '测试商品',
+  productNo: '1381301740',
+  inStock: true,
+  price: 53.81,
+  productUrl: '',
+  productImage: '',
+  message: '有货',
+}
 
-  return { controller, promise }
+/**
+ * 启动监控，跑到 targetRounds 轮后由 result 回调主动 abort 自我终止。
+ */
+const startAndRun = async (
+  config: Partial<StockMonitorConfig> = {},
+  targetRounds = 1
+): Promise<{ result: MonitorResult; results: MonitorResult[] }> => {
+  const results: MonitorResult[] = []
+  let controllerRef: AbortController | null = null
+
+  const { controller, promise } = createCancellableMonitor(
+    task,
+    {
+      interval: 2,
+      duration: 3600,
+      adapterConfig: { uid: '20478621', token: 'token' },
+      ...config,
+    },
+    undefined,
+    result => {
+      results.push({ ...result })
+      if (results.length >= targetRounds) {
+        controllerRef?.abort()
+      }
+    }
+  )
+  controllerRef = controller
+
+  const result = await promise
+  return { result, results }
 }
 
 describe('库存监控 × 指定规格', () => {
   beforeEach(() => {
-    vi.useFakeTimers()
     mocks.checkStock.mockReset()
     mocks.getProductSkus.mockReset()
     mocks.sendEmail.mockReset()
 
     mocks.sendEmail.mockResolvedValue({ success: true })
-    // 商品整体有货
-    mocks.checkStock.mockResolvedValue({
-      platform: 'yishou',
-      productId: '338956151',
-      productName: '测试商品',
-      productNo: '1381301740',
-      inStock: true,
-      price: 53.81,
-      productUrl: '',
-      productImage: '',
-      message: '有货',
-    })
+    mocks.checkStock.mockResolvedValue(inStockResult)
     mocks.getProductSkus.mockResolvedValue(skuDetail)
   })
 
@@ -123,28 +128,16 @@ describe('库存监控 × 指定规格', () => {
   })
 
   it('所选规格都没货时不算到货，继续检测且不发邮件', async () => {
-    const { controller, promise } = start({ skus: ['850000'] })
-
-    await vi.advanceTimersByTimeAsync(0)
-    await vi.advanceTimersByTimeAsync(2_000)
+    const { result } = await startAndRun({ skus: ['850000'] }, 2)
 
     expect(mocks.checkStock).toHaveBeenCalledTimes(2)
     expect(mocks.getProductSkus).toHaveBeenCalled()
     expect(mocks.sendEmail).not.toHaveBeenCalled()
-
-    controller.abort()
-    const result = await promise
     expect(result.detected).toBe(false)
   })
 
   it('所选规格有货时正常提醒，并带上命中规格', async () => {
-    const { controller, promise } = start({ skus: ['850001'] })
-
-    await vi.advanceTimersByTimeAsync(0)
-    await vi.advanceTimersByTimeAsync(2_000)
-
-    const result = await promise
-    controller.abort()
+    const { result } = await startAndRun({ skus: ['850001'] }, 1)
 
     expect(result.detected).toBe(true)
     expect(result.matchedSkus).toEqual(['850001'])
@@ -153,30 +146,17 @@ describe('库存监控 × 指定规格', () => {
   })
 
   it('不选规格时只看商品整体，不额外查 SKU', async () => {
-    const { controller, promise } = start()
-
-    await vi.advanceTimersByTimeAsync(0)
-    await vi.advanceTimersByTimeAsync(2_000)
-
-    const result = await promise
-    controller.abort()
+    const { result } = await startAndRun({}, 1)
 
     expect(result.detected).toBe(true)
     expect(mocks.getProductSkus).not.toHaveBeenCalled()
   })
 
   it('选了规格但没有登录态也能查 SKU：检测与规格明细都走匿名', async () => {
-    const { controller, promise } = start({ adapterConfig: {}, skus: ['850001'] })
-
-    await vi.advanceTimersByTimeAsync(0)
-    await vi.advanceTimersByTimeAsync(2_000)
-
-    const result = await promise
-    controller.abort()
+    const { result } = await startAndRun({ adapterConfig: {}, skus: ['850001'] }, 1)
 
     expect(result.detected).toBe(true)
     expect(result.matchedSkus).toEqual(['850001'])
-    // 规格查询沿用匿名配置，不带 uid/token
     const [request, options] = mocks.getProductSkus.mock.calls[0]
     expect(request).toMatchObject({ productId: '338956151' })
     expect(options?.adapterConfig?.uid).toBeUndefined()
@@ -196,17 +176,14 @@ describe('库存监控 × 指定规格', () => {
       message: '已创建待付款订单',
     })
 
-    const { controller, promise } = start({
-      adapterConfig: { uid: '20478621', token: 'token' },
-      autoOrder: { enabled: true, num: 1 },
-      skus: ['850001'],
-    })
-
-    await vi.advanceTimersByTimeAsync(0)
-    await vi.advanceTimersByTimeAsync(2_000)
-
-    await promise
-    controller.abort()
+    await startAndRun(
+      {
+        adapterConfig: { uid: '20478621', token: 'token' },
+        autoOrder: { enabled: true, num: 1 },
+        skus: ['850001'],
+      },
+      1
+    )
 
     expect(mocks.placeAutoOrder).toHaveBeenCalledTimes(1)
     expect(mocks.placeAutoOrder.mock.calls[0][1]).toMatchObject({

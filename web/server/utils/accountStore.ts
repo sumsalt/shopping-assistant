@@ -45,6 +45,8 @@ export interface AccountRecord {
   token: string
   /** 备注 */
   remark: string
+  /** 出口网卡绑定的本机 IP（多公网 IP 场景，按账号手动分配） */
+  localAddress: string
   /** 标签：是否认证 */
   isVerified: boolean
   /** 标签：是否是新用户 */
@@ -67,6 +69,8 @@ export interface AccountInput {
   uin?: string
   token?: string
   remark?: string
+  /** 出口网卡绑定的本机 IP；空表示走系统默认路由 */
+  localAddress?: string
   /** 三个标签：更新时未传表示保持原值 */
   isVerified?: boolean
   isNewUser?: boolean
@@ -90,6 +94,7 @@ interface AccountRow {
   uin: string
   token: string
   remark: string
+  local_address: string
   is_verified: number
   is_new_user: number
   has_ordered: number
@@ -140,6 +145,7 @@ const toRecord = (row: AccountRow): AccountRecord => ({
   uin: row.uin ?? '',
   token: row.token ?? '',
   remark: row.remark ?? '',
+  localAddress: row.local_address ?? '',
   isVerified: Boolean(row.is_verified),
   isNewUser: Boolean(row.is_new_user),
   hasOrdered: Boolean(row.has_ordered),
@@ -243,6 +249,7 @@ export const createAccount = (userId: string, input: AccountInput): AccountRecor
   const uin = input.uin ?? ''
   const token = input.token ?? ''
   const remark = input.remark ?? ''
+  const localAddress = input.localAddress ?? ''
   const isVerified = Boolean(input.isVerified)
   const isNewUser = Boolean(input.isNewUser)
   const hasOrdered = Boolean(input.hasOrdered)
@@ -251,12 +258,12 @@ export const createAccount = (userId: string, input: AccountInput): AccountRecor
   try {
     db.prepare(`
       INSERT INTO accounts (
-        id, user_id, phone, title, password, uin, token, remark,
+        id, user_id, phone, title, password, uin, token, remark, local_address,
         is_verified, is_new_user, has_ordered, request_profile, created_at, updated_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      id, userId, input.phone, title, password, uin, token, remark,
+      id, userId, input.phone, title, password, uin, token, remark, localAddress,
       isVerified ? 1 : 0, isNewUser ? 1 : 0, hasOrdered ? 1 : 0,
       encodeRequestProfile(requestProfile), now, now
     )
@@ -270,6 +277,7 @@ export const createAccount = (userId: string, input: AccountInput): AccountRecor
       uin,
       token,
       remark,
+      localAddress,
       isVerified,
       isNewUser,
       hasOrdered,
@@ -305,6 +313,7 @@ export const updateAccount = (id: string, input: AccountInput): AccountRecord | 
   const token = input.token ? input.token : existing.token
   const uin = input.uin !== undefined ? input.uin : existing.uin
   const remark = input.remark !== undefined ? input.remark : existing.remark
+  const localAddress = input.localAddress !== undefined ? input.localAddress : existing.localAddress
   // 标签是显式布尔：不传保持原值，传 false 就真的取消勾选
   const isVerified = input.isVerified !== undefined ? input.isVerified : existing.isVerified
   const isNewUser = input.isNewUser !== undefined ? input.isNewUser : existing.isNewUser
@@ -319,12 +328,12 @@ export const updateAccount = (id: string, input: AccountInput): AccountRecord | 
     const result = db
       .prepare(`
         UPDATE accounts
-        SET phone = ?, title = ?, password = ?, uin = ?, token = ?, remark = ?,
+        SET phone = ?, title = ?, password = ?, uin = ?, token = ?, remark = ?, local_address = ?,
             is_verified = ?, is_new_user = ?, has_ordered = ?, request_profile = ?, updated_at = ?
         WHERE id = ?
       `)
       .run(
-        input.phone, title, password, uin, token, remark,
+        input.phone, title, password, uin, token, remark, localAddress,
         isVerified ? 1 : 0, isNewUser ? 1 : 0, hasOrdered ? 1 : 0,
         encodeRequestProfile(requestProfile), Date.now(), id
       ) as { changes?: number }

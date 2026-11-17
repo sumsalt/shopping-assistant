@@ -1,5 +1,10 @@
 /**
- * 全局请求闸门测试
+ * 双层全局请求闸门测试
+ *
+ * 每层都是独立的令牌桶：
+ * - IP 桶 `ip:<出口IP>`：同一出口 IP 串行放行（默认 1s）
+ * - UID 桶 `uid:<账号>`：同一账号串行放行（默认 1s）
+ * 一次请求必须依次拿到两层令牌才放行。
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -18,11 +23,11 @@ const advance = async (ms: number): Promise<void> => {
   await vi.advanceTimersByTimeAsync(ms);
 };
 
-describe('request-gate', () => {
+describe('request-gate 双层闸门', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     resetRequestGate();
-    configureRequestGate({ authIntervalMs: 30_000, anonIntervalMs: 1_000, maxWaitMs: 600_000 });
+    configureRequestGate({ ipIntervalMs: 1_000, uidIntervalMs: 2_000, maxWaitMs: 600_000 });
   });
 
   afterEach(() => {
@@ -30,25 +35,27 @@ describe('request-gate', () => {
     vi.useRealTimers();
   });
 
-  it('同账号首次请求立即放行，第二次要等 30 秒', async () => {
-    const first = acquireRequestSlot({ taskId: 't1', accountKey: 'u1' });
-    await expect(first).resolves.toBeUndefined();
+  it('同账号同出口：首次立即放行，第二次要等两层里较长的 UID 间隔', async () => {
+    await expect(
+      acquireRequestSlot({ taskId: 't1', accountKey: 'u1', localAddress: '10.0.0.2' })
+    ).resolves.toBeUndefined();
 
     let granted = false;
-    const second = acquireRequestSlot({ taskId: 't1', accountKey: 'u1' }).then(() => {
+    const second = acquireRequestSlot({ taskId: 't1', accountKey: 'u1', localAddress: '10.0.0.2' }).then(() => {
       granted = true;
     });
 
-    await advance(29_000);
-    expect(granted).toBe(false);
-    expect(getGateStats().pending).toBe(1);
-
     await advance(1_100);
+    // IP 桶 1s 已过，但 UID 桶 2s 未到
+    expect(granted).toBe(false);
+    expect(getGateStats().pending).toBeGreaterThanOrEqual(1);
+
+    await advance(1_000);
     await second;
     expect(granted).toBe(true);
   });
 
-  it('匿名桶走 1 秒间隔', async () => {
+  it('同为匿名的请求共享 ip:default 和 uid:anon 两层', async () => {
     await acquireRequestSlot({ taskId: 't1' });
 
     let granted = false;
@@ -60,40 +67,57 @@ describe('request-gate', () => {
     expect(granted).toBe(false);
 
     await advance(200);
+    // IP 桶放行（1s），UID 桶 anon 也是 2s —— 所以这里还没到
+    expect(granted).toBe(false);
+    await advance(1_100);
     await second;
     expect(granted).toBe(true);
   });
 
-  it('不同账号的桶互不影响', async () => {
-    await acquireRequestSlot({ taskId: 't1', accountKey: 'u1' });
+  it('不同出口 IP 且不同账号：两层都独立，互不排队', async () => {
+    await acquireRequestSlot({ taskId: 't1', accountKey: 'u1', localAddress: '10.0.0.2' });
 
-    // u2 是另一个桶，不应排队
+    // 换 IP 又换账号，两个桶都是全新的
     await expect(
-      acquireRequestSlot({ taskId: 't2', accountKey: 'u2' })
+      acquireRequestSlot({ taskId: 't2', accountKey: 'u2', localAddress: '10.0.0.3' })
     ).resolves.toBeUndefined();
   });
 
-  it('任务级轮转：大任务不会饿死小任务', async () => {
-    // 先占满首令牌
-    await acquireRequestSlot({ taskId: 'big', accountKey: 'u1' });
+  it('IP 层是硬约束：换了账号但同出口 IP，仍要等 IP 桶', async () => {
+    await acquireRequestSlot({ taskId: 't1', accountKey: 'u1', localAddress: '10.0.0.2' });
+
+    let granted = false;
+    // u2 是不同账号（UID 桶独立），但同一个出口 IP
+    const second = acquireRequestSlot({ taskId: 't2', accountKey: 'u2', localAddress: '10.0.0.2' }).then(() => {
+      granted = true;
+    });
+
+    await advance(900);
+    expect(granted).toBe(false);
+    await advance(200);
+    await second;
+    // 只等了 IP 桶 1s；UID 桶 u2 是全新的，立即放行
+    expect(granted).toBe(true);
+  });
+
+  it('任务级轮转：同一桶里大任务不会饿死小任务', async () => {
+    await acquireRequestSlot({ taskId: 'big', accountKey: 'u1', localAddress: '10.0.0.2' });
 
     const order: string[] = [];
-    // 大任务排 3 个，小任务排 1 个
     const big = Promise.all(
       [1, 2, 3].map(() =>
-        acquireRequestSlot({ taskId: 'big', accountKey: 'u1' }).then(() => order.push('big'))
+        acquireRequestSlot({ taskId: 'big', accountKey: 'u1', localAddress: '10.0.0.2' }).then(() => order.push('big'))
       )
     );
-    const small = acquireRequestSlot({ taskId: 'small', accountKey: 'u1' }).then(() =>
+    const small = acquireRequestSlot({ taskId: 'small', accountKey: 'u1', localAddress: '10.0.0.2' }).then(() =>
       order.push('small')
     );
 
-    for (let i = 0; i < 5; i++) {
-      await advance(30_000);
+    for (let i = 0; i < 8; i++) {
+      await advance(2_000);
     }
     await Promise.all([big, small]);
 
-    // 小任务应该在第 2 个令牌就拿到，而不是排在大任务 3 个请求之后
     expect(order.slice(0, 2)).toEqual(['big', 'small']);
     expect(order).toHaveLength(4);
   });
@@ -108,35 +132,44 @@ describe('request-gate', () => {
     });
 
     expect(seen).toEqual(['t1']);
-    // 用户请求不在任务上下文里，因此不会被限流
     expect(getGateContext()).toBeUndefined();
   });
 
   it('排队超时抛错并清理队列', async () => {
-    configureRequestGate({ maxWaitMs: 5_000 });
-    await acquireRequestSlot({ taskId: 't1', accountKey: 'u1' });
+    // 超时阈值小于 IP 桶间隔(1s)，让第二次请求卡在 IP 层就超时
+    configureRequestGate({ maxWaitMs: 500 });
+    await acquireRequestSlot({ taskId: 't1', accountKey: 'u1', localAddress: '10.0.0.2' });
 
-    const pending = acquireRequestSlot({ taskId: 't1', accountKey: 'u1' });
+    const pending = acquireRequestSlot({ taskId: 't1', accountKey: 'u1', localAddress: '10.0.0.2' });
     const assertion = expect(pending).rejects.toThrow(/排队超时/);
 
-    await advance(5_100);
+    await advance(600);
     await assertion;
     expect(getGateStats().pending).toBe(0);
-    expect(getGateStats().timedOut).toBe(1);
+    expect(getGateStats().timedOut).toBeGreaterThanOrEqual(1);
   });
 
-  it('统计信息包含桶与任务等待数', async () => {    await acquireRequestSlot({ taskId: 't1', accountKey: 'u1' });
-    void acquireRequestSlot({ taskId: 't1', accountKey: 'u1' });
-    void acquireRequestSlot({ taskId: 't2', accountKey: 'u1' });
+  it('统计信息同时包含 ip 层和 uid 层桶', async () => {
+    await acquireRequestSlot({ taskId: 't1', accountKey: 'u1', localAddress: '10.0.0.2' });
+    void acquireRequestSlot({ taskId: 't1', accountKey: 'u1', localAddress: '10.0.0.2' });
 
     const stats = getGateStats();
-    const bucket = stats.buckets.find((item) => item.key === 'auth:u1');
+    const ipBucket = stats.buckets.find((item) => item.key === 'ip:10.0.0.2');
+    const uidBucket = stats.buckets.find((item) => item.key === 'uid:u1');
 
-    expect(bucket).toBeDefined();
-    expect(bucket?.authenticated).toBe(true);
-    expect(bucket?.intervalMs).toBe(30_000);
-    expect(bucket?.pending).toBe(2);
-    expect(bucket?.tasks).toHaveLength(2);
-    expect(getGateOptions().authIntervalMs).toBe(30_000);
+    // 第二个请求两层串行申请：先卡在 IP 桶，UID 桶尚未入队
+    expect(ipBucket).toMatchObject({ scope: 'ip', intervalMs: 1_000, pending: 1 });
+    expect(uidBucket).toMatchObject({ scope: 'uid', intervalMs: 2_000 });
+    expect(getGateOptions().ipIntervalMs).toBe(1_000);
+    expect(getGateOptions().uidIntervalMs).toBe(2_000);
+    // 兼容别名仍可读
+    expect(getGateOptions().anonIntervalMs).toBe(1_000);
+    expect(getGateOptions().authIntervalMs).toBe(2_000);
+  });
+
+  it('兼容旧字段配置：anonIntervalMs 映射到 IP 桶、authIntervalMs 映射到 UID 桶', async () => {
+    configureRequestGate({ anonIntervalMs: 500, authIntervalMs: 700 });
+    expect(getGateOptions().ipIntervalMs).toBe(500);
+    expect(getGateOptions().uidIntervalMs).toBe(700);
   });
 });

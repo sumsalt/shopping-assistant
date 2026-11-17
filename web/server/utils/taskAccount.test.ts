@@ -23,6 +23,7 @@ const account = (overrides: Partial<AccountRecord> = {}): AccountRecord => ({
   uin: 'uin',
   token: 'token',
   remark: '',
+  localAddress: '',
   isVerified: false,
   isNewUser: false,
   hasOrdered: false,

@@ -30,29 +30,8 @@ if (emailConfig) {
   configureEmailService(emailConfig);
 }
 
-/** 库存监控的最小检测间隔（秒）：低于此值按此值执行 */
+/** 库存监控的最小检测间隔（秒）：仅用于任务配置展示，实验分支不再用它 sleep，节奏完全交给请求闸门 */
 export const MIN_STOCK_MONITOR_INTERVAL = 2;
-
-/** 可被取消打断的等待，返回时表示已经等够时间或任务被中止 */
-const sleepInterruptible = (ms: number, signal: AbortSignal): Promise<void> =>
-  new Promise((resolve) => {
-    if (ms <= 0 || signal.aborted) {
-      resolve();
-      return;
-    }
-
-    const onAbort = () => {
-      clearTimeout(timer);
-      resolve();
-    };
-
-    const timer = setTimeout(() => {
-      signal.removeEventListener('abort', onAbort);
-      resolve();
-    }, ms);
-
-    signal.addEventListener('abort', onAbort, { once: true });
-  });
 
 /**
  * 库存监控配置
@@ -274,12 +253,8 @@ export const createCancellableMonitor = (
         throw new Error('监控商品不能为空');
       }
 
-      if (interval <= 0) {
-        throw new Error('循环间隔时间必须大于 0');
-      }
-
-      // 实际生效间隔：低于最小间隔的配置（含历史任务里的 1 秒）一律按最小间隔执行
-      const effectiveInterval = Math.max(MIN_STOCK_MONITOR_INTERVAL, interval);
+      // 实验分支：interval 仅保留为任务配置字段用于展示，不再驱动 sleep；
+      // 实际请求节奏完全由双层请求闸门（IP 1s + UID 1s）控制。
 
       if (duration !== undefined && duration <= 0) {
         throw new Error('循环总时长必须大于 0');
@@ -510,12 +485,13 @@ export const createCancellableMonitor = (
           break;
         }
 
-        if (duration && elapsedTime + effectiveInterval >= duration) {
+        // 时长边界守卫：不开启一个注定超出总时长的轮次（非 pacing）。
+        if (duration && elapsedTime + MIN_STOCK_MONITOR_INTERVAL >= duration) {
           break;
         }
 
-        // 每轮跑完固定等一个间隔，实际请求快慢再由闸门控制，不追求精确节奏
-        await sleepInterruptible(effectiveInterval * 1000, signal);
+        // 实验分支：不再按间隔固定 sleep。
+        // 下一轮立即进入，checkStock 里的请求会被双层闸门挡住，节奏完全由闸门控制。
       }
 
       return result;

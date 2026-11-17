@@ -169,6 +169,8 @@ const createTables = (instance: SqliteDatabase): void => {
     ['has_ordered', 'INTEGER NOT NULL DEFAULT 0'],
     ['is_active', 'INTEGER NOT NULL DEFAULT 0'],
     ['request_profile', "TEXT NOT NULL DEFAULT ''"],
+    // 出口网卡绑定 IP（按账号手动分配，用于多公网 IP 场景的 localAddress）
+    ['local_address', "TEXT NOT NULL DEFAULT ''"],
   ]
   for (const [column, definition] of addedColumns) {
     if (!existing.has(column)) {

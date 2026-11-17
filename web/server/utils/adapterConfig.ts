@@ -33,6 +33,9 @@ const resolveFromAccount = (
 ): ResolvedAdapterConfig => {
   const config = buildAdapterConfigFromProfile(account?.requestProfile, needAuth)
 
+  // 出口网卡绑定 IP：账号手动分配，透传到 HTTP 出口的 localAddress（进 IP 限流桶）
+  config.localAddress = account?.localAddress || undefined
+
   const settings = getRuntimeSettings()
   if (settings.proxyUrl) {
     config.proxyUrl = settings.proxyUrl
