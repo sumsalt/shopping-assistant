@@ -29,7 +29,8 @@
       v-if="showOrder"
       type="button"
       class="flex h-7 w-7 items-center justify-center rounded-md border border-red-200 text-red-600 transition-colors hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-400 focus:ring-offset-1 disabled:opacity-40 disabled:cursor-not-allowed"
-      title="一键下单"
+      :class="orderLoading ? 'animate-pulse' : ''"
+      :title="orderLoading ? '正在查询库存...' : '一键下单'"
       aria-label="一键下单"
       :disabled="orderDisabled"
       @click.stop="emit('order')"
@@ -83,6 +84,8 @@ interface Props {
   showOrder?: boolean
   /** 一键下单按钮是否禁用（如商品停售/无货） */
   orderDisabled?: boolean
+  /** 一键下单按钮是否处于查询库存/下单中（显示脉冲动画） */
+  orderLoading?: boolean
 }
 
 withDefaults(defineProps<Props>(), {
@@ -90,6 +93,7 @@ withDefaults(defineProps<Props>(), {
   showRemove: false,
   showOrder: false,
   orderDisabled: false,
+  orderLoading: false,
 })
 
 const emit = defineEmits<{

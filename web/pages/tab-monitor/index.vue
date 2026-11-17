@@ -204,6 +204,7 @@
                 <StockProductQuickActions
                   show-order
                   :order-disabled="!item.productNo || orderingId === item.productId"
+                  :order-loading="orderingId === item.productId"
                   @stock="openSeenStockMonitor(item)"
                   @price="openSeenPriceMonitor(item)"
                   @order="orderSeenItem(item)"
@@ -240,7 +241,7 @@
 <script setup lang="ts">
 import { taskEndpoint } from '@/utils/taskApi'
 import type { TaskSummary } from '@core/contract'
-import type { AutoOrderResult } from '@core'
+import type { AutoOrderResult, ProductSkuResult } from '@core'
 import type { ApiResponse } from '@/types'
 import type { TabSeenProductItem } from '@/composables/useTabSeen'
 import type { PriceMonitorProduct } from '~/composables/usePriceMonitor'
@@ -491,7 +492,13 @@ const openSeenPriceMonitor = (item: TabSeenProductItem) => {
   showPriceDialog.value = true
 }
 
-/** 一键下单：所有有货规格各 1 件（最多 5 件），建单后到一手 App 付款 */
+/**
+ * 一键下单：所有有货规格各 1 件（最多 5 件），建单后到一手 App 付款
+ *
+ * 列表里的库存是抓取时的快照（甚至没有库存字段），不能作为下单依据。
+ * 因此先按商品 ID 拉一次详情接口：停售 / 下架 / 全规格无货直接提示，
+ * 确认有货才弹确认框，避免用户点了确认才被服务端拒绝。
+ */
 const orderSeenItem = async (item: TabSeenProductItem) => {
   if (!item.productNo) {
     toast.warning('缺少货号，无法下单')
@@ -499,17 +506,42 @@ const orderSeenItem = async (item: TabSeenProductItem) => {
   }
   if (orderingId.value) return
 
-  const confirmed = await confirm({
-    title: '确认下单',
-    message: `将为「${formatSeenName(item)}」所有有货规格各下 1 件（最多 5 件）。下单会立即锁定库存，需到一手 App 内完成付款。`,
-    type: 'warning',
-    confirmText: '确认下单',
-    cancelText: '取消',
-  })
-  if (!confirmed) return
-
   orderingId.value = item.productId
   try {
+    let sku: ProductSkuResult
+    try {
+      const stockResponse = await $fetch<ApiResponse<ProductSkuResult>>(
+        `/api/stock/skus/${item.productId}`
+      )
+      if (!stockResponse.success || !stockResponse.data) {
+        toast.error(stockResponse.error?.message || '库存查询失败，请稍后重试')
+        return
+      }
+      sku = stockResponse.data
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : '库存查询失败，请稍后重试')
+      return
+    }
+
+    // 商品级状态：停售 / 下架 / 缺货，即便个别规格还有库存也不允许下单
+    if (!sku.inStock) {
+      toast.warning(`${sku.stockMessage || '商品当前不可下单'}，暂不可下单`)
+      return
+    }
+    if (sku.inStockSkuCount <= 0) {
+      toast.warning('当前没有有货的规格，无法下单')
+      return
+    }
+
+    const confirmed = await confirm({
+      title: '确认下单',
+      message: `将为「${formatSeenName(item)}」所有有货规格各下 1 件（最多 5 件，当前 ${sku.inStockSkuCount} 个规格有货）。下单会立即锁定库存，需到一手 App 内完成付款。`,
+      type: 'warning',
+      confirmText: '确认下单',
+      cancelText: '取消',
+    })
+    if (!confirmed) return
+
     const response = await $fetch<
       ApiResponse<AutoOrderResult & { renewAction?: 'created' | 'extended' | 'skipped' }>
     >('/api/order/manual', {
