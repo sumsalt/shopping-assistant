@@ -42,6 +42,7 @@ sshpass -p '<服务器密码>' ssh ubuntu@43.143.118.204 \
 
 ## 风控验证实验分支（gate-risk-probe）
 
+- 主线 `main` 上所有「下单链路」请求本就 `skipGate`（`YishouOrderApi` 构造带 `skipGate:true`），只有下单预检查 SKU 的 `getProductSkus` 曾漏过闸门；已在 main 修复（commit 83e037f）并合并回 `gate-risk-probe`：`getProductSkus(id, skipGate?)` 新增可选参数，`auto-order.ts` 预检传 `true` 走 `orderSkuClient`（走代理+skipGate），库存/价格监控检测仍用默认（过闸门）。
 - 分支 `gate-risk-probe`：专门用于验证一手风控策略，与主线隔离。
   - 双层请求闸门：IP 桶 `ip:<出口IP>` + UID 桶 `uid:<账号>`，默认各 1 秒（环境变量 `GATE_IP_INTERVAL_MS` / `GATE_UID_INTERVAL_MS`）。所有请求（含登录态）都先过 IP 桶。
   - 到货 / 价格监控去掉了固定 `sleep` 检测间隔，轮次节奏完全交给闸门；`interval` 仅作配置展示与时长边界预估。
