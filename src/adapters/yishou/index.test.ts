@@ -587,6 +587,7 @@ describe('mapGoodsToSkuResult - 图集与详情展示字段', () => {
         goods_tags: ['可拆卸围脖', ''],
         video_url: 'https://img.example.com/v.mp4',
         provider: {
+          provider_id: '33723',
           provider_name: '美美桑蕾',
           provider_market: '海宁',
           supplier_address: '杭州-海宁',
@@ -600,6 +601,7 @@ describe('mapGoodsToSkuResult - 图集与详情展示字段', () => {
     expect(result.tags).toEqual(['可拆卸围脖']);
     expect(result.videoUrl).toBe('https://img.example.com/v.mp4');
     expect(result.provider).toEqual({
+      supplyId: '33723',
       name: '美美桑蕾',
       market: '海宁',
       address: '杭州-海宁',

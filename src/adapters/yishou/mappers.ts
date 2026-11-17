@@ -351,6 +351,9 @@ export const mapGoodsToSkuResult = (
   const providerMarket = provider?.provider_market || '';
   const providerAddress = provider?.supplier_address || '';
   const providerImage = provider?.provider_image || '';
+  // 供应商 ID：详情接口顶层 supplier_id 与 provider.provider_id 同源（都等于 Tab 的 supplyId），
+  // 用于店铺黑名单，优先取顶层。
+  const providerSupplyId = String(data.supplier_id ?? provider?.provider_id ?? '').trim();
 
   return {
     platform: 'yishou',
@@ -366,9 +369,10 @@ export const mapGoodsToSkuResult = (
     ...(data.video_url ? { videoUrl: data.video_url } : {}),
     tags,
     props,
-    ...(providerName || providerMarket || providerAddress || providerImage
+    ...(providerName || providerMarket || providerAddress || providerImage || providerSupplyId
       ? {
           provider: {
+            supplyId: providerSupplyId,
             name: providerName,
             market: providerMarket,
             address: providerAddress,

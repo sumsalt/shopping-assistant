@@ -68,6 +68,8 @@ export interface YishouGoodsData {
   goods_no: string;
   /** 商品名称 */
   goods_name: string;
+  /** 供应商 ID（顶层字段，与 provider.provider_id 同源，用于店铺黑名单） */
+  supplier_id?: string;
   /** 拿货价 */
   shop_price: string;
   /** 商品缩略图 */
@@ -440,6 +442,8 @@ export interface ProductSkuResult {
   props: Array<{ label: string; value: string }>;
   /** 档口信息 */
   provider?: {
+    /** 供应商 ID（一手 supplyId / supplier_id，用于店铺黑名单） */
+    supplyId: string;
     name: string;
     market: string;
     address: string;

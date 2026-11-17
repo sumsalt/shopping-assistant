@@ -1,5 +1,5 @@
 <template>
-  <!-- 卡片内的快捷操作：到货监控 / 价格监控 / 打开一手 App -->
+  <!-- 卡片内的快捷操作：到货监控 / 价格监控 / 一键下单 / 取消收藏 / 打开一手 App -->
   <div class="mt-2 flex items-center gap-1.5 border-t border-gray-100 pt-2" @click.stop>
     <button
       type="button"
@@ -22,6 +22,20 @@
     >
       <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+      </svg>
+    </button>
+
+    <button
+      v-if="showOrder"
+      type="button"
+      class="flex h-7 w-7 items-center justify-center rounded-md border border-red-200 text-red-600 transition-colors hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-400 focus:ring-offset-1 disabled:opacity-40 disabled:cursor-not-allowed"
+      title="一键下单"
+      aria-label="一键下单"
+      :disabled="orderDisabled"
+      @click.stop="emit('order')"
+    >
+      <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2 5h12m-6-3a1 1 0 100 2 1 1 0 000-2zm6 0a1 1 0 100 2 1 1 0 000-2z" />
       </svg>
     </button>
 
@@ -65,11 +79,17 @@ interface Props {
   showApp?: boolean
   /** 是否显示「取消收藏」（收藏夹场景下为 true） */
   showRemove?: boolean
+  /** 是否显示「一键下单」 */
+  showOrder?: boolean
+  /** 一键下单按钮是否禁用（如商品停售/无货） */
+  orderDisabled?: boolean
 }
 
 withDefaults(defineProps<Props>(), {
   showApp: false,
   showRemove: false,
+  showOrder: false,
+  orderDisabled: false,
 })
 
 const emit = defineEmits<{
@@ -77,5 +97,6 @@ const emit = defineEmits<{
   price: []
   remove: []
   openApp: []
+  order: []
 }>()
 </script>

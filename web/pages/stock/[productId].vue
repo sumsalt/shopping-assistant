@@ -246,7 +246,7 @@
           </p>
         </div>
 
-        <!-- 档口信息 -->
+        <!-- 档口信息（店铺拉黑是低频操作，放在详情页） -->
         <div v-if="skuResult.provider" class="flex items-center gap-3">
           <img
             v-if="skuResult.provider.image"
@@ -254,7 +254,7 @@
             alt="档口"
             class="w-12 h-12 rounded-lg object-cover border border-gray-200 flex-shrink-0"
           />
-          <div class="min-w-0">
+          <div class="min-w-0 flex-1">
             <p class="text-sm font-medium text-gray-900">
               {{ skuResult.provider.name || '档口' }}
               <span v-if="skuResult.provider.market" class="ml-1 text-xs font-normal text-gray-500">
@@ -265,6 +265,16 @@
               地址：{{ skuResult.provider.address }}
             </p>
           </div>
+          <button
+            v-if="skuResult.provider.supplyId"
+            type="button"
+            class="shrink-0 rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-500 transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-600 focus:outline-none focus:ring-2 focus:ring-red-400 focus:ring-offset-1 disabled:opacity-40 cursor-pointer"
+            :disabled="blacklistingProvider"
+            title="加入店铺黑名单，之后不再抓取该店铺商品"
+            @click="blacklistProvider"
+          >
+            {{ blacklistingProvider ? '加入中' : '拉黑店铺' }}
+          </button>
         </div>
 
         <!-- 发货地 -->
@@ -418,6 +428,45 @@ const handleToggleCollection = async () => {
   // 收藏接口只认货号，成功后就地更新收藏标记（真实 collect_id 或占位值）
   if (outcome.ok) {
     result.collectId = outcome.collectId ?? 'collected'
+  }
+}
+
+// 拉黑店铺：加入后该店铺商品不再被抓取、也不再出现在累计记录里（低频操作放详情页）
+const blacklistingProvider = ref(false)
+const blacklistProvider = async () => {
+  const provider = skuResult.value?.provider
+  if (!provider?.supplyId || blacklistingProvider.value) return
+
+  const confirmed = await confirmDialog({
+    title: '加入店铺黑名单',
+    message: `确定拉黑「${provider.name || '该店铺'}${provider.market ? ` · ${provider.market}` : ''}」吗？之后该店铺的商品不再被抓取，也不会写进提醒邮件。`,
+    confirmText: '拉黑',
+    type: 'danger',
+  })
+  if (!confirmed) return
+
+  blacklistingProvider.value = true
+  try {
+    const response = await $fetch<{ success: boolean; error?: { message?: string } }>(
+      '/api/shops/blacklist/create',
+      {
+        method: 'POST',
+        body: {
+          supplyId: provider.supplyId,
+          ...(provider.name ? { name: provider.name } : {}),
+          ...(provider.market ? { marketName: provider.market } : {}),
+        },
+      }
+    )
+    if (!response.success) {
+      toast.error(response.error?.message || '加入黑名单失败')
+      return
+    }
+    toast.success('已加入店铺黑名单，之后不再抓取该店铺商品')
+  } catch (err) {
+    toast.error(err instanceof Error ? err.message : '网络请求失败')
+  } finally {
+    blacklistingProvider.value = false
   }
 }
 

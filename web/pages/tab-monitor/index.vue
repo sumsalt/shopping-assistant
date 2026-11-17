@@ -99,7 +99,7 @@
           <span class="shrink-0 ml-3">共 {{ seenTotal }} 个</span>
         </div>
         <p v-if="isMobileViewport" class="text-xs text-gray-400">
-          点击商品查看本站库存详情；左上角星标可加入 / 取消一手收藏夹，右上角「App」在 App 内打开。
+          点击商品查看详情；左上角星标加入/取消收藏，右上角「App」在 App 内打开；卡片下方可发起到货监控、价格监控与一键下单。
         </p>
 
         <div v-if="seenLoading" class="py-12 text-center text-sm text-gray-500">
@@ -194,30 +194,20 @@
                 </span>
               </a>
 
-              <div class="px-2 py-1.5">
+              <div class="px-2 pb-2">
                 <p
                   class="truncate text-xs font-medium text-gray-800"
                   :title="formatSeenTitle(item)"
                 >
                   {{ formatSeenName(item) }}
                 </p>
-                <div class="mt-0.5 flex items-center justify-between gap-1">
-                  <span
-                    class="min-w-0 flex-1 truncate text-[11px] text-gray-500"
-                    :title="formatSeenShopFull(item)"
-                  >
-                    {{ formatSeenShop(item) }}
-                  </span>
-                  <button
-                    v-if="item.supplyId"
-                    type="button"
-                    class="shrink-0 rounded px-1 py-0.5 text-[11px] text-gray-400 hover:bg-red-50 hover:text-red-600 cursor-pointer"
-                    :disabled="blacklistingSupplyId === item.supplyId"
-                    @click="blacklistSeenItem(item)"
-                  >
-                    {{ blacklistingSupplyId === item.supplyId ? '加入中' : '拉黑' }}
-                  </button>
-                </div>
+                <StockProductQuickActions
+                  show-order
+                  :order-disabled="!item.productNo || orderingId === item.productId"
+                  @stock="openSeenStockMonitor(item)"
+                  @price="openSeenPriceMonitor(item)"
+                  @order="orderSeenItem(item)"
+                />
               </div>
             </div>
           </div>
@@ -234,13 +224,26 @@
         </div>
       </div>
     </UiDialog>
+
+    <!-- 到货监控 / 价格监控弹窗（与收藏夹、详情页同一组件） -->
+    <StockMonitorDialog
+      v-model:open="showStockMonitorDialog"
+      :product="stockMonitorProduct"
+    />
+    <PriceMonitorDialog
+      v-model:open="showPriceDialog"
+      :product="priceMonitorProduct"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { taskEndpoint } from '@/utils/taskApi'
 import type { TaskSummary } from '@core/contract'
+import type { AutoOrderResult } from '@core'
+import type { ApiResponse } from '@/types'
 import type { TabSeenProductItem } from '@/composables/useTabSeen'
+import type { PriceMonitorProduct } from '~/composables/usePriceMonitor'
 
 definePageMeta({ title: 'Tab 监控任务', keepalive: true })
 
@@ -249,8 +252,7 @@ const { tasks, isLoading, error, busyId, statusFilter, filteredTasks, statusCoun
   useTaskList(taskEndpoint('tab'))
 const { fetchSeenProducts } = useTabSeen()
 const { isMobileViewport, openYishouProduct } = useYishouApp()
-const { danger: confirmDelete, warning: confirmRestart, confirm: confirmSeenBlacklist } =
-  useConfirmDialog()
+const { danger: confirmDelete, warning: confirmRestart, confirm } = useConfirmDialog()
 const toast = useToast()
 const { addingNo, addToCollection } = useCollectionAdd()
 const { removingNo, removeFromCollection } = useCollectionRemove()
@@ -304,8 +306,14 @@ const seenListRef = ref<HTMLElement | null>(null)
  * 返回后用 onActivated 恢复。用普通变量而非 ref，避免无谓触发渲染。
  */
 let rememberedSeenScrollTop = 0
-/** 正在拉黑的供应商标识，避免重复点击 */
-const blacklistingSupplyId = ref('')
+/** 正在下单的商品 ID，避免重复点击 */
+const orderingId = ref('')
+
+/** 到货监控 / 价格监控弹窗 */
+const showStockMonitorDialog = ref(false)
+const showPriceDialog = ref(false)
+const stockMonitorProduct = ref<PriceMonitorProduct | null>(null)
+const priceMonitorProduct = ref<PriceMonitorProduct | null>(null)
 
 const SEEN_PAGE_SIZE = 50
 
@@ -396,18 +404,6 @@ onActivated(() => {
   })
 })
 
-// 店铺展示文案：优先用接口返回的店铺名，老记录没有则退回供应商标识
-const formatSeenShop = (item: TabSeenProductItem): string => {
-  if (item.shopName) return item.shopName
-  return item.supplyId ? `供应商 ${item.supplyId}` : '店铺未知'
-}
-
-// 完整文案（带市场名）：拉黑确认时用，便于确认是哪家
-const formatSeenShopFull = (item: TabSeenProductItem): string => {
-  const name = formatSeenShop(item)
-  return item.marketName ? `${name} · ${item.marketName}` : name
-}
-
 // 图片悬浮提示：完整商品名 + 首次发现时间
 const formatSeenTitle = (item: TabSeenProductItem): string => {
   const base = `${item.productName || formatSeenName(item)} · 首次发现 ${formatSeenTime(item.firstSeenAt)}`
@@ -473,47 +469,72 @@ const formatSeenName = (item: TabSeenProductItem): string =>
   item.productName?.replace(/^\s*【[^】]*】\s*/, '').trim() ||
   `商品 ${item.productId}`
 
-// 把商品所属店铺加入黑名单：加入后该店铺商品不再被抓取，也不再出现在累计记录里
-const blacklistSeenItem = async (item: TabSeenProductItem) => {
-  const supplyId = item.supplyId
-  if (!supplyId || blacklistingSupplyId.value) return
+/* ---------------- 卡片快捷操作：到货监控 / 价格监控 / 一键下单 ---------------- */
 
-  const confirmed = await confirmSeenBlacklist({
-    title: '加入店铺黑名单',
-    message: `确定拉黑「${formatSeenShopFull(item)}」吗？之后该店铺的商品不再被抓取，也不会写进提醒邮件。`,
-    confirmText: '拉黑',
-    type: 'danger',
+/** Tab 商品条目 → 监控弹窗需要的商品信息 */
+const toMonitorProduct = (item: TabSeenProductItem): PriceMonitorProduct => ({
+  productId: item.productId,
+  productName: item.productName,
+  productImage: item.productImage,
+  productNo: item.productNo,
+})
+
+/** 到货监控：无货商品正是它的主要场景 */
+const openSeenStockMonitor = (item: TabSeenProductItem) => {
+  stockMonitorProduct.value = toMonitorProduct(item)
+  showStockMonitorDialog.value = true
+}
+
+/** 价格监控：需要一手登录态，缺少时弹窗内会给出提示 */
+const openSeenPriceMonitor = (item: TabSeenProductItem) => {
+  priceMonitorProduct.value = toMonitorProduct(item)
+  showPriceDialog.value = true
+}
+
+/** 一键下单：所有有货规格各 1 件（最多 5 件），建单后到一手 App 付款 */
+const orderSeenItem = async (item: TabSeenProductItem) => {
+  if (!item.productNo) {
+    toast.warning('缺少货号，无法下单')
+    return
+  }
+  if (orderingId.value) return
+
+  const confirmed = await confirm({
+    title: '确认下单',
+    message: `将为「${formatSeenName(item)}」所有有货规格各下 1 件（最多 5 件）。下单会立即锁定库存，需到一手 App 内完成付款。`,
+    type: 'warning',
+    confirmText: '确认下单',
+    cancelText: '取消',
   })
   if (!confirmed) return
 
-  blacklistingSupplyId.value = supplyId
+  orderingId.value = item.productId
   try {
-    const response = await $fetch<{
-      success: boolean
-      error?: { message?: string }
-    }>('/api/shops/blacklist/create', {
+    const response = await $fetch<
+      ApiResponse<AutoOrderResult & { renewAction?: 'created' | 'extended' | 'skipped' }>
+    >('/api/order/manual', {
       method: 'POST',
-      body: {
-        supplyId,
-        ...(item.shopName ? { name: item.shopName } : {}),
-        ...(item.marketName ? { marketName: item.marketName } : {}),
-      },
+      body: { goodsId: item.productId, goodsNo: item.productNo },
     })
 
-    if (!response.success) {
-      toast.error(response.error?.message || '加入黑名单失败')
-      return
+    if (response.success && response.data) {
+      const order = response.data
+      if (order.success) {
+        const amountText =
+          typeof order.orderAmount === 'number' ? `，应付 ¥${order.orderAmount.toFixed(2)}` : ''
+        toast.success(
+          `已创建订单 ${order.orderSn ?? ''}（${order.num ?? 0} 件${amountText}），请到一手 App 付款`
+        )
+      } else {
+        toast.error(order.message || '下单失败')
+      }
+    } else {
+      toast.error(response.error?.message || '下单失败')
     }
-
-    // 同一店铺在本地列表里的其他商品也一并移除
-    const removed = seenItems.value.filter(seen => seen.supplyId === supplyId).length
-    seenItems.value = seenItems.value.filter(seen => seen.supplyId !== supplyId)
-    seenTotal.value = Math.max(0, seenTotal.value - removed)
-    toast.success('已加入店铺黑名单，之后不再抓取该店铺商品')
   } catch (err) {
     toast.error(err instanceof Error ? err.message : '网络请求失败')
   } finally {
-    blacklistingSupplyId.value = ''
+    orderingId.value = ''
   }
 }
 
