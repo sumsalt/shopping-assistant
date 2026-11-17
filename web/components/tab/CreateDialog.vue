@@ -49,10 +49,10 @@
               v-model.number="form.interval"
               type="number"
               min="10"
-              placeholder="默认 300 秒"
+              placeholder="默认 60 秒"
               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
             />
-            <p class="mt-1 text-xs text-gray-500">建议 300 秒以上，避免频繁请求</p>
+            <p class="mt-1 text-xs text-gray-500">建议 60 秒以上，避免频繁请求</p>
           </div>
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1.5">监控时长（秒）</label>
@@ -225,7 +225,7 @@ const MODES = [
 const defaultForm = () => ({
   tabId: '',
   tabName: '',
-  interval: 300,
+  interval: 60,
   duration: 10800,
   sort: 1,
   mode: 'accumulate' as 'accumulate' | 'diff',

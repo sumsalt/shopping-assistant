@@ -351,7 +351,7 @@ const compareProductLists = (
  *   },
  *   {
  *     tabId: '146453',
- *     interval: 300, // 每 5 分钟检查一次
+ *     interval: 60, // 每 1 分钟检查一次
  *     duration: 7200, // 最多运行 2 小时
  *     adapterConfig: { uid: 'xxx', token: 'xxx' }
  *   },
@@ -392,7 +392,7 @@ export const monitorTabList = async (
  *   },
  *   {
  *     tabId: '146453',
- *     interval: 300
+ *     interval: 60
  *   }
  * );
  *
