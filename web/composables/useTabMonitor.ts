@@ -80,7 +80,7 @@ export const useTabMonitor = () => {
       sort: config.sort || 1,
       minPrice: config.minPrice || 0,
       maxPrice: config.maxPrice || 0,
-      minChangeCount: config.minChangeCount || 10,
+      minChangeCount: config.minChangeCount || 2,
       mode: config.mode ?? 'accumulate',
       ...(config.activeWindow ? { activeWindow: config.activeWindow } : {}),
     }

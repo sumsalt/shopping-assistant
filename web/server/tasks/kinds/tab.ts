@@ -73,7 +73,7 @@ export const tabDefinition: TaskKindDefinition<TabTaskState> = {
           ...(body?.config?.minPrice !== undefined ? { minPrice: num(body.config.minPrice, 0) } : {}),
           ...(body?.config?.maxPrice !== undefined ? { maxPrice: num(body.config.maxPrice, 0) } : {}),
           ...(body?.config?.minChangeCount !== undefined
-            ? { minChangeCount: num(body.config.minChangeCount, 10) }
+            ? { minChangeCount: num(body.config.minChangeCount, 2) }
             : {}),
           ...(body?.config?.dailyResetEnabled !== undefined
             ? { dailyResetEnabled: Boolean(body.config.dailyResetEnabled) }

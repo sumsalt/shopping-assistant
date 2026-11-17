@@ -109,7 +109,7 @@
             v-model.number="form.minChangeCount"
             type="number"
             min="1"
-            placeholder="默认 10"
+            placeholder="默认 2"
             class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
           />
           <p class="mt-1 text-xs text-gray-500">
@@ -229,7 +229,7 @@ const defaultForm = () => ({
   duration: 10800,
   sort: 1,
   mode: 'accumulate' as 'accumulate' | 'diff',
-  minChangeCount: 10,
+  minChangeCount: 2,
   useActiveWindow: false,
   windowStart: '09:00',
   windowEnd: '23:00',
