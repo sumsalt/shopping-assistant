@@ -55,23 +55,36 @@ describe('request-gate 双层闸门', () => {
     expect(granted).toBe(true);
   });
 
-  it('同为匿名的请求共享 ip:default 和 uid:anon 两层', async () => {
+  it('匿名请求只过 IP 桶：跳过 uid:anon，同出口的匿名请求仍按 IP 间隔排队', async () => {
     await acquireRequestSlot({ taskId: 't1' });
 
     let granted = false;
-    const second = acquireRequestSlot({ taskId: 't1' }).then(() => {
+    // 不同 taskId 的匿名请求：没有 UID 桶串联，只共享 ip:default
+    const second = acquireRequestSlot({ taskId: 't2' }).then(() => {
       granted = true;
     });
 
     await advance(900);
     expect(granted).toBe(false);
 
+    // 只等 IP 桶 1s 就放行，不再需要等 2s 的 UID 桶
     await advance(200);
-    // IP 桶放行（1s），UID 桶 anon 也是 2s —— 所以这里还没到
-    expect(granted).toBe(false);
-    await advance(1_100);
     await second;
     expect(granted).toBe(true);
+
+    // 统计里只生成 IP 桶，不再有 uid:anon 桶
+    const stats = getGateStats();
+    expect(stats.buckets.some((item) => item.key === 'ip:default')).toBe(true);
+    expect(stats.buckets.some((item) => item.key === 'uid:anon')).toBe(false);
+  });
+
+  it('不同出口 IP 的匿名请求互不排队（仅 IP 桶生效）', async () => {
+    await acquireRequestSlot({ taskId: 't1' });
+
+    // 匿名 + 不同出口 IP：IP 桶独立，无 UID 桶，立即放行
+    await expect(
+      acquireRequestSlot({ taskId: 't2', localAddress: '10.0.0.9' })
+    ).resolves.toBeUndefined();
   });
 
   it('不同出口 IP 且不同账号：两层都独立，互不排队', async () => {

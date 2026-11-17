@@ -32,7 +32,7 @@ export interface HttpRequestOptions {
   /**
    * 本次请求的限流身份
    *
-   * 决定进哪个 UID 桶：有值进 `uid:<accountKey>`，空串进全局 `uid:anon` 桶。
+   * 决定进哪个 UID 桶：有值进 `uid:<accountKey>`；空串表示匿名请求，跳过 UID 层只过 IP 桶。
    * 适配器按「这次请求到底带没带 uid/token」传入，避免任务上下文与请求身份对不上。
    */
   accountKey?: string;

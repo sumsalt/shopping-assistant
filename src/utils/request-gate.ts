@@ -5,11 +5,13 @@
  * - IP 层（`ip:<出口IP>`）：同一出口 IP 的最小间隔，默认 1 秒。
  *   所有请求都过这一层，包括登录态——这正是「按 IP 限流」的核心。
  * - UID 层（`uid:<账号键>`）：同一账号的最小间隔，默认 1 秒。
- *   登录态请求进 `uid:<uid>`，匿名请求进全局 `uid:anon`。
+ *   账号闸门本来就是约束「账号」的——只有登录态请求进 `uid:<uid>`；
+ *   匿名请求没有账号身份，只过 IP 桶，跳过 UID 层。
  *
  * 与旧版（登录 5s / 匿名 1s 的单桶）的区别：
  * - 旧版分叉成 auth/anon 两个桶，登录态根本不占 IP 维度；
- * - 新版所有请求统一先过 IP 桶，再多过一层 UID 桶，两层间隔都是 1 秒。
+ * - 新版所有请求先过 IP 桶；登录态再多过一层 UID 桶，两层间隔都是 1 秒；
+ *   匿名请求只过 IP 桶（不再有全局 uid:anon 桶把多个匿名任务串在一起）。
  *
  * 只对「后台监控任务」生效：监控循环在执行前用 {@link runWithGateContext} 打上上下文，
  * HTTP 出口（utils/http.ts）检测到上下文时才排队；没有上下文的请求
@@ -31,8 +33,9 @@ export interface GateContext {
   /** 任务类型，仅用于统计展示 */
   kind?: GateTaskKind;
   /**
-   * 登录态标识（uid）；为空表示匿名请求，进全局 `uid:anon` 桶。
+   * 登录态标识（uid）；为空表示匿名请求。
    *
+   * 决定进哪个 UID 桶：有值进 `uid:<uid>`；匿名请求没有账号身份，跳过 UID 层只过 IP 桶。
    * 由 HTTP 出口按请求实际凭证覆盖（`HttpRequestOptions.accountKey`）。
    */
   accountKey?: string;
@@ -334,12 +337,14 @@ const acquireBucket = (bucket: Bucket, context: GateContext): Promise<void> => {
  * 排队超过 {@link GateOptions.maxWaitMs} 会 reject，调用方应视为一次任务失败而非无限挂起。
  */
 export const acquireRequestSlot = async (context: GateContext): Promise<void> => {
-  // 第一层：出口 IP。未指定 localAddress 时所有请求共享 ip:default
+  // 第一层：出口 IP。所有请求都过，未指定 localAddress 时共享 ip:default
   const address = context.localAddress?.trim() || 'default';
   await acquireBucket(getBucket(`ip:${address}`, 'ip'), context);
 
-  // 第二层：账号。登录态进 uid:<uid>，匿名进全局 uid:anon
-  const uid = context.accountKey?.trim() || 'anon';
+  // 第二层：账号闸门只约束「账号」。匿名请求没有账号身份，只过 IP 桶即可，
+  // 跳过 UID 层——否则所有匿名监控任务会被全局 uid:anon 桶串在一起互相拖慢。
+  const uid = context.accountKey?.trim();
+  if (!uid) return;
   await acquireBucket(getBucket(`uid:${uid}`, 'uid'), context);
 };
 
@@ -404,7 +409,7 @@ export const getGateStats = (): GateStats => {
     list.push({
       key: bucket.key,
       scope: bucket.scope,
-      authenticated: bucket.scope === 'uid' && bucket.key !== 'uid:anon',
+      authenticated: bucket.scope === 'uid',
       intervalMs: bucket.intervalMs,
       pending: bucketPending,
       granted: bucket.granted,
