@@ -45,7 +45,7 @@ export interface PlatformAdapter {
    * @param productNo 商品货号
    * @returns 商品 SKU 查询结果
    */
-  getProductSkus(productId: string): Promise<ProductSkuResult>;
+  getProductSkus(productId: string, skipGate?: boolean): Promise<ProductSkuResult>;
 
   /**
    * 获取商品价格快照（必须携带登录态）
