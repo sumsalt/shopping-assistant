@@ -54,8 +54,8 @@ export interface PrepareCheckoutInput {
 export interface AutoOrderAdapter {
   /** 收货地址列表 */
   getAddresses(): Promise<YishouAddress[]>;
-  /** 商品 SKU 列表（按 goods_id 查，走商品详情接口） */
-  getProductSkus(productId: string): Promise<ProductSkuResult>;
+  /** 商品 SKU 列表（按 goods_id 查，走商品详情接口）；下单预检传 skipGate=true 跳过闸门 */
+  getProductSkus(productId: string, skipGate?: boolean): Promise<ProductSkuResult>;
   /** 准备结算：加购 → 购物车明细 → 算折 → 结算确认，产出业务结论 + 不透明协议上下文 */
   prepareCheckout(input: PrepareCheckoutInput): Promise<CheckoutReady>;
   /** 用 prepareCheckout 的协议上下文建单 */
@@ -290,9 +290,11 @@ const prepareOrder = async (
       };
     }
 
-    // ② 规格：指定了 SKU 就只在这些里挑，否则全部规格都可参与
+    // ② 规格：指定了 SKU 就只在这些里挑，否则全部规格都可参与。
+    // 这是下单预检，跳过全局闸门（闸门每 1s 一个令牌，排队会拖慢下单）；
+    // 库存监控的检测链路仍走默认（过闸门），两条链路互不影响。
     stage = 'sku';
-    const skuResult = await adapter.getProductSkus(goodsId);
+    const skuResult = await adapter.getProductSkus(goodsId, true);
 
     // 商品级闸门：停售 / 下架 / 缺货时，即便规格还挂着 sale_stock 也不下单。
     // 用 === false 严格判断，兼容未下发该字段的旧适配器（undefined 视为未知，不拦截）。

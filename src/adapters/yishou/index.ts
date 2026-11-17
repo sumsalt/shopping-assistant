@@ -74,6 +74,8 @@ export class YishouAdapter extends BaseAdapter {
    * 体验上像「点了没反应」；这类显式点击动作与下单同性质，按单次请求放行。
    */
   private readonly writeClient: YishouClient;
+  /** 下单预检查 SKU：走代理但跳过闸门，避免下单流程被闸门拖慢 */
+  private readonly orderSkuClient: YishouClient;
 
   constructor(config: AdapterConfig = {}) {
     super(config);
@@ -81,12 +83,18 @@ export class YishouAdapter extends BaseAdapter {
     this.directClient = new YishouClient(config, { useProxy: false });
     this.order = new YishouOrderApi(config);
     this.writeClient = new YishouClient(config, { useProxy: false, skipGate: true });
+    this.orderSkuClient = new YishouClient(config, { skipGate: true });
   }
 
-  /** 按 goods_id 查商品详情（库存 / 价格共用） */
-  private async fetchGoods(productId: string): Promise<YishouGoodsData> {
+  /**
+   * 按 goods_id 查商品详情（库存 / 价格共用）
+   *
+   * @param skipGate 抢单预检等时效敏感场景传 true 跳过全局闸门；库存/价格监控按默认 false 走闸门限流
+   */
+  private async fetchGoods(productId: string, skipGate = false): Promise<YishouGoodsData> {
+    const client = skipGate ? this.orderSkuClient : this.client;
     try {
-      const data = await this.client.post<YishouGoodsData>(EP.GOODS_INFO, {
+      const data = await client.post<YishouGoodsData>(EP.GOODS_INFO, {
         goods_id: productId,
         goods_no: '',
       });
@@ -260,8 +268,10 @@ export class YishouAdapter extends BaseAdapter {
    * 详情页只调这一个接口：SKU 树、价格、库存、收藏标记一次拿全。
    * 该接口匿名可用，未登录时价格回落成游客参考价（读 alone_price），
    * 所以这里不再要求登录态。
+   *
+   * @param skipGate 下单预检传 true 跳过闸门；库存/价格监控用默认 false，仍走闸门限流
    */
-  async getProductSkus(productId: string): Promise<ProductSkuResult> {
+  async getProductSkus(productId: string, skipGate = false): Promise<ProductSkuResult> {
     const id = String(productId || '').trim();
     if (!id) {
       throw new StockCheckError(StockCheckErrorType.API_ERROR, '缺少商品 ID');
@@ -269,7 +279,7 @@ export class YishouAdapter extends BaseAdapter {
 
     const guest = !this.client.hasAuth;
     try {
-      const data = await this.fetchGoods(id);
+      const data = await this.fetchGoods(id, skipGate);
       return mapGoodsToSkuResult(data, { guest });
     } catch (error) {
       if (error instanceof StockCheckError && error.type === StockCheckErrorType.PRODUCT_NOT_FOUND) {
