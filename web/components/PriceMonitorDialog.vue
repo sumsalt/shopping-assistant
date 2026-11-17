@@ -39,16 +39,6 @@
         中选择带登录态的账号并设为当前账号。
       </div>
 
-      <!-- 检测间隔 -->
-      <UiInput
-        v-model="intervalInput"
-        type="number"
-        label="检测间隔（秒）"
-        hint="轮次间隔，最低 60 秒"
-        :error="intervalError"
-        :disabled="isLoading"
-      />
-
       <!-- 监控时长 -->
       <div>
         <label class="block text-sm font-medium text-gray-700 mb-1">监控时长</label>
@@ -276,11 +266,11 @@
         </template>
       </template>
 
-      <!-- 预计周期 -->
+      <!-- 检测节奏说明 -->
       <div class="p-3 bg-blue-50 rounded-lg text-sm text-blue-700">
-        预计每轮检测耗时：{{ cycleText }}
+        检测节奏由全局双层请求闸门自动控制，无需设置间隔。
         <p class="mt-1 text-xs text-blue-600">
-          节奏由全局双层请求闸门控制：IP 层与账号层均约 1 秒一次（风控验证分支）
+          IP 层与账号层均约 1 秒放行一次（风控验证分支）；监控时长到期后自动结束。
         </p>
       </div>
     </div>
@@ -321,8 +311,6 @@
 
 <script setup lang="ts">
 import {
-  MIN_PRICE_MONITOR_INTERVAL,
-  DEFAULT_PRICE_MONITOR_INTERVAL,
   DEFAULT_PRICE_MONITOR_DURATION,
   type PriceMonitorProduct,
   type PriceAutoOrderOptions,
@@ -352,16 +340,12 @@ const toast = useToast()
 const { createPriceMonitorTask, isLoading } = usePriceMonitor()
 const { checkStock } = useStock()
 
-// 检测间隔
-const intervalInput = ref(String(MIN_PRICE_MONITOR_INTERVAL))
 // 监控时长（默认 72 小时）
 const duration = ref(DEFAULT_PRICE_MONITOR_DURATION)
 // 通知条件
 const notifyOn = ref<PriceNotifyOn>('any')
 // 最小变动金额
 const minPriceDeltaInput = ref('0.01')
-
-const intervalError = ref('')
 
 /**
  * 商品货号
@@ -446,12 +430,6 @@ const notifyOptions: Array<{ value: PriceNotifyOn; label: string }> = [
 // 实际要监控的商品（一个任务只监控一个商品）
 const displayProduct = computed(() => props.product)
 
-// 预计检测周期
-const cycleText = computed(() => {
-  const interval = Number(intervalInput.value) || DEFAULT_PRICE_MONITOR_INTERVAL
-  return `约 ${interval} 秒/次`
-})
-
 // 关闭弹窗
 const handleClose = () => {
   emit('update:open', false)
@@ -464,14 +442,6 @@ const handleOpenChange = (value: boolean) => {
 
 // 提交
 const handleSubmit = async () => {
-  intervalError.value = ''
-
-  const interval = Number(intervalInput.value)
-  if (!Number.isFinite(interval) || interval < MIN_PRICE_MONITOR_INTERVAL) {
-    intervalError.value = `检测间隔不能小于 ${MIN_PRICE_MONITOR_INTERVAL} 秒`
-    return
-  }
-
   if (!displayProduct.value) {
     toast.warning('缺少商品信息，请从商品详情页重新打开')
     return
@@ -509,7 +479,6 @@ const handleSubmit = async () => {
   }
 
   const taskId = await createPriceMonitorTask(displayProduct.value, {
-    interval,
     duration: duration.value,
     notifyOn: notifyOn.value,
     minPriceDelta: Number.isFinite(minPriceDelta) && minPriceDelta > 0 ? minPriceDelta : 0.01,
@@ -530,11 +499,9 @@ watch(
       return
     }
 
-    intervalInput.value = String(MIN_PRICE_MONITOR_INTERVAL)
     duration.value = DEFAULT_PRICE_MONITOR_DURATION
     notifyOn.value = 'any'
     minPriceDeltaInput.value = '0.01'
-    intervalError.value = ''
     productNoCache.value = props.product?.productNo || ''
     resetAutoOrder()
   }

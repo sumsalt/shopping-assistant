@@ -46,6 +46,10 @@ sshpass -p '<服务器密码>' ssh ubuntu@43.143.118.204 \
   - 双层请求闸门：IP 桶 `ip:<出口IP>` + UID 桶 `uid:<账号>`，默认各 1 秒（环境变量 `GATE_IP_INTERVAL_MS` / `GATE_UID_INTERVAL_MS`）。所有请求（含登录态）都先过 IP 桶。
   - 到货 / 价格监控去掉了固定 `sleep` 检测间隔，轮次节奏完全交给闸门；`interval` 仅作配置展示与时长边界预估。
   - 账号表新增 `localAddress`（出口网卡 IP），可在账号管理里手动分配；HTTP 出口用 `localAddress` 绑定网卡并进对应 IP 桶。留空进 `ip:default`。
-- 实验服务器：`ubuntu@1.13.23.184`（密码同主线），应用目录同为 `/var/www/shopping-assistant`，PM2 名 `shopping-assistant`。数据是主线库的一致性快照。
-  - **注意**：该机目前只有 `eth0`（内网 10.206.0.4），公网 IP 是 NAT；`eth1` 尚未绑定 IP。要真正按多 IP 分桶，需先在云控制台给 eth1 绑公网 IP 并在系统内 `ip addr` 配置，再给账号填对应本机 IP。
+- 实验服务器：`ubuntu@1.13.23.184`（密码同主线），应用目录同为 `/var/www/shopping-assistant`，PM2 名 `shopping-assistant`。数据是主线库的一致性快照（accounts 13 / tasks 52 / shop_blacklist 2）。
+  - 访问地址：`http://1.13.23.184/`（Nginx 监听 80 反代到本机 3000，未绑域名，server_name `_`）。本机 80 / 公网 80 均已验证通（302 → /login）。
+  - 从主线拷到实验机的四类东西：`.output`（应用代码）、`ecosystem.config.cjs`（环境变量，7 个 key，md5 与主线一致）、`data/tasks.db`（SQLite 一致性快照）、`config/users.json`（应用登录账号 yanxia/wxt；初次迁移漏了，已补，热加载生效）。
+  - 登录账户：SSH 用 `ubuntu` / 密码同主线；应用后台用 `yanxia` 或 `wxt`（密码见主线 `config/users.json` 的 bcrypt hash，与主线完全一致）。主线多一个 `lighthouse` 系统用户，实验机没有，不影响应用。
+  - **双网卡已配置（2026-11-18）**：`eth0` 内网 10.206.0.4 → 公网 1.13.23.184（SSH/Nginx 80 走这里，默认路由）；`eth1` 内网 10.206.0.17 → 公网 EIP 119.45.202.128。eth1 用独立路由表 101 + 策略路由 `from 10.206.0.17 lookup eni1 priority 101`，持久化在 `/etc/netplan/60-eni-config.yaml`（`netplan generate` 语法已校验），当前已用 `ip` 命令即时生效。已验证：`curl --interface 10.206.0.17 http://ifconfig.me/ip` 返回 119.45.202.128。
+  - 账号出口 IP：给账号填 `localAddress=10.206.0.17` 即走第二个出口；留空走 ip:default（eth0，公网 1.13.23.184）。据此做多 IP 分桶风控验证。注意 Node HTTP 用 localAddress 绑内网 IP，策略路由保证从对应网卡出去。
 - 部署到实验机时目标地址是 `1.13.23.184`，不要误覆盖主线 `43.143.118.204`。

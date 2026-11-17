@@ -368,15 +368,17 @@
         </UiInput>
         <UiInput v-model="form.uin" label="uin" placeholder="一手账号的 uid（粘贴抓包可自动填）" autocomplete="off" />
         <UiInput v-model="form.token" label="token" :placeholder="editingId ? '留空则不修改' : '一手 token（粘贴抓包可自动填）'" autocomplete="off" />
-        <UiInput
-          v-model="form.localAddress"
-          label="出口网卡 IP"
-          placeholder="例如 10.206.0.5；留空用默认路由"
-          autocomplete="off"
-        />
-        <p class="text-[11px] text-gray-400 -mt-2">
-          多公网 IP 场景下，填本机某块网卡上的 IP，该账号的请求会从这块网卡出去，并在闸门里按 IP 分桶。留空则与其他未指定账号共用默认出口。
-        </p>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">出口网卡 IP</label>
+          <UiSelect
+            v-model="form.localAddress"
+            :options="localAddressOptions"
+            placeholder="默认路由（未指定）"
+          />
+          <p class="mt-1 text-[11px] text-gray-400">
+            多公网 IP 场景下，选本机某块网卡的 IP，该账号的请求会从这块网卡出去，并在闸门里按 IP 分桶。默认路由则与其他未指定账号共用出口。
+          </p>
+        </div>
         <UiTextarea v-model="form.remark" label="备注" placeholder="例如：主号 / 备用 / 绑定哪个微信" :rows="2" :max-length="500" />
 
         <!-- 粘贴抓包自动识别 -->
@@ -538,6 +540,8 @@ const {
   deleteAccount,
   revealField,
   verifyAccount,
+  networkAddresses,
+  fetchNetworkAddresses,
 } = useAccounts()
 
 const configStore = useConfigStore()
@@ -674,6 +678,34 @@ const hasAnyTag = (item: AccountItem): boolean =>
 
 /** 兼容旧版 UiSwitch 回传的 '1' / '0'（现在统一回传布尔） */
 const toBoolean = (value: boolean | '1' | '0'): boolean => value === true || value === '1'
+
+/** 出口 IP 下拉选项：默认路由 + 服务器各网卡 */
+const localAddressOptions = computed(() => {
+  const options: Array<{ value: string; label: string; description?: string }> = [
+    { value: '', label: '默认路由（不指定）', description: '与其他未指定账号共用出口' },
+  ]
+  for (const nic of networkAddresses.value) {
+    const label = nic.publicIp
+      ? `${nic.name} · ${nic.address} → ${nic.publicIp}`
+      : `${nic.name} · ${nic.address}`
+    options.push({
+      value: nic.address,
+      label,
+      description: nic.publicIp ? '公网出口' : '内网地址',
+    })
+  }
+  // 编辑已存的账号时，若其出口 IP 已不在当前网卡列表里（网卡被删/改），
+  // 补一个「已失效」选项，避免值被静默清空、让用户发现问题。
+  const current = form.value.localAddress
+  if (current && !networkAddresses.value.some(nic => nic.address === current)) {
+    options.push({
+      value: current,
+      label: `${current}（当前配置，网卡不存在）`,
+      description: '该 IP 已不在本机网卡中，建议改选',
+    })
+  }
+  return options
+})
 
 const hasActiveFilters = computed(
   () =>
@@ -1154,5 +1186,6 @@ const handleDelete = async (item: AccountItem) => {
 
 onMounted(() => {
   fetchAccounts()
+  fetchNetworkAddresses()
 })
 </script>

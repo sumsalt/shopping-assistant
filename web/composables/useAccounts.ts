@@ -86,6 +86,15 @@ export interface AccountVerifyResult {
   message: string
 }
 
+/** 服务器网卡地址（出口 IP 下拉候选） */
+export interface NetworkAddress {
+  name: string
+  address: string
+  netmask: string
+  mac: string
+  publicIp: string
+}
+
 /** 补零 */
 const pad = (value: number): string => String(value).padStart(2, '0')
 
@@ -118,6 +127,23 @@ export const useAccounts = () => {
   /** 正在校验登录态的账号 id */
   const verifyingId = ref('')
   const error = ref<string | null>(null)
+
+  /** 服务器网卡地址（出口 IP 下拉候选） */
+  const networkAddresses = ref<NetworkAddress[]>([])
+  /** 拉取服务器网卡列表；失败时保持空数组，页面会提示手动填写 */
+  const fetchNetworkAddresses = async (): Promise<void> => {
+    try {
+      const response = await $fetch<ApiResponse<{ addresses: NetworkAddress[] }>>(
+        '/api/network/addresses'
+      )
+      if (response.success && response.data) {
+        networkAddresses.value = response.data.addresses
+      }
+    } catch {
+      // 静默降级：网卡列表拉不到时下拉只剩「默认路由」项
+      networkAddresses.value = []
+    }
+  }
 
   /** 拉取账号列表 */
   const fetchAccounts = async (): Promise<void> => {
@@ -329,6 +355,8 @@ export const useAccounts = () => {
     isSubmitting,
     verifyingId,
     error,
+    networkAddresses,
+    fetchNetworkAddresses,
     fetchAccounts,
     createAccount,
     updateAccount,
