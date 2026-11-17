@@ -39,3 +39,13 @@ sshpass -p '<服务器密码>' ssh ubuntu@43.143.118.204 \
 - 任务对外只有一个形状 `TaskSummary`，列表与详情都由 `project()` 产出，前端不另写 DTO
 - 落盘状态只在 `migrate` 阶段做兼容兜底，运行期相信已有数据
 - 新增后台行为必须带单测，且测试要能证明「改了会失败」
+
+## 风控验证实验分支（gate-risk-probe）
+
+- 分支 `gate-risk-probe`：专门用于验证一手风控策略，与主线隔离。
+  - 双层请求闸门：IP 桶 `ip:<出口IP>` + UID 桶 `uid:<账号>`，默认各 1 秒（环境变量 `GATE_IP_INTERVAL_MS` / `GATE_UID_INTERVAL_MS`）。所有请求（含登录态）都先过 IP 桶。
+  - 到货 / 价格监控去掉了固定 `sleep` 检测间隔，轮次节奏完全交给闸门；`interval` 仅作配置展示与时长边界预估。
+  - 账号表新增 `localAddress`（出口网卡 IP），可在账号管理里手动分配；HTTP 出口用 `localAddress` 绑定网卡并进对应 IP 桶。留空进 `ip:default`。
+- 实验服务器：`ubuntu@1.13.23.184`（密码同主线），应用目录同为 `/var/www/shopping-assistant`，PM2 名 `shopping-assistant`。数据是主线库的一致性快照。
+  - **注意**：该机目前只有 `eth0`（内网 10.206.0.4），公网 IP 是 NAT；`eth1` 尚未绑定 IP。要真正按多 IP 分桶，需先在云控制台给 eth1 绑公网 IP 并在系统内 `ip addr` 配置，再给账号填对应本机 IP。
+- 部署到实验机时目标地址是 `1.13.23.184`，不要误覆盖主线 `43.143.118.204`。
