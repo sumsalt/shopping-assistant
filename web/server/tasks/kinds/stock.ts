@@ -8,7 +8,6 @@
 import {
   createCancellableMonitor,
   MAX_AUTO_ORDER_NUM,
-  MIN_STOCK_MONITOR_INTERVAL,
   type AutoOrderConfig,
   type MonitorResult,
   type MonitorTask,
@@ -106,16 +105,14 @@ export const stockDefinition: TaskKindDefinition<StockTaskState> = {
     }
 
     const rawInterval = body?.config?.interval
+    // 实验分支：节奏由双层闸门控制，interval 仅作时长边界预估；缺省记为 0（自动设置）。
     const interval =
       rawInterval === undefined || rawInterval === null || rawInterval === ''
-        ? MIN_STOCK_MONITOR_INTERVAL
+        ? 0
         : Number(rawInterval)
 
-    if (!Number.isFinite(interval) || interval < MIN_STOCK_MONITOR_INTERVAL) {
-      throw new TaskApiError(
-        ErrorCode.INVALID_PARAMS,
-        `检测间隔不能小于 ${MIN_STOCK_MONITOR_INTERVAL} 秒`
-      )
+    if (!Number.isFinite(interval) || interval < 0) {
+      throw new TaskApiError(ErrorCode.INVALID_PARAMS, '检测间隔不能为负数')
     }
 
     const skus = readSkus(body?.config?.skus)
@@ -286,9 +283,9 @@ export const stockDefinition: TaskKindDefinition<StockTaskState> = {
       record.status = 'completed'
       return false
     }
-    // 历史任务的间隔可能低于新下限
-    if (record.state.config.interval < MIN_STOCK_MONITOR_INTERVAL) {
-      record.state.config.interval = MIN_STOCK_MONITOR_INTERVAL
+    // 实验分支：interval 不再驱动 sleep，允许 0；仅把负数等非法历史值纠正为 0
+    if (!Number.isFinite(record.state.config.interval) || record.state.config.interval < 0) {
+      record.state.config.interval = 0
     }
     return true
   },

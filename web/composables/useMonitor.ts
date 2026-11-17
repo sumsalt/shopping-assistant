@@ -81,7 +81,8 @@ export const useMonitor = () => {
 
     // 账号快照由服务端解析：自动下单取登录态，纯提醒取匿名快照（服务端按 needsAuth 判断）
     const monitorConfig: MonitorConfig = {
-      interval: config?.interval || MIN_STOCK_MONITOR_INTERVAL,
+      // 实验分支：节奏由双层闸门控制，interval 统一记为 0（自动设置），仅作时长边界预估
+      interval: 0,
       duration: config?.duration || DEFAULT_STOCK_MONITOR_DURATION,
       ...(config?.skus?.length ? { skus: config.skus } : {}),
       ...(config?.autoOrder ? { autoOrder: config.autoOrder } : {}),

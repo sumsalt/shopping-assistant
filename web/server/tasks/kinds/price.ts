@@ -10,7 +10,6 @@ import {
   DEFAULT_MIN_PRICE_DELTA,
   DEFAULT_PRICE_MONITOR_INTERVAL,
   getAdapter,
-  MIN_PRICE_MONITOR_INTERVAL,
   type AutoOrderConfig,
   type PriceMonitorConfig,
   type PriceMonitorResult,
@@ -228,11 +227,10 @@ export const priceDefinition: TaskKindDefinition<PriceTaskState> = {
 
     const productId = String(product.productId)
     const interval = num(body?.config?.interval, DEFAULT_PRICE_MONITOR_INTERVAL)
-    if (interval < MIN_PRICE_MONITOR_INTERVAL) {
-      throw new TaskApiError(
-        ErrorCode.INVALID_PARAMS,
-        `检测间隔不能小于 ${MIN_PRICE_MONITOR_INTERVAL} 秒`
-      )
+    // 实验分支：节奏由双层闸门控制，interval 仅作时长边界预估；允许 0（自动设置），
+    // 仍拒绝负数等非法值。MIN_PRICE_MONITOR_INTERVAL 保留给默认展示，不再作为下限。
+    if (!Number.isFinite(interval) || interval < 0) {
+      throw new TaskApiError(ErrorCode.INVALID_PARAMS, '检测间隔不能为负数')
     }
 
     const duration =

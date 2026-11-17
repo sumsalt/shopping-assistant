@@ -130,10 +130,9 @@ export const usePriceMonitor = () => {
       return null
     }
 
-    const interval = Math.max(
-      MIN_PRICE_MONITOR_INTERVAL,
-      Number(options.interval) || DEFAULT_PRICE_MONITOR_INTERVAL
-    )
+    // 实验分支：节奏由双层闸门（IP + UID 各 1s）控制，不再按间隔驱动 sleep。
+    // 任务配置统一记为 0（自动设置），后端仅用于时长边界预估；任务卡片对 0 不展示间隔。
+    const interval = 0
 
     const data = await submit<CreatePriceTaskResponse>(
       '/api/price-monitor/create',
