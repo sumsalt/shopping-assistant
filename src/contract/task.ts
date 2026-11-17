@@ -119,6 +119,23 @@ export interface TaskConfigView {
 }
 
 /**
+ * 任务绑定的账号（创建任务时固化的凭证快照）
+ *
+ * 纯展示用途：运行中的任务不会因为「切换当前账号」而换号，
+ * 这里把「它到底在用哪个号」显式暴露出来，避免用户误以为跟着当前账号走。
+ */
+export interface TaskAccountBrief {
+  /** 账号记录 ID */
+  id: string
+  /** 展示标签：账号备注优先，否则「尾号 1234」 */
+  label: string
+  /** 是否为该用户当前的激活账号 */
+  active: boolean
+  /** 账号记录已被删除（凭证可能已失效） */
+  missing?: boolean
+}
+
+/**
  * 任务列表/详情统一视图
  */
 export interface TaskSummary {
@@ -137,6 +154,8 @@ export interface TaskSummary {
   order?: OrderBrief | null
   notice?: TaskNotice | null
   lastError?: string
+  /** 绑定的请求账号；未选账号（匿名）或无凭证时为 undefined */
+  account?: TaskAccountBrief
 }
 
 /** 列表接口响应体 */

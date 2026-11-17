@@ -8,6 +8,7 @@
 import { activeSecondsBetween } from '@core/utils/active-window'
 import type { TaskSummary } from '@core/contract'
 import { resolveAdapterConfigForUser } from '../../utils/adapterConfig'
+import { describeTaskAccount } from '../../utils/taskAccount'
 import { ErrorCode } from '../../utils/response'
 import { generateTaskId, TaskRegistry } from './registry'
 import { listRunningTasks } from './store'
@@ -112,18 +113,30 @@ export class TaskService<S> {
     )
   }
 
+  /**
+   * 统一投影
+   *
+   * kind 各自的 project() 只关心业务字段；绑定的账号在这里统一补上，
+   * 保证列表、详情、创建、重发四个入口的视图完全一致。
+   */
+  project(record: TaskRecordBase<S>, options: TaskProjectOptions = {}): TaskSummary {
+    const view = this.definition.project(record, options)
+    const account = describeTaskAccount(record.userId, record.accountId)
+    return account ? { ...view, account } : view
+  }
+
   /** 列表：只返回当前 schema 版本的任务，避免未迁移数据把页面打崩 */
   list(userId: string, options: TaskProjectOptions = {}): TaskSummary[] {
     return this.registry
       .listFor(userId)
       .filter(record => record.version >= this.definition.version)
-      .map(record => this.definition.project(record, options))
+      .map(record => this.project(record, options))
   }
 
   /** 详情 */
   status(username: string, taskId: string): TaskSummary {
     const record = this.requireOwned(username, taskId, '查询')
-    return this.definition.project(record, { full: true })
+    return this.project(record, { full: true })
   }
 
   /** 删除 */

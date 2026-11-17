@@ -13,13 +13,29 @@
     <div class="p-4 sm:p-6">
       <!-- 状态 + 目标 + 时间 -->
       <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-4">
-        <div class="flex items-center gap-3 min-w-0">
+        <div class="flex flex-wrap items-center gap-3 min-w-0">
           <UiBadge :variant="statusVariant">
             {{ getStatusText(task.status) }}
           </UiBadge>
           <span class="text-xs text-gray-400">{{ kindLabel }}</span>
           <span class="text-xs text-gray-400">·</span>
           <span class="text-xs text-gray-500">{{ formatTime(task.createdAt) }}</span>
+          <template v-if="account">
+            <span class="text-xs text-gray-300">·</span>
+            <span
+              :class="[
+                'text-xs px-1.5 py-0.5 rounded border',
+                account.missing
+                  ? 'text-red-600 bg-red-50 border-red-100'
+                  : account.active
+                    ? 'text-gray-500 bg-gray-50 border-gray-100'
+                    : 'text-amber-600 bg-amber-50 border-amber-100',
+              ]"
+              :title="accountTitle"
+            >
+              {{ accountText }}
+            </span>
+          </template>
         </div>
 
         <div class="flex flex-wrap items-center gap-2 text-xs">
@@ -149,6 +165,23 @@ const KIND_LABEL: Record<TaskKind, string> = {
 }
 
 const kindLabel = computed(() => KIND_LABEL[props.task.kind])
+
+/** 任务创建时固化的请求账号（切换当前账号不会改变运行中的任务） */
+const account = computed(() => props.task.account ?? null)
+
+const accountText = computed(() => {
+  const current = account.value
+  if (!current) return ''
+  return current.missing || current.active ? current.label : `${current.label}·非当前`
+})
+
+const accountTitle = computed(() => {
+  const current = account.value
+  if (!current) return ''
+  if (current.missing) return '该账号已从账号管理删除，任务仍在使用创建时的凭证，可能已失效'
+  if (current.active) return '任务使用该账号的登录态（创建任务时固化）'
+  return '任务使用的是创建时的账号凭证，与当前激活账号不同；需要换号请重新发起任务'
+})
 
 const statusVariant = computed(() => getStatusColor(props.task.status))
 

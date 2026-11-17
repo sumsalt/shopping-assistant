@@ -43,7 +43,7 @@ export const createTaskHandler = <S>(service: TaskService<S>) =>
     const record = await service.create({ body, user })
     const payload: TaskCreatedPayload = {
       taskId: record.id,
-      task: service.definition.project(record, { full: true }),
+      task: service.project(record, { full: true }),
       message: `${service.definition.label}任务已启动`,
     }
     return createSuccessResponse(payload)
@@ -95,7 +95,7 @@ export const restartTaskHandler = <S>(service: TaskService<S>) =>
     const record = await service.restart(user.username, taskId)
     const payload: TaskCreatedPayload = {
       taskId: record.id,
-      task: service.definition.project(record, { full: true }),
+      task: service.project(record, { full: true }),
       message: `${service.definition.label}任务已重新发起`,
     }
     return createSuccessResponse(payload)
