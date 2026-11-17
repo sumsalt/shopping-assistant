@@ -44,7 +44,7 @@ sshpass -p '<服务器密码>' ssh ubuntu@43.143.118.204 \
 
 - 主线 `main` 上所有「下单链路」请求本就 `skipGate`（`YishouOrderApi` 构造带 `skipGate:true`），只有下单预检查 SKU 的 `getProductSkus` 曾漏过闸门；已在 main 修复（commit 83e037f）并合并回 `gate-risk-probe`：`getProductSkus(id, skipGate?)` 新增可选参数，`auto-order.ts` 预检传 `true` 走 `orderSkuClient`（走代理+skipGate），库存/价格监控检测仍用默认（过闸门）。
 - 分支 `gate-risk-probe`：专门用于验证一手风控策略，与主线隔离。
-  - 双层请求闸门：IP 桶 `ip:<出口IP>` + UID 桶 `uid:<账号>`，默认各 1 秒（环境变量 `GATE_IP_INTERVAL_MS` / `GATE_UID_INTERVAL_MS`）。所有请求（含登录态）都先过 IP 桶。
+  - 双层请求闸门：IP 桶 `ip:<出口IP>` + UID 桶 `uid:<账号>`，默认各 1 秒（环境变量 `GATE_IP_INTERVAL_MS` / `GATE_UID_INTERVAL_MS`）。所有请求先过 IP 桶；UID 桶只约束登录态账号，匿名请求跳过 UID 层只过 IP 桶（已去掉全局 `uid:anon` 桶，避免多个匿名监控任务被串联限流，commit 79e96e6）。
   - 到货 / 价格监控去掉了固定 `sleep` 检测间隔，轮次节奏完全交给闸门；`interval` 仅作配置展示与时长边界预估。
   - 账号表新增 `localAddress`（出口网卡 IP），可在账号管理里手动分配；HTTP 出口用 `localAddress` 绑定网卡并进对应 IP 桶。留空进 `ip:default`。
 - 实验服务器：`ubuntu@1.13.23.184`（密码同主线），应用目录同为 `/var/www/shopping-assistant`，PM2 名 `shopping-assistant`。数据是主线库的一致性快照（accounts 13 / tasks 52 / shop_blacklist 2）。
