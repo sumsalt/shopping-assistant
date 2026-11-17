@@ -125,9 +125,9 @@ const positionClasses: Record<string, string> = {
 
 // 计算 Toast 类名
 const toastClasses = computed(() => {
-  // 必须高于所有弹窗/遮罩（UiDialog、ConfirmDialog、自定义 modal 均为 z-50），
-  // 否则创建任务失败时的错误提示会被尚未关闭的弹窗盖住，用户看不到原因。
-  const base = 'fixed left-4 right-4 z-[100] flex items-start p-4 rounded-lg border shadow-lg max-w-md mx-auto'
+  // 必须高于所有弹窗/遮罩（UiDialog 走 useDialogLayer，层级按打开顺序从 60 递增，
+  // 一般同时 2~3 层），否则创建任务失败时的错误提示会被尚未关闭的弹窗盖住，用户看不到原因。
+  const base = 'fixed left-4 right-4 z-[200] flex items-start p-4 rounded-lg border shadow-lg max-w-md mx-auto'
   return [base, bgClasses[props.type], positionClasses[props.position]].join(' ')
 })
 

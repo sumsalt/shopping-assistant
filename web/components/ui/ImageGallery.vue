@@ -33,7 +33,7 @@
       >
         <div
           v-if="previewOpen"
-          class="preview-overlay fixed inset-0 z-[100] flex flex-col bg-black touch-none select-none"
+          class="preview-overlay fixed inset-0 z-[200] flex flex-col bg-black touch-none select-none"
           @touchstart="onTouchStart"
           @touchend="onTouchEnd"
         >

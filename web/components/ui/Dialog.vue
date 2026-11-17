@@ -14,7 +14,8 @@
            fixed 与视口严格对齐，弹窗始终在可见区居中 -->
       <div
         v-if="open"
-        class="fixed inset-0 z-50 flex items-center justify-center p-4 overscroll-contain"
+        class="fixed inset-0 flex items-center justify-center p-4 overscroll-contain"
+        :style="{ zIndex }"
         @click="handleBackdropClick"
       >
         <!-- 背景遮罩：touch-none 让在蒙层上起手滑动不再驱动页面滚动（body 锁失效时的兜底） -->
@@ -208,26 +209,50 @@ const unlockScroll = (restoreScroll = true) => {
   releaseBodyLock(restoreScroll)
 }
 
+// —— 层级：后打开的弹窗永远盖住先打开的 ——
+// 不能靠 DOM 顺序（teleport 到 body + keep-alive 恢复会让顺序反转），
+// 统一走 useDialogLayer 的显式栈。SSR 阶段不领层，保证首帧与客户端一致。
+const { zIndex, acquire: acquireLayer, release: releaseLayer } = useDialogLayer()
+
 watch(
   () => props.open,
   (open) => {
-    if (open) lockScroll()
-    else unlockScroll()
+    if (!import.meta.client) return
+    if (open) {
+      acquireLayer()
+      lockScroll()
+    } else {
+      releaseLayer()
+      unlockScroll()
+    }
   },
-  { immediate: true },
 )
+
+// 初始就处于打开状态的弹窗（非交互打开）在挂载后补一次领层与滚动锁
+onMounted(() => {
+  if (!props.open) return
+  acquireLayer()
+  lockScroll()
+})
 
 // 页面被 keep-alive 缓存（如从弹窗点进商品详情）时先解锁，否则目标页滚不动；
 // 这里不滚回列表位置，让目标页按路由默认行为从顶部开始。
+// 同时出栈：页面不可见时它的弹窗不应该占着层级。
 onDeactivated(() => {
-  if (props.open) unlockScroll(false)
+  if (!props.open) return
+  releaseLayer()
+  unlockScroll(false)
 })
-// 回到缓存的页面：按离开时的位置重新钉住，弹窗与列表位置原样恢复
+// 回到缓存的页面：按离开时的位置重新钉住，弹窗与列表位置原样恢复；
+// 重新入栈，保证多弹窗场景下顺序与组件树一致（后渲染的监控弹窗在上）
 onActivated(() => {
-  if (props.open) lockScroll(rememberedScrollY)
+  if (!props.open) return
+  acquireLayer()
+  lockScroll(rememberedScrollY)
 })
 
 onBeforeUnmount(() => {
+  releaseLayer()
   unlockScroll()
 })
 
