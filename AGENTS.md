@@ -52,4 +52,6 @@ sshpass -p '<服务器密码>' ssh ubuntu@43.143.118.204 \
   - 登录账户：SSH 用 `ubuntu` / 密码同主线；应用后台用 `yanxia` 或 `wxt`（密码见主线 `config/users.json` 的 bcrypt hash，与主线完全一致）。主线多一个 `lighthouse` 系统用户，实验机没有，不影响应用。
   - **双网卡已配置（2026-11-18）**：`eth0` 内网 10.206.0.4 → 公网 1.13.23.184（SSH/Nginx 80 走这里，默认路由）；`eth1` 内网 10.206.0.17 → 公网 EIP 119.45.202.128。eth1 用独立路由表 101 + 策略路由 `from 10.206.0.17 lookup eni1 priority 101`，持久化在 `/etc/netplan/60-eni-config.yaml`（`netplan generate` 语法已校验），当前已用 `ip` 命令即时生效。已验证：`curl --interface 10.206.0.17 http://ifconfig.me/ip` 返回 119.45.202.128。
   - 账号出口 IP：给账号填 `localAddress=10.206.0.17` 即走第二个出口；留空走 ip:default（eth0，公网 1.13.23.184）。据此做多 IP 分桶风控验证。注意 Node HTTP 用 localAddress 绑内网 IP，策略路由保证从对应网卡出去。
+  - 账号管理的「出口网卡 IP」已改为纯下拉（commit e648376）：后端 `GET /api/network/addresses` 用 `os.networkInterfaces()` 枚举内网 IP + 腾讯云 metadata 按 MAC 查公网 IP（非云环境优雅降级），前端下拉显示「网卡名 · 内网IP → 公网IP」+「默认路由」项。端到端已验证返回 eth1→119.45.202.128 / eth0→1.13.23.184。
+  - 价格监控弹窗已移除「检测间隔」输入框（commit e648376）：节奏完全由闸门控制，后端 interval 仅用默认值做时长边界预估。到货监控 / Tab 监控表单仍保留检测间隔字段（用户当次只要求改价格监控）。
 - 部署到实验机时目标地址是 `1.13.23.184`，不要误覆盖主线 `43.143.118.204`。
