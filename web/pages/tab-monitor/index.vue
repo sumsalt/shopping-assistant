@@ -194,9 +194,9 @@
                 </span>
               </a>
 
-              <div class="px-2 pb-2">
+              <div class="px-2 py-2">
                 <p
-                  class="truncate text-xs font-medium text-gray-800"
+                  class="truncate text-xs font-medium leading-4 text-gray-800"
                   :title="formatSeenTitle(item)"
                 >
                   {{ formatSeenName(item) }}
