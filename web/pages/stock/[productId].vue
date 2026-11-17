@@ -124,6 +124,17 @@
               限购 {{ skuResult.restrictionNumber }} 件
             </div>
 
+            <!-- 商品级状态提示：停售 / 下架 / 缺货时即便规格还有库存也不可下单 -->
+            <div
+              v-if="!skuResult.inStock"
+              class="mt-3 p-2 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700"
+            >
+              <svg class="inline-block w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77.333.192 3 1.732 3z" />
+              </svg>
+              {{ skuResult.stockMessage }}，暂不可下单
+            </div>
+
             <!-- 库存统计 -->
             <div class="flex items-center gap-4 pt-2">
               <div class="flex items-center">
@@ -165,7 +176,8 @@
                 variant="danger"
                 size="sm"
                 :loading="isOrdering"
-                :disabled="isOrdering || skuResult.inStockSkuCount <= 0"
+                :disabled="isOrdering || !skuResult.inStock || skuResult.inStockSkuCount <= 0"
+                :title="!skuResult.inStock ? skuResult.stockMessage : ''"
                 @click="handleManualOrder"
               >
                 <svg class="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -442,6 +454,11 @@ const openPriceMonitor = () => {
 const handleManualOrder = async () => {
   const result = skuResult.value
   if (!result || isOrdering.value) {
+    return
+  }
+
+  if (!result.inStock) {
+    toast.warning(result.stockMessage || '商品当前不可下单')
     return
   }
 

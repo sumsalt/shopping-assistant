@@ -655,3 +655,46 @@ describe('mapGoodsToSkuResult - 优惠券', () => {
     expect(dirty.couponsNew).toEqual([{ couponId: 'x', threshold: 0, reduce: 0 }]);
   });
 });
+
+describe('mapGoodsToSkuResult - 商品级可售状态', () => {
+  it('规格有货但商品停售时，商品级 inStock 为 false', () => {
+    const result = mapGoodsToSkuResult(
+      createMockSkuGoodsData({
+        is_on_sale: '0',
+        attribute: [
+          {
+            color: '粉色',
+            color_id: '1018',
+            color_card: 'https://example.com/pink.jpg',
+            card_thumb: 'https://example.com/pink_thumb.jpg',
+            is_recommend: '2',
+            item: [
+              {
+                size: '均码',
+                sku: '850001',
+                stock: '1',
+                sale_stock: '1',
+                sort: '1',
+                sku_tag: '',
+                is_show_stock: '0',
+                is_stock_now: '0',
+              },
+            ],
+          },
+        ],
+      })
+    );
+    // 规格级仍显示有货（sale_stock=1）
+    expect(result.inStockSkuCount).toBe(1);
+    expect(result.skuList[0].inStock).toBe(true);
+    // 但商品级权威判定为不可售，文案提示停售
+    expect(result.inStock).toBe(false);
+    expect(result.stockMessage).toBe('商品已停售');
+  });
+
+  it('正常在售商品 inStock 为 true', () => {
+    const result = mapGoodsToSkuResult(createMockSkuGoodsData({ is_on_sale: '1', goods_status: '1' }));
+    expect(result.inStock).toBe(true);
+    expect(result.stockMessage).toBe('商品有货，可以购买');
+  });
+});

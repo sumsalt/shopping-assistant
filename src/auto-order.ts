@@ -293,6 +293,19 @@ const prepareOrder = async (
     // ② 规格：指定了 SKU 就只在这些里挑，否则全部规格都可参与
     stage = 'sku';
     const skuResult = await adapter.getProductSkus(goodsId);
+
+    // 商品级闸门：停售 / 下架 / 缺货时，即便规格还挂着 sale_stock 也不下单。
+    // 用 === false 严格判断，兼容未下发该字段的旧适配器（undefined 视为未知，不拦截）。
+    if (skuResult.inStock === false) {
+      return {
+        ok: false,
+        result: failure('sku', skuResult.stockMessage || '商品当前不可下单', {
+          retryable: true,
+          num: requestedNum,
+        }),
+      };
+    }
+
     const candidates = wantedSkus.length
       ? skuResult.skuList.filter(item => wantedSkus.includes(item.skuId))
       : config.sku

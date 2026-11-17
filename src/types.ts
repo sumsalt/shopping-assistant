@@ -455,6 +455,13 @@ export interface ProductSkuResult {
   coupons: CouponInfo[];
   /** 新版满减券（满 threshold 减 reduce），仅登录态返回 */
   couponsNew: CouponNewInfo[];
+  /**
+   * 商品级可售状态（商品级权威判定：缺货/停售/下架任一成立即 false）。
+   * 与 inStockSkuCount 的区别：后者只看规格 sale_stock，可能把停售但有残留库存的商品误判为可下单。
+   */
+  inStock: boolean;
+  /** 商品级状态文案（如「商品已停售」「商品已下架」） */
+  stockMessage: string;
   /** 销量 */
   sales: number;
   /** 可用颜色列表 */

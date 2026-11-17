@@ -62,6 +62,10 @@ interface ProductSkuResult {
   coupons: Array<{ couponId: string; typeTitle: string; title: string }>
   /** 新版满减券（满 threshold 减 reduce），仅登录态返回 */
   couponsNew: Array<{ couponId: string; threshold: number; reduce: number }>
+  /** 商品级可售状态（停售/下架/缺货为 false） */
+  inStock: boolean
+  /** 商品级状态文案 */
+  stockMessage: string
   sales: number
   colors: string[]
   sizes: string[]

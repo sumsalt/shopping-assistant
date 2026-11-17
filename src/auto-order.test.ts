@@ -40,6 +40,8 @@ const skuResult = (saleStocks: number[]): ProductSkuResult => ({
   props: [],
   coupons: [],
   couponsNew: [],
+  inStock: true,
+  stockMessage: '商品有货，可以购买',
   sales: 0,
   colors: ['蓝色', '黑色'],
   sizes: ['M', 'L'],
@@ -102,6 +104,26 @@ const createArgs = (adapter: AutoOrderAdapter) =>
   (adapter.createOrder as ReturnType<typeof vi.fn>).mock.calls[0]
 
 describe('placeAutoOrder', () => {
+  it('商品级停售时前置拦截，不进入加购建单', async () => {
+    const stopped = { ...skuResult([0, 3]), inStock: false, stockMessage: '商品已停售' }
+    const adapter = createAdapter({ getProductSkus: vi.fn().mockResolvedValue(stopped) })
+    const result = await placeAutoOrder(adapter, params)
+
+    expect(result.success).toBe(false)
+    expect(result.message).toContain('停售')
+    expect(adapter.prepareCheckout).not.toHaveBeenCalled()
+    expect(adapter.createOrder).not.toHaveBeenCalled()
+  })
+
+  it('商品级 inStock 缺失（旧适配器）时不拦截，兼容历史数据', async () => {
+    const legacy = { ...skuResult([0, 3]) } as any
+    delete legacy.inStock
+    const adapter = createAdapter({ getProductSkus: vi.fn().mockResolvedValue(legacy) })
+    const result = await placeAutoOrder(adapter, params)
+
+    expect(result.success).toBe(true)
+  })
+
   it('挑第一个有货规格并建单成功', async () => {
     const adapter = createAdapter()
     const result = await placeAutoOrder(adapter, params)

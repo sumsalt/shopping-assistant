@@ -381,6 +381,10 @@ export const mapGoodsToSkuResult = (
     ...(data.remind_note ? { remindNote: data.remind_note } : {}),
     coupons,
     couponsNew,
+    // 商品级权威判定：停售/下架/缺货时即便规格还有 sale_stock 也不算可售，
+    // 避免详情页误把停售商品当成可下单（规格级 inStockSkuCount 只看 sale_stock）
+    inStock: isInStock(data),
+    stockMessage: getStockMessage(data, isInStock(data)),
     sales: Number.parseInt(data.sales ?? '', 10) || 0,
     colors,
     sizes: Array.from(sizesSet),
