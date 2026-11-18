@@ -10,10 +10,15 @@ import { ref } from 'vue'
 export interface ShopItem {
   id: string
   name: string
-  /** 星级 1-5 */
+  /** 星级 1-5（1 星即拉黑） */
   rating: number
   note: string
   url: string
+  /** 供应商标识，为空表示手填店铺 */
+  supplyId: string
+  marketName: string
+  /** 店铺图标 URL */
+  image: string
   createdAt: string
   updatedAt: string
 }
@@ -24,6 +29,19 @@ export interface ShopPayload {
   rating: number
   note?: string
   url?: string
+  supplyId?: string
+  marketName?: string
+  image?: string
+}
+
+/** 详情页评分入参 */
+export interface ShopRatePayload {
+  supplyId: string
+  name: string
+  marketName: string
+  image: string
+  rating: number
+  note?: string
 }
 
 /** 星级分布 */
@@ -196,6 +214,25 @@ export const useShops = () => {
     }
   }
 
+  /**
+   * 详情页评分（按 supplyId 幂等 upsert）
+   * 不自动刷新列表，由调用方决定；1 星即拉黑、2-5 星解除
+   */
+  const rateShop = async (payload: ShopRatePayload): Promise<ShopSubmitResult> => {
+    try {
+      const response = await $fetch<ApiResponse<{ shop: ShopItem }>>('/api/shops/rate', {
+        method: 'POST',
+        body: payload,
+      })
+      if (!response.success) {
+        return { success: false, error: response.error?.message || '评分保存失败' }
+      }
+      return { success: true }
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : '网络请求失败' }
+    }
+  }
+
   return {
     shops,
     total,
@@ -208,5 +245,6 @@ export const useShops = () => {
     createShop,
     updateShop,
     deleteShop,
+    rateShop,
   }
 }

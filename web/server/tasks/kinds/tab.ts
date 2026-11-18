@@ -14,7 +14,7 @@ import {
 } from '@core'
 import type { TaskKind, TaskSummary, Tone } from '@core/contract'
 import { ErrorCode } from '../../utils/response'
-import { listBlacklistedSupplyIds } from '../../utils/shopBlacklistStore'
+import { listBlacklistedSupplyIds } from '../../utils/shopStore'
 import { resolveAdapterConfigForUser } from '../../utils/adapterConfig'
 import { TaskApiError, capEvents, makeEvent } from '../engine/types'
 import type { TaskKindDefinition, TaskRecordBase, TaskRunContext } from '../engine/types'

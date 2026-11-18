@@ -9,7 +9,7 @@ import type { PriceTaskState, RenewTaskState, StockTaskState, TabTaskState } fro
 /** 黑名单在测试里由用例注入，默认空 */
 const blacklist = vi.hoisted(() => ({ ids: [] as string[] }))
 
-vi.mock('../../utils/shopBlacklistStore', () => ({
+vi.mock('../../utils/shopStore', () => ({
   listBlacklistedSupplyIds: () => blacklist.ids,
 }))
 

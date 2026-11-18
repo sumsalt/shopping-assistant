@@ -246,7 +246,7 @@
           </p>
         </div>
 
-        <!-- 档口信息（店铺拉黑是低频操作，放在详情页） -->
+        <!-- 档口信息（店铺评分 / 拉黑是低频操作，放在详情页；评 1 星即拉黑） -->
         <div v-if="skuResult.provider" class="flex items-center gap-3">
           <img
             v-if="skuResult.provider.image"
@@ -268,12 +268,16 @@
           <button
             v-if="skuResult.provider.supplyId"
             type="button"
-            class="shrink-0 rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-500 transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-600 focus:outline-none focus:ring-2 focus:ring-red-400 focus:ring-offset-1 disabled:opacity-40 cursor-pointer"
-            :disabled="blacklistingProvider"
-            title="加入店铺黑名单，之后不再抓取该店铺商品"
-            @click="blacklistProvider"
+            class="shrink-0 rounded-md border px-2 py-1 text-xs transition-colors focus:outline-none focus:ring-2 focus:ring-offset-1 disabled:opacity-40 cursor-pointer"
+            :class="shopRating > 0
+              ? (shopRating === 1
+                ? 'border-red-200 bg-red-50 text-red-600 hover:bg-red-100 focus:ring-red-400'
+                : 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 focus:ring-amber-400')
+              : 'border-gray-200 text-gray-500 hover:border-amber-200 hover:bg-amber-50 hover:text-amber-600 focus:ring-amber-400'"
+            :title="shopRating === 1 ? '该店铺已拉黑，点击可修改评分' : '给店铺评分，评 1 星即拉黑'"
+            @click="openShopRating"
           >
-            {{ blacklistingProvider ? '加入中' : '拉黑店铺' }}
+            {{ shopRating > 0 ? `${shopRating} 星${shopRating === 1 ? ' · 已拉黑' : ''}` : '评分' }}
           </button>
         </div>
 
@@ -327,6 +331,81 @@
       v-model:open="showStockMonitorDialog"
       :product="monitorProduct"
     />
+
+    <!-- 店铺评分弹窗（评 1 星即拉黑该店铺） -->
+    <UiDialog
+      v-model:open="showShopRatingDialog"
+      title="店铺评分"
+      size="sm"
+    >
+      <div v-if="skuResult?.provider" class="space-y-4">
+        <!-- 店铺信息 -->
+        <div class="flex items-center gap-3 rounded-lg bg-gray-50 p-3">
+          <img
+            v-if="skuResult.provider.image"
+            :src="skuResult.provider.image"
+            alt="店铺图标"
+            class="w-12 h-12 rounded-lg object-cover border border-gray-200 flex-shrink-0"
+          />
+          <div class="min-w-0">
+            <p class="text-sm font-medium text-gray-900 truncate">
+              {{ skuResult.provider.name || '该店铺' }}
+            </p>
+            <p v-if="skuResult.provider.market" class="text-xs text-gray-500">
+              {{ skuResult.provider.market }}
+            </p>
+          </div>
+        </div>
+
+        <!-- 星级选择 -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">星级</label>
+          <div class="flex items-center gap-1">
+            <button
+              v-for="n in 5"
+              :key="n"
+              type="button"
+              class="p-1 rounded transition-transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              :aria-label="`${n} 星`"
+              @click="shopRatingDraft = n"
+              @mouseenter="hoverShopRating = n"
+              @mouseleave="hoverShopRating = 0"
+            >
+              <svg
+                class="w-9 h-9 transition-colors"
+                :class="n <= (hoverShopRating || shopRatingDraft) ? 'text-amber-400' : 'text-gray-200'"
+                fill="currentColor"
+                viewBox="0 0 20 20"
+              >
+                <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+              </svg>
+            </button>
+            <span class="ml-2 text-sm font-medium text-gray-600">
+              {{ shopRatingMeta(hoverShopRating || shopRatingDraft) }}
+            </span>
+          </div>
+          <p
+            v-if="(hoverShopRating || shopRatingDraft) === 1"
+            class="mt-2 rounded-lg bg-red-50 px-3 py-2 text-xs leading-5 text-red-700"
+          >
+            评 1 星会拉黑该店铺：之后该店铺的商品不再被抓取，也不会出现在 Tab 监控的累计记录里。
+          </p>
+        </div>
+
+        <p v-if="shopRatingError" class="text-sm text-red-600">{{ shopRatingError }}</p>
+      </div>
+
+      <template #footer>
+        <div class="flex justify-end gap-3">
+          <UiButton variant="outline" :disabled="savingShopRating" @click="showShopRatingDialog = false">
+            取消
+          </UiButton>
+          <UiButton :loading="savingShopRating" @click="saveShopRating">
+            保存评分
+          </UiButton>
+        </div>
+      </template>
+    </UiDialog>
   </div>
 </template>
 
@@ -431,42 +510,78 @@ const handleToggleCollection = async () => {
   }
 }
 
-// 拉黑店铺：加入后该店铺商品不再被抓取、也不再出现在累计记录里（低频操作放详情页）
-const blacklistingProvider = ref(false)
-const blacklistProvider = async () => {
+/* ---------------- 店铺评分（评 1 星即拉黑） ---------------- */
+const showShopRatingDialog = ref(false)
+const shopRating = ref(0)          // 已保存的评分，0 = 未评分
+const shopRatingDraft = ref(5)     // 弹窗里的临时选择
+const hoverShopRating = ref(0)
+const shopRatingError = ref('')
+const savingShopRating = ref(false)
+
+const shopRatingMeta = (rating: number): string =>
+  ({ 1: '1 星 · 拉黑', 2: '2 星 · 谨慎下单', 3: '3 星 · 一般', 4: '4 星 · 值得回购', 5: '5 星 · 强烈推荐' })[rating] ?? '选择星级'
+
+/** 打开评分弹窗：先按 supplyId 回显已保存的评分，并自动带出图标 */
+const openShopRating = async () => {
   const provider = skuResult.value?.provider
-  if (!provider?.supplyId || blacklistingProvider.value) return
+  if (!provider?.supplyId) return
 
-  const confirmed = await confirmDialog({
-    title: '加入店铺黑名单',
-    message: `确定拉黑「${provider.name || '该店铺'}${provider.market ? ` · ${provider.market}` : ''}」吗？之后该店铺的商品不再被抓取，也不会写进提醒邮件。`,
-    confirmText: '拉黑',
-    type: 'danger',
-  })
-  if (!confirmed) return
+  shopRatingError.value = ''
+  shopRatingDraft.value = shopRating.value > 0 ? shopRating.value : 5
+  showShopRatingDialog.value = true
 
-  blacklistingProvider.value = true
+  try {
+    const response = await $fetch<{
+      success: boolean
+      data?: { rating: number }
+      error?: { message?: string }
+    }>('/api/shops/rating', { query: { supplyId: provider.supplyId } })
+    if (response.success && response.data && response.data.rating > 0) {
+      shopRating.value = response.data.rating
+      shopRatingDraft.value = response.data.rating
+    }
+  } catch {
+    // 回显失败不阻塞评分，用默认值继续
+  }
+}
+
+/** 保存评分：按 supplyId upsert，带上一手 provider 的名称 / 市场 / 图标 */
+const saveShopRating = async () => {
+  const provider = skuResult.value?.provider
+  if (!provider?.supplyId || savingShopRating.value) return
+
+  savingShopRating.value = true
+  shopRatingError.value = ''
   try {
     const response = await $fetch<{ success: boolean; error?: { message?: string } }>(
-      '/api/shops/blacklist/create',
+      '/api/shops/rate',
       {
         method: 'POST',
         body: {
           supplyId: provider.supplyId,
-          ...(provider.name ? { name: provider.name } : {}),
-          ...(provider.market ? { marketName: provider.market } : {}),
+          name: provider.name || '',
+          marketName: provider.market || '',
+          image: provider.image || '',
+          rating: shopRatingDraft.value,
         },
       }
     )
     if (!response.success) {
-      toast.error(response.error?.message || '加入黑名单失败')
+      shopRatingError.value = response.error?.message || '评分保存失败'
       return
     }
-    toast.success('已加入店铺黑名单，之后不再抓取该店铺商品')
+
+    shopRating.value = shopRatingDraft.value
+    showShopRatingDialog.value = false
+    toast.success(
+      shopRating.value === 1
+        ? '已标记 1 星，该店铺商品将不再抓取'
+        : '评分已保存'
+    )
   } catch (err) {
-    toast.error(err instanceof Error ? err.message : '网络请求失败')
+    shopRatingError.value = err instanceof Error ? err.message : '网络请求失败'
   } finally {
-    blacklistingProvider.value = false
+    savingShopRating.value = false
   }
 }
 

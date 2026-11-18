@@ -12,7 +12,7 @@ import { filterVisibleSeen } from '../../tasks/kinds/tab-seen'
 import { TaskApiError } from '../../tasks/engine/types'
 import { createSuccessResponse, createErrorResponse, ErrorCode } from '../../utils/response'
 import { getCurrentUser } from '../../utils/session'
-import { listBlacklistedSupplyIds } from '../../utils/shopBlacklistStore'
+import { listBlacklistedSupplyIds } from '../../utils/shopStore'
 
 export default defineEventHandler(async (event) => {
   try {

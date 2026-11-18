@@ -44,11 +44,27 @@ export const parseShopInput = (body: unknown): ParseShopResult => {
   const raw = body as Record<string, unknown>
 
   const name = typeof raw.name === 'string' ? raw.name.trim() : ''
-  if (!name) {
-    return { ok: false, error: '请填写店铺名称' }
+  const supplyId =
+    typeof raw.supplyId === 'string' ? raw.supplyId.trim() : ''
+  const marketName =
+    typeof raw.marketName === 'string' ? raw.marketName.trim() : ''
+  const image =
+    typeof raw.image === 'string' ? raw.image.trim() : ''
+  // 名称可留空：从详情页评分记录的店铺可能没有名字，靠 supplyId 辨认
+  if (!name && !supplyId) {
+    return { ok: false, error: '请填写店铺名称或供应商标识' }
   }
   if (name.length > NAME_MAX) {
     return { ok: false, error: `店铺名称不能超过 ${NAME_MAX} 个字符` }
+  }
+  if (supplyId.length > 100) {
+    return { ok: false, error: '供应商标识过长' }
+  }
+  if (marketName.length > 100) {
+    return { ok: false, error: '市场名称过长' }
+  }
+  if (image.length > 2000) {
+    return { ok: false, error: '店铺图标地址过长' }
   }
 
   const ratingNumber = typeof raw.rating === 'string' ? Number(raw.rating) : raw.rating
@@ -80,5 +96,5 @@ export const parseShopInput = (body: unknown): ParseShopResult => {
     }
   }
 
-  return { ok: true, value: { name, rating, note, url } }
+  return { ok: true, value: { name, rating, note, url, supplyId, marketName, image } }
 }

@@ -3,15 +3,16 @@
     <!-- 页面标题 -->
     <LayoutPageHeader
       title="店铺评分"
-      description="记录店铺星级与备注，挑店时先看一眼历史评价"
+      description="记录店铺星级与备注，评 1 星即拉黑：该店铺商品不再出现在 Tab 监控里"
     >
       <template #actions>
         <UiButton
           variant="outline"
           size="sm"
-          @click="navigateTo('/shops/blacklist')"
+          :class="onlyBlocked ? 'border-red-300 bg-red-50 text-red-600' : ''"
+          @click="onlyBlocked = !onlyBlocked"
         >
-          黑名单
+          {{ onlyBlocked ? '显示全部' : '只看拉黑' }}
         </UiButton>
         <UiButton
           variant="outline"
@@ -54,9 +55,9 @@
         </p>
       </div>
       <div class="bg-white rounded-lg border border-gray-200 px-4 py-3">
-        <p class="text-xs text-gray-500">待观察（2 星及以下）</p>
+        <p class="text-xs text-gray-500">已拉黑（1 星）</p>
         <p class="mt-1 text-2xl font-semibold text-gray-900">
-          {{ lowRatedCount }}<span class="ml-1 text-sm font-normal text-gray-400">家</span>
+          {{ ratingCounts['1'] ?? 0 }}<span class="ml-1 text-sm font-normal text-gray-400">家</span>
         </p>
       </div>
     </div>
@@ -168,11 +169,31 @@
           :key="shop.id"
           class="bg-white rounded-lg border border-gray-200 p-5 flex flex-col hover:shadow-md transition-shadow"
         >
-          <!-- 名称 + 评级标签 -->
-          <div class="flex items-start justify-between gap-3">
-            <h3 class="min-w-0 flex-1 text-base font-semibold text-gray-900 break-words">
-              {{ shop.name }}
-            </h3>
+          <!-- 图标 + 名称 + 评级标签 -->
+          <div class="flex items-start gap-3">
+            <img
+              v-if="shop.image"
+              :src="shop.image"
+              :alt="shop.name || '店铺'"
+              class="w-11 h-11 rounded-lg object-cover border border-gray-200 flex-shrink-0"
+              loading="lazy"
+            />
+            <div
+              v-else
+              class="w-11 h-11 rounded-lg bg-gray-100 border border-gray-200 flex-shrink-0 flex items-center justify-center text-gray-400"
+            >
+              <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+              </svg>
+            </div>
+            <div class="min-w-0 flex-1">
+              <h3 class="text-base font-semibold text-gray-900 break-words">
+                {{ shop.name || (shop.supplyId ? `供应商 ${shop.supplyId}` : '未命名店铺') }}
+              </h3>
+              <p v-if="shop.marketName || shop.supplyId" class="mt-0.5 text-xs text-gray-400 truncate">
+                {{ [shop.marketName, shop.supplyId ? `ID ${shop.supplyId}` : ''].filter(Boolean).join(' · ') }}
+              </p>
+            </div>
             <span
               class="flex-shrink-0 text-xs px-2 py-0.5 rounded-full border"
               :class="getRatingMeta(shop.rating).className"
@@ -252,9 +273,27 @@
         <UiInput
           v-model="form.name"
           label="店铺名称"
-          required
           placeholder="例如：优衣库官方旗舰店"
-          hint="同一个店铺只记一条，方便对比"
+          hint="名称与供应商标识至少填一个"
+        />
+
+        <UiInput
+          v-model="form.supplyId"
+          label="供应商标识（用于拉黑）"
+          placeholder="一手 supply_id，如 123456"
+          hint="填写后，评 1 星即会按此标识拉黑该店铺在 Tab 监控里的商品；详情页评分会自动带出"
+        />
+
+        <UiInput
+          v-model="form.marketName"
+          label="市场名称（可选）"
+          placeholder="如：十三行、沙河"
+        />
+
+        <UiInput
+          v-model="form.image"
+          label="店铺图标 URL（可选）"
+          placeholder="店铺图标地址，详情页评分时会自动保存"
         />
 
         <div>
@@ -321,6 +360,8 @@
 </template>
 
 <script setup lang="ts">
+import type { ShopItem } from '~/composables/useShops'
+
 // 页面元信息
 definePageMeta({
   title: '店铺评分',
@@ -370,18 +411,16 @@ const ratingOptions = computed(() => [
   })),
 ])
 
-/** 2 星及以下数量 */
-const lowRatedCount = computed(
-  () => (ratingCounts.value['1'] ?? 0) + (ratingCounts.value['2'] ?? 0)
-)
+/** 只看拉黑（1 星）筛选开关 */
+const onlyBlocked = ref(false)
 
-/** 星级对应的文案与配色 */
+/** 星级对应的文案与配色（1 星即拉黑） */
 const RATING_META: Record<number, { label: string; className: string }> = {
   5: { label: '强烈推荐', className: 'bg-rose-50 text-rose-600 border-rose-100' },
   4: { label: '值得回购', className: 'bg-amber-50 text-amber-700 border-amber-100' },
   3: { label: '一般', className: 'bg-slate-50 text-slate-600 border-slate-200' },
   2: { label: '谨慎下单', className: 'bg-orange-50 text-orange-600 border-orange-100' },
-  1: { label: '避雷', className: 'bg-gray-100 text-gray-600 border-gray-200' },
+  1: { label: '已拉黑', className: 'bg-red-50 text-red-600 border-red-100' },
 }
 
 /** 取星级文案 */
@@ -393,13 +432,16 @@ const filteredShops = computed(() => {
   const keyword = searchKeyword.value.trim().toLowerCase()
 
   const list = shops.value.filter(shop => {
+    if (onlyBlocked.value && shop.rating !== 1) {
+      return false
+    }
     if (ratingFilter.value && shop.rating !== ratingFilter.value) {
       return false
     }
     if (!keyword) {
       return true
     }
-    return [shop.name, shop.note, shop.url].some(field =>
+    return [shop.name, shop.note, shop.url, shop.supplyId, shop.marketName].some(field =>
       (field || '').toLowerCase().includes(keyword)
     )
   })
@@ -434,6 +476,7 @@ const handleRefresh = () => {
 const clearFilters = () => {
   searchKeyword.value = ''
   ratingFilter.value = 0
+  onlyBlocked.value = false
 }
 
 // 对话框状态
@@ -446,6 +489,9 @@ const form = ref({
   rating: 5,
   note: '',
   url: '',
+  supplyId: '',
+  marketName: '',
+  image: '',
 })
 
 /** 打开新增 */
@@ -453,12 +499,12 @@ const openCreate = () => {
   editingId.value = null
   formError.value = ''
   hoverRating.value = 0
-  form.value = { name: '', rating: 5, note: '', url: '' }
+  form.value = { name: '', rating: 5, note: '', url: '', supplyId: '', marketName: '', image: '' }
   showDialog.value = true
 }
 
 /** 打开编辑 */
-const openEdit = (shop: { id: string; name: string; rating: number; note: string; url: string }) => {
+const openEdit = (shop: ShopItem) => {
   editingId.value = shop.id
   formError.value = ''
   hoverRating.value = 0
@@ -467,6 +513,9 @@ const openEdit = (shop: { id: string; name: string; rating: number; note: string
     rating: shop.rating,
     note: shop.note,
     url: shop.url,
+    supplyId: shop.supplyId || '',
+    marketName: shop.marketName || '',
+    image: shop.image || '',
   }
   showDialog.value = true
 }
@@ -474,8 +523,9 @@ const openEdit = (shop: { id: string; name: string; rating: number; note: string
 /** 提交表单 */
 const handleSubmit = async () => {
   const name = form.value.name.trim()
-  if (!name) {
-    formError.value = '请填写店铺名称'
+  const supplyId = form.value.supplyId.trim()
+  if (!name && !supplyId) {
+    formError.value = '请填写店铺名称或供应商标识'
     return
   }
 
@@ -485,6 +535,9 @@ const handleSubmit = async () => {
     rating: form.value.rating,
     note: form.value.note.trim(),
     url: form.value.url.trim(),
+    supplyId,
+    marketName: form.value.marketName.trim(),
+    image: form.value.image.trim(),
   }
 
   const result = editingId.value

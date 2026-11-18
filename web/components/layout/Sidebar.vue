@@ -169,14 +169,6 @@ const StarIcon = defineComponent({
   }
 })
 
-const BlockIcon = defineComponent({
-  render() {
-    return h('svg', { fill: 'none', viewBox: '0 0 24 24', stroke: 'currentColor' }, [
-      h('path', { 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-width': '2', d: 'M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636' })
-    ])
-  }
-})
-
 const UserIcon = defineComponent({
   render() {
     return h('svg', { fill: 'none', viewBox: '0 0 24 24', stroke: 'currentColor' }, [
@@ -246,11 +238,6 @@ const menuItems = [
     icon: StarIcon,
   },
   {
-    path: '/shops/blacklist',
-    label: '店铺黑名单',
-    icon: BlockIcon,
-  },
-  {
     path: '/accounts',
     label: '账号管理',
     icon: UserIcon,
@@ -266,10 +253,6 @@ const menuItems = [
 const isActive = (path: string) => {
   if (path === '/') {
     return route.path === '/'
-  }
-  // /shops 与 /shops/blacklist 是并列菜单，用前缀判断会同时高亮
-  if (path === '/shops') {
-    return route.path === '/shops'
   }
   return route.path.startsWith(path)
 }
