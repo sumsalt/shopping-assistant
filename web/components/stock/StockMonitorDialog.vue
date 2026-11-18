@@ -304,7 +304,7 @@ const durationOptions: Array<{ value: number; label: string }> = STOCK_MONITOR_D
   option => ({ value: option.value, label: option.label })
 )
 const duration = ref<number>(DEFAULT_STOCK_MONITOR_DURATION)
-const channel = ref<'normal' | 'collection'>('normal')
+const channel = ref<'normal' | 'collection'>('collection')
 const channelOptions = [
   { value: 'normal' as const, label: '普通通道（每个任务独立检测）' },
   { value: 'collection' as const, label: '收藏夹通道（共享循环批量检测）' },
@@ -398,13 +398,13 @@ const handleOpenChange = (value: boolean) => {
   emit('update:open', value)
 }
 
-// 每次打开回到默认：默认打开自动下单（无登录态时关闭），规格回到「全部」
+// 每次打开回到默认：默认走收藏夹通道、打开自动下单（无登录态时关闭），规格回到「全部」
 watch(
   () => props.open,
   open => {
     if (open) {
       resetAutoOrder()
-      channel.value = 'normal'
+      channel.value = 'collection'
     }
   }
 )

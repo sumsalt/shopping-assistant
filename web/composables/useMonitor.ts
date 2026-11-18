@@ -88,7 +88,7 @@ export const useMonitor = () => {
       duration: config?.duration || DEFAULT_STOCK_MONITOR_DURATION,
       ...(config?.skus?.length ? { skus: config.skus } : {}),
       ...(config?.autoOrder ? { autoOrder: config.autoOrder } : {}),
-      channel: config?.channel || 'normal',
+      channel: config?.channel || 'collection',
     }
 
     const data = await submit<CreateTaskResponse>(
