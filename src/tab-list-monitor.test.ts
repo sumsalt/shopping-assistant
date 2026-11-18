@@ -629,9 +629,50 @@ describe('monitorTabList 每日重建基线', () => {
     // 重建后已见集合就是当天全量，3、4 不会被当成新商品推送
     expect(progresses[resetIndex].seenTotal).toBe(4)
     expect(mocks.sendEmail).toHaveBeenCalledTimes(0)
-    expect(logs.some(line => line.includes('每日 04:00 重建基线'))).toBe(true)
+    expect(logs.some(line => line.includes('每日 04:00/23:00 重建基线'))).toBe(true)
 
     // 同一天再跑一轮，不应该重复重建
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(progresses.filter(item => item.resetSeen)).toHaveLength(1)
+
+    controller.abort()
+  })
+
+  it('到 23:00 也会清空已见记录并全量重建（每晚一次）', async () => {
+    vi.setSystemTime(new Date(2026, 10, 10, 8, 0, 0))
+    queuePageRounds(
+      [['1', '2']], // 08:00 初始化
+      [['1', '2']], // 08:01 正常检测
+      [['1', '2', '3', '4']], // 23:01 每晚重建：全量抓到 3、4
+      [['1', '2']] // 23:02 正常检测
+    )
+
+    const progresses: TabMonitorProgress[] = []
+    const logs: string[] = []
+    vi.spyOn(console, 'log').mockImplementation((...args: unknown[]) => {
+      logs.push(args.map(String).join(' '))
+    })
+
+    const { controller } = createCancellableTabMonitor(
+      { recipient: 'dev@example.com', tabName: '测试 Tab' },
+      { tabId: '146453', interval: 60, minChangeCount: 10 },
+      progress => progresses.push(progress)
+    )
+
+    await vi.advanceTimersByTimeAsync(0) // 初始化
+    await vi.advanceTimersByTimeAsync(60_000) // 08:01 一轮
+    expect(mocks.sendEmail).toHaveBeenCalledTimes(0)
+
+    // 跳到当天 23:00 之后，下一轮应当触发重建
+    vi.setSystemTime(new Date(2026, 10, 10, 23, 0, 30))
+    await vi.advanceTimersByTimeAsync(60_000)
+
+    const resetIndex = progresses.findIndex(item => item.resetSeen)
+    expect(resetIndex).toBeGreaterThan(-1)
+    expect(progresses[resetIndex].seenTotal).toBe(4)
+    expect(logs.some(line => line.includes('每日 04:00/23:00 重建基线'))).toBe(true)
+
+    // 同一晚再跑一轮不重复重建
     await vi.advanceTimersByTimeAsync(60_000)
     expect(progresses.filter(item => item.resetSeen)).toHaveLength(1)
 

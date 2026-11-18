@@ -134,6 +134,7 @@ export interface TabTaskState {
     maxPrice?: number
     minChangeCount?: number
     dailyResetEnabled?: boolean
+    dailyResetHours?: number[]
     dailyResetHour?: number
   }
   checkCount: number

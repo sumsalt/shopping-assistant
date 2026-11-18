@@ -57,11 +57,16 @@ export interface TabMonitorConfig {
   /** 触发提醒的阈值（accumulate 下是累计新增数，diff 下是单轮变化数，默认10） */
   minChangeCount?: number;
   /**
-   * 每天重建基线的时刻（本地时间 0-23，默认 4 点）
+   * 每天重建基线的时刻列表（本地时间 0-23，默认 [4, 23]，即凌晨 4 点和晚上 11 点）
    *
-   * 任务跨天运行时，每天到这个点会清空已见记录并重新全量抓取，
-   * 以当下在售的商品作为新一天的起点：期间已下架的商品被移出记录，
+   * 任务跨天运行时，每天到这些点会清空已见记录并重新全量抓取，
+   * 以当下在售的商品作为新一轮的起点：期间已下架的商品被移出记录，
    * 之后重新上架会再次计入新商品。
+   */
+  dailyResetHours?: number[];
+  /**
+   * 每天重建基线的单个时刻（本地时间 0-23，旧配置兼容）。
+   * 传了它则覆盖 dailyResetHours 的默认值，退化为单时点。
    */
   dailyResetHour?: number;
   /** 是否启用每日重建基线，默认开启 */
@@ -425,7 +430,8 @@ export const createCancellableTabMonitor = (
       minChangeCount = 2,
       initialCheckCount = 0,
       initialDetectedCount = 0,
-      dailyResetHour = 4,
+      dailyResetHours,
+      dailyResetHour,
       dailyResetEnabled = true,
     } = config;
 
@@ -449,8 +455,17 @@ export const createCancellableTabMonitor = (
     // 监控模式：老任务没有该字段，按累计模式处理（与线上已有行为一致）
     const mode: TabMonitorMode = config.mode === 'diff' ? 'diff' : 'accumulate';
 
-    // 每日重建时刻，兜底到 0-23 的整数
-    const resetHour = Math.min(23, Math.max(0, Math.floor(dailyResetHour)));
+    // 每日重建时刻列表：优先用新的 multi 配置；旧的单时点配置 dailyResetHour 兼容成单元素；
+    // 都没传则用默认 [4, 23]（凌晨 4 点 + 晚上 11 点）。去重后兜底到 0-23 整数。
+    const rawResetHours: number[] =
+      dailyResetHour !== undefined
+        ? [dailyResetHour]
+        : dailyResetHours && dailyResetHours.length > 0
+          ? dailyResetHours
+          : [4, 23];
+    const resetHours = Array.from(
+      new Set(rawResetHours.map(hour => Math.min(23, Math.max(0, Math.floor(hour)))))
+    ).sort((a, b) => a - b);
 
     // 初始化状态
     let previousList: CollectionStockResult[] = [];
@@ -528,18 +543,24 @@ export const createCancellableTabMonitor = (
     let pendingNewProducts: CollectionStockResult[] = [];
 
     /**
-     * 最近一个「每日重建时刻」的时间戳
+     * 最近一个「每日重建时刻」的时间戳（可能有多个时点，如 04:00 / 23:00）
      *
-     * 只要上次重建早于该时刻，就说明今天这个点还没重建过。
-     * 例：04:00 重建后，当天 05:00 / 23:00 的边界仍是当天 04:00，不会重复触发。
+     * 对每个时点算出「最近一次已过去的该时刻」，取其中最大的那个作为边界。
+     * 只要上次重建早于该边界，就说明有重建点还没执行过。
+     * 例：04:00 重建后，当天 05:00~22:59 的边界仍是当天 04:00，不会重复触发；
+     *     到 23:00 边界变成当天 23:00，会再触发一次。
      */
     const lastDailyResetBoundary = (now: Date): number => {
-      const boundary = new Date(now);
-      boundary.setHours(resetHour, 0, 0, 0);
-      if (boundary.getTime() > now.getTime()) {
-        boundary.setDate(boundary.getDate() - 1);
+      let latest = 0;
+      for (const hour of resetHours) {
+        const boundary = new Date(now);
+        boundary.setHours(hour, 0, 0, 0);
+        if (boundary.getTime() > now.getTime()) {
+          boundary.setDate(boundary.getDate() - 1);
+        }
+        if (boundary.getTime() > latest) latest = boundary.getTime();
       }
-      return boundary.getTime();
+      return latest;
     };
 
     /** 上次重建基线的时间：初始化 / 每日重建都会刷新 */
@@ -884,7 +905,7 @@ export const createCancellableTabMonitor = (
           observeFirstPageOrder(list.slice(0, pageSize), checkCount, true);
 
           console.log(
-            `[Tab监控] 每日 ${String(resetHour).padStart(2, '0')}:00 重建基线：清空已见 ${clearedCount} 个，重新抓取 ${list.length} 个商品（${pagesFetched} 页），Tab ID: ${tabId}`
+            `[Tab监控] 每日 ${resetHours.map(hour => String(hour).padStart(2, '0') + ':00').join('/')} 重建基线：清空已见 ${clearedCount} 个，重新抓取 ${list.length} 个商品（${pagesFetched} 页），Tab ID: ${tabId}`
           );
 
           reportProgress(records, true);

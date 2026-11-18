@@ -72,6 +72,12 @@ export const tabDefinition: TaskKindDefinition<TabTaskState> = {
           ...(body?.config?.dailyResetEnabled !== undefined
             ? { dailyResetEnabled: Boolean(body.config.dailyResetEnabled) }
             : {}),
+          ...(Array.isArray(body?.config?.dailyResetHours) && body.config.dailyResetHours.length > 0
+            ? {
+                dailyResetHours: body.config.dailyResetHours
+                  .map((hour: unknown) => Math.min(23, Math.max(0, Math.floor(num(hour, 0))))),
+              }
+            : {}),
           ...(typeof body?.config?.dailyResetHour === 'number'
             ? { dailyResetHour: Math.min(23, Math.max(0, Math.floor(body.config.dailyResetHour))) }
             : {}),
