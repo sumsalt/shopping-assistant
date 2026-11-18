@@ -6,10 +6,10 @@
 import { readBody } from 'h3'
 import { createSuccessResponse, createErrorResponse } from '../utils/response'
 import { getCurrentUser } from '../utils/session'
-import { saveRuntimeSettings } from '../utils/settingsStore'
+import { getRuntimeSettings, saveRuntimeSettings } from '../utils/settingsStore'
 import { getAccount } from '../utils/accountStore'
 import { hasProfileCredential } from '@core'
-import { syncCollectionEngine } from '../tasks/collection-engine-service'
+import { hasCollectionSubscriptions, syncCollectionEngine } from '../tasks/collection-engine-service'
 
 export default defineEventHandler(async (event) => {
   try {
@@ -41,6 +41,14 @@ export default defineEventHandler(async (event) => {
         return createErrorResponse('INVALID_PARAMS', '收藏夹账号格式错误')
       }
       const accountId = body.collectionAccountId.trim()
+      // 账号变更会切断在跑任务的收藏夹归属（商品留在旧账号），因此有订阅时拒绝切换
+      const currentAccountId = String(getRuntimeSettings().collectionAccountId || '').trim()
+      if (accountId !== currentAccountId && hasCollectionSubscriptions()) {
+        return createErrorResponse(
+          'INVALID_PARAMS',
+          '还有收藏夹监控任务在运行，切换账号会让这些任务失去监控对象，请先删除或等任务结束后再修改'
+        )
+      }
       if (accountId) {
         const account = getAccount(accountId)
         if (!account) {

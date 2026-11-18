@@ -17,11 +17,16 @@ import type {
   TaskEvent,
 } from '@core/contract'
 
-/** 收藏夹通道的任务托管信息（创建时加入收藏夹、结束时移除） */
+/**
+ * 收藏夹通道的任务托管信息
+ *
+ * 仅作诊断展示：加收藏 / 删收藏 / 脏数据清理都由共享收藏夹引擎负责，
+ * 任务本身不持有收藏夹账号，也不用这里的 collectId 做清理。
+ */
 export interface CollectionCustody {
   /** 商品货号（一手收藏按 goods_no 定位） */
   productNo: string
-  /** 收藏条目 ID（取消收藏要用） */
+  /** 收藏条目 ID（创建时记录，便于排查） */
   collectId: string
 }
 

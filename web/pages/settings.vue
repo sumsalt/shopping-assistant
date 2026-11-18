@@ -128,6 +128,7 @@
             <p class="text-xs text-gray-500 mb-4">
               收藏夹通道的到货 / 价格监控会共用一个循环，用这个账号的收藏夹存放被监控商品。
               该账号的收藏夹应初始为空、且不要手动添加商品——创建任务时自动加入、任务结束自动移除，其余商品会被当作脏数据清理。
+              该账号只负责监控；自动下单使用创建任务时的当前账号。
             </p>
             <label class="block text-sm font-medium text-gray-700 mb-1">专用账号</label>
             <UiSelect

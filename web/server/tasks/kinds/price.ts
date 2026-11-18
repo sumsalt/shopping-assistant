@@ -36,13 +36,13 @@ import { TaskApiError, capEvents, makeEvent } from '../engine/types'
 import type { TaskKindDefinition, TaskRecordBase, TaskRunContext } from '../engine/types'
 import type { PriceTaskState } from './state'
 import {
-  requireCollectionAccount,
-  requireCollectionAccountSafe,
-  addToCollection,
-  removeFromCollection,
+  assertOrderAddress,
+  resolveOrderAccount,
+  resolveOrderCredentials,
   subscribeCollection,
   unsubscribeCollection,
 } from './collection-support'
+import { ensureCollected, releaseCollected } from '../collection-engine-service'
 
 const KIND: TaskKind = 'price'
 const VERSION = 2
@@ -232,9 +232,11 @@ export const priceDefinition: TaskKindDefinition<PriceTaskState> = {
   requiresAuth: () => true,
 
   resolveAccount({ body, user }) {
+    // 收藏夹通道：监控由全局收藏夹账号执行，任务只快照「下单账号」= 当前激活账号；
+    // 不落 secret，建立基线与下单时按 accountId 现取。
     if (body?.config?.channel === 'collection') {
-      const account = requireCollectionAccount()
-      return { accountId: account.accountId, secret: account.adapterConfig, hasCredential: true }
+      const base = resolveAdapterConfigForUser(user.username, true)
+      return { accountId: base.account?.id ?? '', hasCredential: base.hasCredential }
     }
     const resolved = resolveAdapterConfigForUser(user.username, true)
     return { accountId: resolved.account?.id ?? '', secret: resolved.config, hasCredential: resolved.hasCredential }
@@ -263,7 +265,24 @@ export const priceDefinition: TaskKindDefinition<PriceTaskState> = {
       throw new TaskApiError(ErrorCode.INVALID_PARAMS, '监控时长必须大于 0')
     }
 
-    if (!secret.uid || !secret.token) {
+    const channel: 'normal' | 'collection' =
+      body?.config?.channel === 'collection' ? 'collection' : 'normal'
+
+    // 收藏夹通道：监控由全局收藏夹账号执行；任务只快照下单账号，凭证现取。
+    // 基线请求（拿货价）也用下单账号，保证与后续下单口径一致。
+    let baselineConfig = secret
+    if (channel === 'collection') {
+      const orderAccount = resolveOrderAccount(accountId)
+      if (!orderAccount) {
+        throw new TaskApiError(
+          ErrorCode.AUTH_REQUIRED,
+          '收藏夹通道需要一个带登录态的当前账号（用于建立基线与下单）'
+        )
+      }
+      baselineConfig = orderAccount.adapterConfig
+    }
+
+    if (!baselineConfig?.uid || !baselineConfig.token) {
       throw new TaskApiError(
         ErrorCode.AUTH_REQUIRED,
         '价格监控需要登录态，请先在账号管理中选择带登录态的账号'
@@ -273,7 +292,7 @@ export const priceDefinition: TaskKindDefinition<PriceTaskState> = {
     // 同步建立基线：凭证失效 / 商品不存在时直接失败，不创建跑不起来的任务
     let initialSnapshot: PriceSnapshot
     try {
-      initialSnapshot = await getAdapter('yishou', secret).getPriceInfo(productId)
+      initialSnapshot = await getAdapter('yishou', baselineConfig).getPriceInfo(productId)
     } catch (error) {
       const code =
         error && typeof error === 'object' && 'type' in error
@@ -293,9 +312,6 @@ export const priceDefinition: TaskKindDefinition<PriceTaskState> = {
       )
     }
 
-    void accountId
-
-    const channel: 'normal' | 'collection' = body?.config?.channel === 'collection' ? 'collection' : 'normal'
     let custody: PriceTaskState['collection']
     if (channel === 'collection') {
       // 收藏夹通道：不支持折扣 / 券后价计算，只支持「指定价格下单」
@@ -312,8 +328,19 @@ export const priceDefinition: TaskKindDefinition<PriceTaskState> = {
           '收藏夹通道需要商品货号（productNo）'
         )
       }
-      const collectId = await addToCollection(String(productNo), secret)
-      custody = { productNo: String(productNo), collectId }
+      if (autoOrder?.enabled) {
+        await assertOrderAddress(baselineConfig)
+      }
+      // 收藏夹全权托管：幂等加入；失败则创建失败
+      try {
+        const collectId = await ensureCollected(String(productNo))
+        custody = { productNo: String(productNo), collectId }
+      } catch (error) {
+        throw new TaskApiError(
+          ErrorCode.INVALID_PARAMS,
+          `加入收藏夹失败：${error instanceof Error ? error.message : String(error)}`
+        )
+      }
     }
 
     return {
@@ -360,14 +387,15 @@ export const priceDefinition: TaskKindDefinition<PriceTaskState> = {
 
   run(record: TaskRecordBase<PriceTaskState>, ctx: TaskRunContext) {
     const state = record.state
+
+    // 收藏夹通道：不启动自身循环，订阅共享收藏夹引擎；不依赖任务 secret
+    if (state.config.channel === 'collection') {
+      return runCollectionPriceMonitor(record, state, ctx)
+    }
+
     const adapterConfig = record.secret
     if (!adapterConfig) {
       throw new TaskApiError(ErrorCode.AUTH_REQUIRED, '任务缺少登录态，无法继续监控')
-    }
-
-    // 收藏夹通道：不启动自身循环，订阅共享收藏夹引擎
-    if (state.config.channel === 'collection') {
-      return runCollectionPriceMonitor(record, state, ctx, adapterConfig)
     }
 
     const duration = ctx.durationSeconds ?? state.config.duration
@@ -533,17 +561,14 @@ export const priceDefinition: TaskKindDefinition<PriceTaskState> = {
 
   async onRemove(record) {
     const state = record.state
-    if (state.config.channel !== 'collection' || !state.collection) return
-    unsubscribeCollection(state.collection.productNo)
-    const config = requireCollectionAccountSafe() ?? record.secret
-    if (config) {
-      await removeFromCollection(
-        state.collection.productNo,
-        state.collection.collectId,
-        state.product.productId,
-        config
-      )
-    }
+    if (state.config.channel !== 'collection') return
+
+    const productNo = String(state.product.productNo || state.collection?.productNo || '').trim()
+    if (!productNo) return
+
+    // 先移除收藏（引擎此时可能还在跑），再注销订阅；顺序反了引擎会先停、没人执行清理
+    await releaseCollected(productNo)
+    unsubscribeCollection(productNo)
   },
 }
 
@@ -642,8 +667,7 @@ const applyPriceResult = (
 const runCollectionPriceMonitor = (
   record: TaskRecordBase<PriceTaskState>,
   state: PriceTaskState,
-  ctx: TaskRunContext,
-  adapterConfig: NonNullable<TaskRecordBase<PriceTaskState>['secret']>
+  ctx: TaskRunContext
 ) => {
   const controller = new AbortController()
   const productNo = state.collection?.productNo || state.product.productNo || ''
@@ -654,12 +678,19 @@ const runCollectionPriceMonitor = (
       if (settled) return
       settled = true
       clearTimeout(durationTimer)
-      unsubscribeCollection(productNo)
+      // 自然结束 / 删除都走这里：先移除收藏（引擎此时还在跑），再注销订阅
+      void releaseCollected(productNo).finally(() => unsubscribeCollection(productNo))
       resolve()
     }
 
     const autoOrder = state.config.autoOrder
-    const orderAdapter = autoOrder?.enabled ? getOrderAdapter('yishou', adapterConfig) : null
+    // 下单凭证不落盘：按创建时快照的下单账号现取；取不到时跳过下单并告警
+    const orderAdapter = autoOrder?.enabled
+      ? (() => {
+          const config = resolveOrderCredentials(record.accountId)
+          return config ? getOrderAdapter('yishou', config) : null
+        })()
+      : null
     const targetPrice = autoOrder && autoOrder.triggerMode !== 'discount' ? Number(autoOrder.targetPrice) : NaN
     let orderCooldownUntil = 0
 
@@ -692,7 +723,11 @@ const runCollectionPriceMonitor = (
       try {
         // 价格到点（仅指定价格模式）+ 已启用自动下单
         const hit = Number.isFinite(targetPrice) && price > 0 && price <= targetPrice
-        if (hit && orderAdapter && autoOrder && Date.now() >= orderCooldownUntil) {
+        if (hit && autoOrder?.enabled && !orderAdapter) {
+          // 下单账号不可用：明确告警但继续监控（用户可能只是临时切走 / 重抓中）
+          result.orderError = '下单账号不可用（已删除或登录态失效），已到目标价但未下单'
+          ctx.log(result.orderError, 'warn')
+        } else if (hit && orderAdapter && autoOrder && Date.now() >= orderCooldownUntil) {
           if (item.inStock === false) {
             result.orderSkipped = 'no_stock'
             result.orderError = `商品当前无货（${item.message || '暂时缺货'}），已到目标价，等待补货`

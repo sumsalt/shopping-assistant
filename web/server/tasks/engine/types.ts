@@ -45,8 +45,8 @@ export interface TaskCreateInput {
   user: { username: string; email: string }
   /** 服务端解析出的账号 ID；没有账号时为空串 */
   accountId: string
-  /** 服务端解析出的凭证；requiresAuth=false 时是匿名配置 */
-  secret: AdapterConfig
+  /** 服务端解析出的凭证；requiresAuth=false 时是匿名配置；收藏夹通道无凭证时为空 */
+  secret?: AdapterConfig
 }
 
 /** 运行上下文 */
@@ -91,7 +91,7 @@ export interface TaskKindDefinition<S> {
   resolveAccount?(input: {
     body: any
     user: { username: string; email: string }
-  }): { accountId: string; secret: AdapterConfig; hasCredential: boolean }
+  }): { accountId: string; secret?: AdapterConfig; hasCredential: boolean }
 
   /** 校验输入 + 建立初始状态（可发一次基线请求） */
   create(input: TaskCreateInput): Promise<{ state: S }> | { state: S }

@@ -11,6 +11,10 @@
 import { closeDb } from '../utils/db'
 import { flushTasks } from '../tasks/engine/store'
 import { taskServices } from '../tasks/kinds'
+import {
+  beginCollectionRestore,
+  endCollectionRestore,
+} from '../tasks/collection-engine-service'
 
 /** 避免开发环境热更新时重复执行 */
 let restored = false
@@ -19,6 +23,9 @@ const restoreAllTasks = () => {
   if (restored) return
   restored = true
 
+  // 恢复期先压住收藏夹引擎：任务逐个恢复，若第一个订阅就拉起循环，
+  // 其余任务尚未注册，脏数据清理会误删它们刚恢复的商品。
+  beginCollectionRestore()
   try {
     const counts: Record<string, number> = {}
     let total = 0
@@ -38,6 +45,9 @@ const restoreAllTasks = () => {
     }
   } catch (error) {
     console.error('[Restore] 恢复任务失败:', error)
+  } finally {
+    // 所有任务订阅已就绪，这里统一拉起收藏夹引擎
+    endCollectionRestore()
   }
 }
 

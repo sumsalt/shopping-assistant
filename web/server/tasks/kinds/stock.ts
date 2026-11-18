@@ -28,13 +28,13 @@ import { TaskApiError, capEvents, makeEvent } from '../engine/types'
 import type { TaskKindDefinition, TaskRecordBase, TaskRunContext } from '../engine/types'
 import type { StockTaskState } from './state'
 import {
-  requireCollectionAccount,
-  requireCollectionAccountSafe,
-  addToCollection,
-  removeFromCollection,
+  assertOrderAddress,
+  resolveOrderAccount,
+  resolveOrderCredentials,
   subscribeCollection,
   unsubscribeCollection,
 } from './collection-support'
+import { ensureCollected, releaseCollected } from '../collection-engine-service'
 
 const KIND: TaskKind = 'stock'
 const VERSION = 2
@@ -112,10 +112,17 @@ export const stockDefinition: TaskKindDefinition<StockTaskState> = {
   requiresAuth: body => Boolean(body?.config?.autoOrder?.enabled),
 
   resolveAccount({ body, user }) {
-    // 收藏夹通道：用专用收藏夹账号凭证（也用于下单）
+    // 收藏夹通道：监控由全局收藏夹账号执行（引擎持有），任务只快照「下单账号」= 当前激活账号。
+    // 不下发 secret：任务不落任何凭证，下单时按 accountId 现取。
     if (body?.config?.channel === 'collection') {
-      const account = requireCollectionAccount()
-      return { accountId: account.accountId, secret: account.adapterConfig, hasCredential: true }
+      const base = resolveAdapterConfigForUser(user.username, true)
+      if (body?.config?.autoOrder?.enabled && (!base.hasCredential || !base.account?.id)) {
+        throw new TaskApiError(
+          ErrorCode.AUTH_REQUIRED,
+          '收藏夹通道自动下单需要一个带登录态的当前账号'
+        )
+      }
+      return { accountId: base.account?.id ?? '', hasCredential: base.hasCredential }
     }
     // 普通通道：沿用当前激活账号
     const needAuth = Boolean(body?.config?.autoOrder?.enabled)
@@ -123,7 +130,7 @@ export const stockDefinition: TaskKindDefinition<StockTaskState> = {
     return { accountId: resolved.account?.id ?? '', secret: resolved.config, hasCredential: resolved.hasCredential }
   },
 
-  async create({ body, secret }) {
+  async create({ body, secret, accountId }) {
     const product = body?.product
     if (!product?.productId) {
       throw new TaskApiError(
@@ -145,26 +152,47 @@ export const stockDefinition: TaskKindDefinition<StockTaskState> = {
       throw new TaskApiError(ErrorCode.INVALID_PARAMS, '检测间隔不能为负数')
     }
 
-    // 收藏夹通道：不能用 SKU，用专用账号凭证校验下单配置，并把商品加入收藏夹
+    // 收藏夹通道：不能用 SKU；收藏由引擎托管，任务只快照下单账号
     const isCollection = channel === 'collection'
     const skus = isCollection ? [] : readSkus(body?.config?.skus)
-    let orderSecret = secret
+    let autoOrder: StockTaskState['config']['autoOrder']
     let custody: StockTaskState['collection']
 
     if (isCollection) {
-      const collectionAccount = requireCollectionAccount()
-      orderSecret = collectionAccount.adapterConfig
-      if (!product.productNo) {
+      const productNo = String(product.productNo || '').trim()
+      if (!productNo) {
         throw new TaskApiError(
           ErrorCode.INVALID_PARAMS,
           '收藏夹通道需要商品货号（productNo），请从收藏夹 / 详情页选择商品'
         )
       }
-      const collectId = await addToCollection(String(product.productNo), collectionAccount.adapterConfig)
-      custody = { productNo: String(product.productNo), collectId }
-    }
 
-    const autoOrder = readAutoOrder(body?.config?.autoOrder, orderSecret)
+      // 下单账号：创建时快照当前激活账号；开自动下单时校验登录态与收货地址
+      const orderAccount = resolveOrderAccount(accountId)
+      if (body?.config?.autoOrder?.enabled) {
+        if (!orderAccount) {
+          throw new TaskApiError(
+            ErrorCode.AUTH_REQUIRED,
+            '收藏夹通道自动下单需要一个带登录态的当前账号'
+          )
+        }
+        await assertOrderAddress(orderAccount.adapterConfig)
+      }
+      autoOrder = readAutoOrder(body?.config?.autoOrder, orderAccount?.adapterConfig ?? {})
+
+      // 收藏夹全权托管：幂等加入收藏夹；失败则创建失败，避免创建出扫不到数据的任务
+      try {
+        const collectId = await ensureCollected(productNo)
+        custody = { productNo, collectId }
+      } catch (error) {
+        throw new TaskApiError(
+          ErrorCode.INVALID_PARAMS,
+          `加入收藏夹失败：${error instanceof Error ? error.message : String(error)}`
+        )
+      }
+    } else {
+      autoOrder = readAutoOrder(body?.config?.autoOrder, secret ?? {})
+    }
 
     return {
       state: {
@@ -194,14 +222,15 @@ export const stockDefinition: TaskKindDefinition<StockTaskState> = {
 
   run(record: TaskRecordBase<StockTaskState>, ctx: TaskRunContext) {
     const state = record.state
+
+    // 收藏夹通道：不启动自身循环，订阅共享收藏夹引擎；不依赖任务 secret
+    if (state.config.channel === 'collection') {
+      return runCollectionStockMonitor(record, state, ctx)
+    }
+
     const adapterConfig = record.secret
     if (!adapterConfig) {
       throw new TaskApiError(ErrorCode.AUTH_REQUIRED, '任务缺少账号快照，无法继续监控')
-    }
-
-    // 收藏夹通道：不启动自身循环，订阅共享收藏夹引擎
-    if (state.config.channel === 'collection') {
-      return runCollectionStockMonitor(record, state, ctx, adapterConfig)
     }
 
     const task: MonitorTask = {
@@ -347,17 +376,14 @@ export const stockDefinition: TaskKindDefinition<StockTaskState> = {
 
   async onRemove(record) {
     const state = record.state
-    if (state.config.channel !== 'collection' || !state.collection) return
-    unsubscribeCollection(state.collection.productNo)
-    const config = requireCollectionAccountSafe() ?? record.secret
-    if (config) {
-      await removeFromCollection(
-        state.collection.productNo,
-        state.collection.collectId,
-        state.product.productId,
-        config
-      )
-    }
+    if (state.config.channel !== 'collection') return
+
+    const productNo = String(state.product.productNo || state.collection?.productNo || '').trim()
+    if (!productNo) return
+
+    // 先移除收藏（引擎此时可能还在跑），再注销订阅；顺序反了引擎会先停、没人执行清理
+    await releaseCollected(productNo)
+    unsubscribeCollection(productNo)
   },
 }
 
@@ -492,8 +518,7 @@ const buildNotice = (state: StockTaskState): TaskSummary['notice'] => {
 const runCollectionStockMonitor = (
   record: TaskRecordBase<StockTaskState>,
   state: StockTaskState,
-  ctx: TaskRunContext,
-  adapterConfig: NonNullable<TaskRecordBase<StockTaskState>['secret']>
+  ctx: TaskRunContext
 ) => {
   const controller = new AbortController()
   const productNo = state.collection?.productNo || state.product.productNo || ''
@@ -504,12 +529,19 @@ const runCollectionStockMonitor = (
       if (settled) return
       settled = true
       clearTimeout(durationTimer)
-      unsubscribeCollection(productNo)
+      // 自然结束 / 删除都走这里：先移除收藏（引擎此时还在跑），再注销订阅
+      void releaseCollected(productNo).finally(() => unsubscribeCollection(productNo))
       resolve()
     }
 
     const orderPolicy = state.config.autoOrder
-    const orderAdapter = orderPolicy?.enabled ? getOrderAdapter('yishou', adapterConfig) : null
+    // 下单凭证不落盘：按创建时快照的下单账号现取；取不到时只通知并告警
+    const orderAdapter = orderPolicy?.enabled
+      ? (() => {
+          const config = resolveOrderCredentials(record.accountId)
+          return config ? getOrderAdapter('yishou', config) : null
+        })()
+      : null
     let orderCooldownUntil = 0
 
     const handler = async (item: CollectionStockResult) => {
@@ -532,7 +564,22 @@ const runCollectionStockMonitor = (
       }
 
       try {
-        if (orderAdapter && orderPolicy && Date.now() >= orderCooldownUntil) {
+        if (orderPolicy?.enabled && !orderAdapter) {
+          // 下单账号不可用（被删 / 掉登录态）：只通知并明确告警，不影响本次到货提醒
+          result.detected = true
+          result.orderError = '下单账号不可用（已删除或登录态失效），本次仅通知'
+          ctx.log(result.orderError, 'warn')
+          const email = await sendEmail({
+            to: record.userEmail,
+            subject: `🎉 已到货（收藏夹监控，自动下单已跳过）：${result.productName}`,
+            html: createBackInStockTemplate(
+              result.productName,
+              item.price,
+              item.productImage || state.product.productImage
+            ),
+          })
+          result.emailSent = email.success
+        } else if (orderAdapter && orderPolicy && Date.now() >= orderCooldownUntil) {
           const orderResult = await placeAutoOrder(orderAdapter, {
             goodsId: item.productId,
             goodsNo: item.productNo,

@@ -30,6 +30,9 @@
         <p class="mt-1 text-xs text-gray-400">
           收藏夹通道由单个共享循环批量监控（需在系统配置里指定专用账号），不支持按规格监控
         </p>
+        <p v-if="channel === 'collection'" class="mt-1 text-xs text-blue-600">
+          监控账号：系统配置里的收藏夹专用账号 · 下单账号：{{ orderAccountLabel }}
+        </p>
       </div>
 
       <!-- 监控时长：普通到货监控与自动下单共用 -->
@@ -287,6 +290,14 @@ const emit = defineEmits<{
 
 const { createMonitorTask, isLoading } = useMonitor()
 const toast = useToast()
+
+// 收藏夹通道：监控走系统配置里的专用账号，下单走「当前账号」
+const configStore = useConfigStore()
+const orderAccountLabel = computed(() => {
+  const account = configStore.activeAccount
+  if (!account) return '当前未选账号'
+  return account.title || account.uin || account.phone || '当前账号'
+})
 
 /** 转成可变数组，避免 as const 的字面量类型与 v-model(number) 冲突 */
 const durationOptions: Array<{ value: number; label: string }> = STOCK_MONITOR_DURATION_OPTIONS.map(

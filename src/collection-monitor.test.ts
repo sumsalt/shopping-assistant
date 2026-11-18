@@ -114,13 +114,19 @@ describe('CollectionMonitorEngine', () => {
     engine.stop()
   })
 
-  it('商品分发给对应订阅者，未订阅的当脏数据取消收藏', async () => {
+  it('商品分发给对应订阅者，未订阅的商品连续两轮后才当脏数据取消收藏', async () => {
     const engine = new CollectionMonitorEngine()
     const handler = vi.fn()
+    let calls = 0
 
     mocks.checkCollectionStock.mockImplementation(async () => {
       await yieldTurn()
-      engine.stop() // 首轮翻页后立即停，避免重复
+      calls += 1
+      // 前两轮返回同一页：第一轮只记未命中，第二轮才真正清理；第三轮停掉
+      if (calls > 2) {
+        engine.stop()
+        return pageResult([])
+      }
       return pageResult([item('subscribed'), item('dirty')])
     })
 
@@ -128,7 +134,7 @@ describe('CollectionMonitorEngine', () => {
     engine.start(account)
     await tick()
 
-    expect(handler).toHaveBeenCalledTimes(1)
+    expect(handler).toHaveBeenCalledTimes(2)
     expect(handler.mock.calls[0][0]).toMatchObject({ productNo: 'subscribed' })
     expect(mocks.removeProductFromCollection).toHaveBeenCalledTimes(1)
     expect(mocks.removeProductFromCollection.mock.calls[0][0]).toMatchObject({
@@ -137,13 +143,59 @@ describe('CollectionMonitorEngine', () => {
     })
   })
 
-  it('自定义 onDirty 时不再走默认取消收藏', async () => {
+  it('单轮未订阅不清洗（避免服务恢复期误删）', async () => {
     const engine = new CollectionMonitorEngine()
-    const onDirty = vi.fn()
+    let calls = 0
 
     mocks.checkCollectionStock.mockImplementation(async () => {
       await yieldTurn()
-      engine.stop()
+      calls += 1
+      if (calls > 1) {
+        engine.stop()
+        return pageResult([])
+      }
+      return pageResult([item('dirty')])
+    })
+
+    engine.start(account)
+    await tick()
+
+    expect(mocks.removeProductFromCollection).not.toHaveBeenCalled()
+  })
+
+  it('占位的商品连续多轮也不清理（创建任务 → 订阅之间的窗口保护）', async () => {
+    const engine = new CollectionMonitorEngine()
+    let calls = 0
+
+    mocks.checkCollectionStock.mockImplementation(async () => {
+      await yieldTurn()
+      calls += 1
+      if (calls > 3) {
+        engine.stop()
+        return pageResult([])
+      }
+      return pageResult([item('reserved')])
+    })
+
+    engine.reserve('reserved')
+    engine.start(account)
+    await tick()
+
+    expect(mocks.removeProductFromCollection).not.toHaveBeenCalled()
+  })
+
+  it('自定义 onDirty 时不再走默认取消收藏', async () => {
+    const engine = new CollectionMonitorEngine()
+    const onDirty = vi.fn()
+    let calls = 0
+
+    mocks.checkCollectionStock.mockImplementation(async () => {
+      await yieldTurn()
+      calls += 1
+      if (calls > 2) {
+        engine.stop()
+        return pageResult([])
+      }
       return pageResult([item('dirty')])
     })
 

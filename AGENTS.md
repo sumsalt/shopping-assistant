@@ -56,8 +56,10 @@ sshpass -p '<服务器密码>' ssh ubuntu@43.143.118.204 \
   - 账号管理的「出口网卡 IP」已改为纯下拉（commit e648376）：后端 `GET /api/network/addresses` 用 `os.networkInterfaces()` 枚举内网 IP + 腾讯云 metadata 按 MAC 查公网 IP（非云环境优雅降级），前端下拉显示「网卡名 · 内网IP → 公网IP」+「默认路由」项。端到端已验证返回 eth1→119.45.202.128 / eth0→1.13.23.184。
   - 价格监控弹窗已移除「检测间隔」输入框（commit e648376）：节奏完全由闸门控制，后端 interval 仅用默认值做时长边界预估。到货监控 / Tab 监控表单仍保留检测间隔字段（用户当次只要求改价格监控）。
   - **收藏夹通道（多任务共享单循环）**：到货 / 价格任务表单可选「检测通道」，选 `collection` 时走共享收藏夹监控。架构：
-    - 核心 `src/collection-monitor.ts` 单例 `CollectionMonitorEngine`：一个循环按 `pageSize=20` 全量翻页 `checkCollectionStock`，按 `goods_no` 分发给订阅者，未订阅商品当脏数据默认 `removeProductFromCollection` 清理；循环不 sleep，跑在 `runWithGateContext(accountKey=收藏账号)` 里由登录桶控制节奏。
-    - server 单例 `web/server/tasks/collection-engine-service.ts` 持有引擎；`web/server/tasks/kinds/collection-support.ts` 提供解析收藏夹账号 / 加收藏 / 删收藏 / 订阅封装。收藏夹专用账号存在 `RuntimeSettings.collectionAccountId`（系统配置页选择，必须带登录态），变更时 `syncCollectionEngine()` 停旧启新；无账号 / 无订阅时停引擎。
-    - 任务生命周期：create 时 `requireCollectionAccount` + `addToCollection` 存 `state.collection={productNo,collectId}`；resolveAccount 返回收藏夹账号凭证（也用于下单）；run 时 collection 通道不启自身循环，改为 `subscribeCollection`（到货命中 / 价格到点触发下单+邮件后自动注销订阅结束；时长到期也结束）；`TaskKindDefinition.onRemove` 钩子在 service.remove 里调用，删任务时 unsubscribe + removeCollection。
+    - 核心 `src/collection-monitor.ts` 单例 `CollectionMonitorEngine`：一个循环按 `pageSize=20` 全量翻页 `checkCollectionStock`，按 `goods_no` 分发给订阅者；未订阅商品**连续 2 轮**无人认领才当脏数据清理（恢复期保护），并支持 `reserve/unreserve` 占位覆盖「创建任务 → 订阅完成」的窗口，避免刚加进收藏夹就被删。循环不 sleep，跑在 `runWithGateContext(accountKey=收藏账号)` 里由登录桶控制节奏。
+    - **收藏夹账号只归引擎**：`RuntimeSettings.collectionAccountId`（系统配置页选择，必须带登录态）是唯一持有收藏夹凭证的地方。任务层不存收藏夹账号、不存凭证、不存 collectId。
+    - server 单例 `web/server/tasks/collection-engine-service.ts` 提供 `ensureCollected(productNo)`（幂等加收藏，先查后加，失败则任务创建失败）与 `releaseCollected(productNo)`（幂等移除，尽力而为），内部维护 `productNo→collectId` 缓存、缺失时现翻页查找；账号变更时 `syncCollectionEngine()` 停旧启新，无账号 / 无订阅时停引擎。
+    - 任务生命周期：create 只调 `ensureCollected`；`resolveAccount` 对 collection 通道返回**下单账号**（创建时当前激活账号的快照 ID，不下发 secret）；run 时不启自身循环，改为订阅引擎，下单按 `record.accountId` 现取凭证（账号被删 / 掉登录态则只通知 + 告警，不下单）；自然结束（命中 / 到期）与删除都在 `finish` 里**先 `releaseCollected` 再注销订阅**，`onRemove` 同序（反了引擎会先停、没人清理）。
+    - 恢复期：`restoreAllTasks` 用 `beginCollectionRestore/endCollectionRestore` 包住，所有任务订阅就绪后才统一拉起引擎；保存设置时若有在跑订阅且账号变更，直接拒绝并提示先处理任务。
     - 限制：收藏夹通道不能选 SKU、不支持券后价 / 折扣计算、价格只支持指定目标价（collection 时强制 triggerMode=price）。一商品只能有一个收藏夹监控。
 - 部署到实验机时目标地址是 `1.13.23.184`，不要误覆盖主线 `43.143.118.204`。

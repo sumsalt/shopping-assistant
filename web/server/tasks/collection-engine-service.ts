@@ -4,21 +4,42 @@
  * 职责：
  * - 持有唯一的 CollectionMonitorEngine 实例；
  * - 从运行设置里解析「收藏夹监控专用账号」的带凭证 config；
- * - 有账号且有订阅时启动引擎；账号变更 / 删除时重启或停止；
- * - 任务 create/delete/restore 通过这里订阅 / 注销商品。
+ * - **收藏夹全权托管**：任务只说「要监控哪个商品」，加收藏 / 删收藏都走这里；
+ * - 有账号且有订阅时启动引擎；账号变更 / 删除时重启或停止。
  *
- * 引擎自身不 sleep，翻页请求带登录态进 UID 桶，由闸门控制节奏。
+ * 任务层因此完全不接触收藏夹账号与收藏条目 ID，只保留「下单账号」。
  */
 
-import { CollectionMonitorEngine, type CollectionAccountConfig } from '@core'
+import {
+  addProductToCollection,
+  checkCollectionStock,
+  removeProductFromCollection,
+  CollectionMonitorEngine,
+  type AdapterConfig,
+  type CollectionAccountConfig,
+} from '@core'
 import { getRuntimeSettings } from '../utils/settingsStore'
 import { getAccount } from '../utils/accountStore'
 import { resolveAdapterConfigForAccount } from '../utils/adapterConfig'
+
+/** 固定页大小：与引擎一致 */
+const PAGE_SIZE = 20
+/** 现查收藏条目的最大翻页数，防止异常情况下无限翻 */
+const PAGE_LIMIT = 50
 
 const engine = new CollectionMonitorEngine()
 
 /** 当前引擎使用的账号 ID（用于检测账号变更） */
 let activeAccountId = ''
+
+/**
+ * 恢复期标志：服务重启时任务逐个恢复，若第一个任务注册完就拉起引擎，
+ * 其余任务尚未订阅，脏数据清理会误删它们的商品。恢复完成后统一启动。
+ */
+let restoring = false
+
+/** 商品 → 收藏条目 ID（引擎扫到或本次加入的都记在这里） */
+const collectIdCache = new Map<string, string>()
 
 /** 解析收藏夹专用账号凭证 */
 const resolveAccountConfig = (): { accountId: string; config: CollectionAccountConfig } | null => {
@@ -42,15 +63,127 @@ const resolveAccountConfig = (): { accountId: string; config: CollectionAccountC
   }
 }
 
+/** 翻页查找某商品当前是否已在收藏夹，返回 collectId（不在则空串） */
+const findCollectId = async (productNo: string, adapterConfig: AdapterConfig): Promise<string> => {
+  for (let page = 1; page <= PAGE_LIMIT; page++) {
+    const result = await checkCollectionStock(
+      { platform: 'yishou', page, pageSize: PAGE_SIZE },
+      { adapterConfig }
+    )
+    const items = [...result.inStockItems, ...result.outOfStockItems]
+    if (items.length === 0) return ''
+
+    const hit = items.find(item => String(item.productNo || '').trim() === productNo)
+    if (hit) return hit.collectId || ''
+    if (items.length < PAGE_SIZE) return ''
+  }
+  return ''
+}
+
+/**
+ * 确保商品在收藏夹里（幂等）。
+ *
+ * 已在收藏夹则复用原条目，不重复添加；添加失败抛错，由任务创建流程转为创建失败。
+ * 返回 collectId。
+ */
+export const ensureCollected = async (productNo: string): Promise<string> => {
+  const no = String(productNo || '').trim()
+  if (!no) throw new Error('收藏夹通道需要商品货号（productNo）')
+
+  const resolved = resolveAccountConfig()
+  if (!resolved) {
+    throw new Error('收藏夹监控账号未配置或缺少登录态，请先在「系统配置」里指定账号')
+  }
+
+  // 占位：从「加入收藏夹」到「任务订阅」之间，引擎扫到它也不会当脏数据删掉
+  engine.reserve(no)
+
+  try {
+    const cached = collectIdCache.get(no) || engine.getCollectId(no)
+    if (cached) {
+      collectIdCache.set(no, cached)
+      return cached
+    }
+
+    const found = await findCollectId(no, resolved.config.adapterConfig)
+    if (found) {
+      collectIdCache.set(no, found)
+      return found
+    }
+
+    const added = await addProductToCollection(
+      { platform: 'yishou', productNo: no },
+      { adapterConfig: resolved.config.adapterConfig }
+    )
+    if (added.collectId) collectIdCache.set(no, added.collectId)
+    return added.collectId
+  } catch (error) {
+    engine.unreserve(no)
+    throw error
+  }
+}
+
+/** 正在执行移除的商品，避免「任务自然结束」与「手动删除」并发重复清理 */
+const releasing = new Set<string>()
+
+/**
+ * 把商品移出收藏夹（幂等）。
+ *
+ * 清理属于尽力而为：找不到条目、账号失效、商品已被移除都只记日志，不影响任务删除。
+ */
+export const releaseCollected = async (productNo: string): Promise<void> => {
+  const no = String(productNo || '').trim()
+  if (!no || releasing.has(no)) return
+  releasing.add(no)
+
+  try {
+    const resolved = resolveAccountConfig()
+    if (!resolved) {
+      console.warn(`[CollectionEngine] 收藏夹账号不可用，跳过清理 ${no}`)
+      return
+    }
+
+    let collectId = collectIdCache.get(no) || engine.getCollectId(no) || ''
+    if (!collectId) {
+      try {
+        collectId = await findCollectId(no, resolved.config.adapterConfig)
+      } catch (error) {
+        console.warn(
+          `[CollectionEngine] 查找收藏条目失败 ${no}: ${error instanceof Error ? error.message : String(error)}`
+        )
+      }
+    }
+
+    collectIdCache.delete(no)
+    if (!collectId || collectId === '0') return
+
+    try {
+      await removeProductFromCollection(
+        { platform: 'yishou', productNo: no, collectId },
+        { adapterConfig: resolved.config.adapterConfig }
+      )
+    } catch (error) {
+      console.warn(
+        `[CollectionEngine] 清理收藏失败 ${no}: ${error instanceof Error ? error.message : String(error)}`
+      )
+    }
+  } finally {
+    releasing.delete(no)
+  }
+}
+
+/** 当前是否还有任务订阅（用于「改账号前拦截」） */
+export const hasCollectionSubscriptions = (): boolean => engine.size > 0
+
 /**
  * 同步引擎运行状态：
- * - 有专用账号且当前有订阅 → 启动（账号变了则先停再启）
- * - 无专用账号 / 无凭证 → 停止
- * - 订阅数归零 → 停止（省得空转）
- *
- * 供设置保存后、任务增删后调用。
+ * - 恢复期不启动，等任务全部恢复完统一拉起；
+ * - 有专用账号且当前有订阅 → 启动（账号变了则先停再启）；
+ * - 无专用账号 / 无凭证 / 订阅数归零 → 停止。
  */
 export const syncCollectionEngine = (): void => {
+  if (restoring) return
+
   const resolved = resolveAccountConfig()
 
   if (!resolved) {
@@ -83,6 +216,10 @@ export const syncCollectionEngine = (): void => {
           else if (level === 'warn') console.warn(line)
           else console.log(line)
         },
+        onDirty: async item => {
+          await releaseCollected(item.productNo)
+          collectIdCache.delete(String(item.productNo || '').trim())
+        },
       })
       activeAccountId = resolved.accountId
     } catch (error) {
@@ -93,6 +230,17 @@ export const syncCollectionEngine = (): void => {
 
 /** 获取引擎实例（供任务订阅 / 注销） */
 export const getCollectionEngine = (): CollectionMonitorEngine => engine
+
+/** 进入恢复期：抑制引擎自动启动 */
+export const beginCollectionRestore = (): void => {
+  restoring = true
+}
+
+/** 恢复结束：统一拉起引擎 */
+export const endCollectionRestore = (): void => {
+  restoring = false
+  syncCollectionEngine()
+}
 
 /** 服务启动时调用：若有订阅任务（恢复时注册）且有账号，则拉起引擎 */
 export const bootstrapCollectionEngine = (): void => {

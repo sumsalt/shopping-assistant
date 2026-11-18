@@ -118,13 +118,13 @@ export const useConfig = () => {
   const saveConfig = async (): Promise<boolean> => {
     isSaving.value = true
     try {
-      const ok = await configStore.saveSettings({
+      const result = await configStore.saveSettings({
         proxyUrl: formData.value.proxyUrl.trim(),
         proxyEnabled: Boolean(formData.value.proxyEnabled),
         collectionAccountId: formData.value.collectionAccountId.trim(),
       })
-      if (!ok) {
-        toast.error('配置保存失败')
+      if (!result.ok) {
+        toast.error(result.message || '配置保存失败')
         return false
       }
       toast.success('配置保存成功')
@@ -138,7 +138,15 @@ export const useConfig = () => {
   const resetConfig = async (): Promise<void> => {
     isResetting.value = true
     try {
-      await configStore.saveSettings({ proxyUrl: '', proxyEnabled: false, collectionAccountId: '' })
+      const result = await configStore.saveSettings({
+        proxyUrl: '',
+        proxyEnabled: false,
+        collectionAccountId: '',
+      })
+      if (!result.ok) {
+        toast.error(result.message || '配置重置失败')
+        return
+      }
       await configStore.clearActiveAccount()
       initFormData()
       toast.info('配置已重置')

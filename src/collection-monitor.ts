@@ -48,6 +48,12 @@ interface Subscription {
   handler: CollectionItemHandler;
 }
 
+/** 连续多少轮无人订阅才判定为脏数据（恢复期保护） */
+const MISS_THRESHOLD = 2;
+
+/** 占位有效期：创建任务到订阅完成之间的窗口，超时自动失效，避免残留占位阻止清理 */
+const RESERVE_TTL_MS = 60_000;
+
 /**
  * 共享收藏夹监控引擎。
  *
@@ -55,6 +61,15 @@ interface Subscription {
  */
 export class CollectionMonitorEngine {
   private readonly subscriptions = new Map<string, Subscription>();
+  /** 最近一次扫描到的 goods_no → collect_id（供外部按商品移除收藏） */
+  private readonly collectIds = new Map<string, string>();
+  /** 连续多少轮「在收藏夹里但没有订阅」；达到阈值才当脏数据清理，避免恢复期误删 */
+  private readonly missCounts = new Map<string, number>();
+  /**
+   * 占位：创建任务时「已加入收藏夹、但任务尚未订阅」的窗口。
+   * 期间扫描到该商品不清理，避免刚加进去就被当脏数据删掉。
+   */
+  private readonly reserved = new Map<string, number>();
   private controller: AbortController | null = null;
   private running = false;
   private config: CollectionMonitorConfig = {};
@@ -65,6 +80,23 @@ export class CollectionMonitorEngine {
     const key = String(productNo || '').trim();
     if (!key) return;
     this.subscriptions.set(key, { handler });
+    // 任务已接管，占位使命结束
+    this.reserved.delete(key);
+  }
+
+  /**
+   * 占位一个即将订阅的商品（创建任务、加入收藏夹前后调用）。
+   * 占位期间扫描到它不会被当作脏数据清理。
+   */
+  reserve(productNo: string): void {
+    const key = String(productNo || '').trim();
+    if (!key) return;
+    this.reserved.set(key, Date.now());
+  }
+
+  /** 取消占位（创建失败时回滚） */
+  unreserve(productNo: string): void {
+    this.reserved.delete(String(productNo || '').trim());
   }
 
   /** 注销一个商品的监听 */
@@ -143,6 +175,15 @@ export class CollectionMonitorEngine {
     this.controller?.abort();
     this.controller = null;
     this.account = null;
+    // 账号可能已变，缓存与计数一并作废
+    this.collectIds.clear();
+    this.missCounts.clear();
+    this.reserved.clear();
+  }
+
+  /** 该商品最近一次扫描到的收藏条目 ID（没有则 undefined） */
+  getCollectId(productNo: string): string | undefined {
+    return this.collectIds.get(String(productNo || '').trim());
   }
 
   /** 单轮：全量翻页直到某页不足 pageSize */
@@ -152,6 +193,9 @@ export class CollectionMonitorEngine {
     signal: AbortSignal,
     log: (message: string, level?: 'info' | 'warn' | 'error') => void
   ): Promise<void> {
+    /** 本轮出现过的商品；用于清理「已从收藏夹消失」的未命中计数 */
+    const seen = new Set<string>();
+
     for (let page = 1; ; page++) {
       if (signal.aborted) return;
 
@@ -161,25 +205,53 @@ export class CollectionMonitorEngine {
       );
 
       const items = [...result.inStockItems, ...result.outOfStockItems];
-      if (items.length === 0) return;
+      if (items.length === 0) break;
 
       // 已拉取的这一页完整处理完（哪怕中途 stop），避免半页数据被丢弃
       for (const item of items) {
-        const sub = this.subscriptions.get(String(item.productNo || '').trim());
+        const no = String(item.productNo || '').trim();
+        if (!no) continue;
+        seen.add(no);
+        if (item.collectId) this.collectIds.set(no, item.collectId);
+
+        const sub = this.subscriptions.get(no);
         if (sub) {
+          this.missCounts.delete(no);
           try {
             await sub.handler(item);
           } catch (error) {
-            log(`分发商品 ${item.productNo} 失败: ${error instanceof Error ? error.message : String(error)}`, 'error');
+            log(`分发商品 ${no} 失败: ${error instanceof Error ? error.message : String(error)}`, 'error');
           }
-        } else {
-          // 脏数据：不在任何任务订阅里，清理（默认取消收藏）
+          continue;
+        }
+
+        // 占位中（创建任务 → 订阅之间的窗口）：不清理也不累计未命中
+        const reservedAt = this.reserved.get(no);
+        if (reservedAt !== undefined) {
+          if (Date.now() - reservedAt <= RESERVE_TTL_MS) {
+            this.missCounts.delete(no);
+            continue;
+          }
+          this.reserved.delete(no);
+        }
+
+        // 未订阅：连续 MISS_THRESHOLD 轮都无人认领才清理，
+        // 避免服务重启时「任务尚未恢复完」把正常商品当脏数据删掉。
+        const miss = (this.missCounts.get(no) ?? 0) + 1;
+        this.missCounts.set(no, miss);
+        if (miss >= MISS_THRESHOLD) {
+          this.missCounts.delete(no);
           await this.handleDirty(item, account);
         }
       }
 
       // 不足一页说明到底了
-      if (items.length < pageSize) return;
+      if (items.length < pageSize) break;
+    }
+
+    // 本轮已消失的商品：清掉未命中计数，避免下次出现直接触发清理
+    for (const no of this.missCounts.keys()) {
+      if (!seen.has(no)) this.missCounts.delete(no);
     }
   }
 

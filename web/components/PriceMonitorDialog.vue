@@ -46,6 +46,9 @@
         <p class="mt-1 text-xs text-gray-400">
           收藏夹通道由单个共享循环批量监控（需在系统配置里指定专用账号），只支持按指定价格下单，不支持折扣 / 优惠券计算
         </p>
+        <p v-if="channel === 'collection'" class="mt-1 text-xs text-blue-600">
+          监控账号：系统配置里的收藏夹专用账号 · 下单账号：{{ orderAccountLabel }}
+        </p>
       </div>
 
       <!-- 监控时长 -->
@@ -360,6 +363,13 @@ const { checkStock } = useStock()
 
 // 检测通道
 const channel = ref<'normal' | 'collection'>('normal')
+// 收藏夹通道：监控走系统配置里的专用账号，下单走「当前账号」
+const configStore = useConfigStore()
+const orderAccountLabel = computed(() => {
+  const account = configStore.activeAccount
+  if (!account) return '当前未选账号'
+  return account.title || account.uin || account.phone || '当前账号'
+})
 const channelOptions = [
   { value: 'normal' as const, label: '普通通道（每个任务独立检测）' },
   { value: 'collection' as const, label: '收藏夹通道（共享循环批量检测）' },

@@ -216,21 +216,25 @@ export const useConfigStore = defineStore('config', () => {
     proxyUrl: string
     proxyEnabled: boolean
     collectionAccountId: string
-  }): Promise<boolean> => {
+  }): Promise<{ ok: boolean; message?: string }> => {
     try {
       const response = await request<ApiResponse<RuntimeSettings>>('/api/settings', {
         method: 'POST',
         body: input,
       })
       if (!response.success || !response.data) {
-        return false
+        return { ok: false, message: response.error?.message || '配置保存失败' }
       }
       proxyUrl.value = response.data.proxyUrl || ''
       proxyEnabled.value = Boolean(response.data.proxyEnabled)
       collectionAccountId.value = response.data.collectionAccountId || ''
-      return true
-    } catch {
-      return false
+      return { ok: true }
+    } catch (error) {
+      const data =
+        error && typeof error === 'object' && 'data' in error
+          ? (error as { data?: { error?: { message?: string } } }).data
+          : undefined
+      return { ok: false, message: data?.error?.message || '配置保存失败' }
     }
   }
 

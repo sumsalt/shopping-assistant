@@ -66,7 +66,7 @@ export class TaskService<S> {
       body: body && typeof body === 'object' ? body : {},
       user,
       accountId,
-      secret: resolved.config,
+      ...(resolved.config ? { secret: resolved.config } : {}),
     })
 
     const record: TaskRecordBase<S> = {
@@ -80,7 +80,7 @@ export class TaskService<S> {
       version: this.definition.version,
       state,
       ...(accountId ? { accountId } : {}),
-      secret: resolved.config,
+      ...(resolved.config ? { secret: resolved.config } : {}),
     }
 
     this.definition.uniqueness?.(record, this.registry.all())
