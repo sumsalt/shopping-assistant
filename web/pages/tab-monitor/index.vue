@@ -95,14 +95,6 @@
       @update:open="seenDialogOpen = $event"
     >
       <div class="flex h-full min-h-0 flex-col gap-3">
-        <div class="flex items-center justify-between text-sm text-gray-500">
-          <span class="truncate">{{ seenTaskName }} · 按首次发现时间倒序</span>
-          <span class="shrink-0 ml-3">共 {{ seenTotal }} 个</span>
-        </div>
-        <p v-if="isMobileViewport" class="text-xs text-gray-400">
-          点击商品查看详情；左上角星标加入/取消收藏；卡片下方可发起到货监控、用一手 App 打开与一键下单。
-        </p>
-
         <div v-if="seenLoading" class="py-12 text-center text-sm text-gray-500">
           加载中...
         </div>
@@ -287,9 +279,7 @@ const handleRestart = async (task: TaskSummary) => {
 
 const seenDialogOpen = ref(false)
 const seenTaskId = ref('')
-const seenTaskName = ref('')
 const seenItems = ref<TabSeenProductItem[]>([])
-const seenTotal = ref(0)
 const seenHasMore = ref(false)
 const seenLoading = ref(false)
 const seenLoadingMore = ref(false)
@@ -315,9 +305,7 @@ const SEEN_PAGE_SIZE = 50
 const openSeenDialog = async (task: TaskSummary) => {
   seenDialogOpen.value = true
   seenTaskId.value = task.id
-  seenTaskName.value = task.target.name
   seenItems.value = []
-  seenTotal.value = 0
   seenHasMore.value = false
   seenLoading.value = true
   // 重新打开弹窗从顶部开始，清掉上一次可能残留的滚动位置
@@ -326,7 +314,6 @@ const openSeenDialog = async (task: TaskSummary) => {
   const data = await fetchSeenProducts(task.id, 0, SEEN_PAGE_SIZE)
   if (data) {
     seenItems.value = data.items
-    seenTotal.value = data.total
     seenHasMore.value = data.hasMore
   }
   seenLoading.value = false
@@ -349,7 +336,6 @@ const loadMoreSeen = async () => {
       }
 
       seenItems.value = [...seenItems.value, ...data.items]
-      seenTotal.value = data.total
       seenHasMore.value = data.hasMore
     }
   } finally {
