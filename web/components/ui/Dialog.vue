@@ -26,8 +26,14 @@
         :style="{ ...viewportStyle, zIndex, display: pageActive ? undefined : 'none' }"
         @click="handleBackdropClick"
       >
-        <!-- 背景遮罩：touch-none 让在蒙层上起手滑动不再驱动页面滚动（body 锁失效时的兜底） -->
-        <div class="absolute inset-0 bg-black/50 backdrop-blur-sm touch-none" />
+        <!-- 背景遮罩：独立于遮罩容器定位。顶边对齐可视区(viewportStyle.top)，
+             底边用 bottom:0 一直铺到屏幕底——visualViewport.height 只算网页内容
+             可视区、不含移动端浏览器底部 bar，若沿用容器高度，蒙层下方就会露出页面内容。
+             touch-none 让在蒙层上起手滑动不再驱动页面滚动（body 锁失效时的兜底） -->
+        <div
+          class="dialog-scrim fixed inset-x-0 bg-black/50 backdrop-blur-sm touch-none"
+          :style="{ top: viewportStyle.top || '0px', bottom: '0px' }"
+        />
 
         <!-- 对话框内容 -->
         <Transition
