@@ -584,13 +584,16 @@ onMounted(fetchTasks)
 
 <style scoped>
 /*
- * 累计商品列表滚动条：在右侧预留一条独立空白槽。
+ * 累计商品列表滚动条：左右对称留白，滚动条落在右侧空白处且不压图片。
  * 悬浮式滚动条（iOS/macOS）默认直接盖在最右列图片上，看着「位置奇怪」；
- * scrollbar-gutter 让浏览器为滚动条固定留出空间，右内边距再兜底老浏览器，
- * 滚动条就落在右侧空白处，不再压住商品图。
+ * both-edges 让左右两侧都预留滚动条宽度，配合左右相等的内边距保持视觉对称
+ * （只写 stable 会是右侧单侧留白，右边比左边宽）。iOS 老版本不支持 gutter 时，
+ * 由左右相等的 padding 兜底，仍能保持两侧平衡、滚动条不压住商品图。
  */
 .seen-list-scroll {
   scrollbar-gutter: stable;
+  scrollbar-gutter: stable both-edges;
+  padding-left: 0.5rem;
   padding-right: 0.5rem;
 }
 </style>
