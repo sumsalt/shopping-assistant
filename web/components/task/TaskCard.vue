@@ -18,6 +18,18 @@
             {{ getStatusText(task.status) }}
           </UiBadge>
           <span class="text-xs text-gray-400">{{ kindLabel }}</span>
+          <span
+            v-if="channelLabel"
+            class="text-xs px-1.5 py-0.5 rounded border"
+            :class="task.config.channel === 'collection'
+              ? 'text-violet-600 bg-violet-50 border-violet-100'
+              : 'text-gray-500 bg-gray-50 border-gray-100'"
+            :title="task.config.channel === 'collection'
+              ? '收藏夹通道：由共享收藏夹引擎托管轮询，不依赖本任务的登录态'
+              : '普通通道：该任务使用自己的账号凭证独立轮询'"
+          >
+            {{ channelLabel }}
+          </span>
           <span class="text-xs text-gray-400">·</span>
           <span class="text-xs text-gray-500">{{ formatTime(task.createdAt) }}</span>
           <template v-if="account">
@@ -165,6 +177,12 @@ const KIND_LABEL: Record<TaskKind, string> = {
 }
 
 const kindLabel = computed(() => KIND_LABEL[props.task.kind])
+
+/** 到货任务的监控通道标签；其他 kind 不展示 */
+const channelLabel = computed(() => {
+  if (props.task.kind !== 'stock') return ''
+  return props.task.config.channel === 'collection' ? '收藏夹' : '普通'
+})
 
 /** 任务创建时固化的请求账号（切换当前账号不会改变运行中的任务） */
 const account = computed(() => props.task.account ?? null)

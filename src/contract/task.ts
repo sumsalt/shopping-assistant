@@ -108,6 +108,8 @@ export interface TaskConfigView {
   minPriceDelta?: number
   /** 限定规格（到货任务） */
   skus?: string[] | null
+  /** 到货任务的监控通道：普通（自身轮询）/ 收藏夹（共享引擎订阅）；老任务缺省按普通 */
+  channel?: 'normal' | 'collection'
   /** 自动下单配置 */
   autoOrder?: AutoOrderView | null
   /** Tab 模式 */

@@ -305,6 +305,8 @@ export const stockDefinition: TaskKindDefinition<StockTaskState> = {
         interval: state.config.interval,
         duration: state.config.duration,
         skus: state.config.skus ?? null,
+        // 老任务没有 channel 字段，按普通通道处理
+        channel: state.config.channel === 'collection' ? 'collection' : 'normal',
         autoOrder: policy
           ? {
               enabled: true,
