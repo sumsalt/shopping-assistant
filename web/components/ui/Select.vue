@@ -30,12 +30,15 @@
     </svg>
   </button>
 
-  <!-- 面板挂到 body：避免被 Dialog 的 overflow-y-auto 裁剪，层级高于 Dialog(50) 低于 Toast(100) -->
+  <!-- 面板挂到 body：避免被 Dialog 的 overflow-y-auto 裁剪。
+       层级要高于弹窗层级栈（useDialogLayer 从 60 起、每层 +10）：下拉属于弹窗内部控件，
+       若和弹窗同为 60，叠了两层弹窗时面板会被第二层蒙层盖住，看着「点了没反应」。
+       仍低于 Toast / 图片预览的 200 -->
   <Teleport to="body">
     <div
       v-if="isOpen"
       ref="panelEl"
-      class="fixed z-[60]"
+      class="fixed z-[150]"
       :style="{ left: `${position.left}px`, top: `${position.top}px`, width: `${position.width}px` }"
     >
       <div
@@ -262,4 +265,8 @@ const handleEscape = () => {
 }
 
 onBeforeUnmount(unbindListeners)
+
+// 页面被 keep-alive 缓存切走时把面板收掉：面板 teleport 在 body 上，
+// 不关的话会跟着留到别的页面，成为一层点不掉的下拉浮层
+onDeactivated(close)
 </script>

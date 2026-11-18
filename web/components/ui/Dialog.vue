@@ -12,10 +12,13 @@
     >
       <!-- 遮罩容器：固定铺满视口。配合组件内的 body 冻结锁，页面不再滚动，
            fixed 与视口严格对齐，弹窗始终在可见区居中 -->
+      <!-- 页面被 keep-alive 缓存时用 display:none 藏起来：teleport 到 body 的遮罩不属于页面子树，
+           页面切走后它会留在 body 上，变成盖住新页面的「幽灵弹窗」—— 看着是个弹窗，
+           实际整页都点不动。用 display 而不是卸载，返回页面时 DOM 与滚动位置原样保留 -->
       <div
         v-if="open"
         class="fixed inset-0 flex items-center justify-center p-4 overscroll-contain"
-        :style="{ zIndex }"
+        :style="{ zIndex, display: pageActive ? undefined : 'none' }"
         @click="handleBackdropClick"
       >
         <!-- 背景遮罩：touch-none 让在蒙层上起手滑动不再驱动页面滚动（body 锁失效时的兜底） -->
@@ -214,6 +217,15 @@ const unlockScroll = (restoreScroll = true) => {
 // 统一走 useDialogLayer 的显式栈。SSR 阶段不领层，保证首帧与客户端一致。
 const { zIndex, acquire: acquireLayer, release: releaseLayer } = useDialogLayer()
 
+/**
+ * 所属页面当前是否可见
+ *
+ * teleport 到 body 的弹窗不属于页面子树：页面被 keep-alive 缓存切走时它不会被一起收起来，
+ * 会留在 body 上继续盖住新页面（蒙层照旧吃点击）——表现就是「明明没开这个弹窗，整页却点不动」。
+ * 所以页面失活时把它从视觉上摘掉，回到页面再放出来。
+ */
+const pageActive = ref(true)
+
 watch(
   () => props.open,
   (open) => {
@@ -237,8 +249,9 @@ onMounted(() => {
 
 // 页面被 keep-alive 缓存（如从弹窗点进商品详情）时先解锁，否则目标页滚不动；
 // 这里不滚回列表位置，让目标页按路由默认行为从顶部开始。
-// 同时出栈：页面不可见时它的弹窗不应该占着层级。
+// 同时出栈：页面不可见时它的弹窗不应该占着层级；并把弹窗藏起来（见 pageActive）。
 onDeactivated(() => {
+  pageActive.value = false
   if (!props.open) return
   releaseLayer()
   unlockScroll(false)
@@ -246,6 +259,7 @@ onDeactivated(() => {
 // 回到缓存的页面：按离开时的位置重新钉住，弹窗与列表位置原样恢复；
 // 重新入栈，保证多弹窗场景下顺序与组件树一致（后渲染的监控弹窗在上）
 onActivated(() => {
+  pageActive.value = true
   if (!props.open) return
   acquireLayer()
   lockScroll(rememberedScrollY)
