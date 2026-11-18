@@ -216,10 +216,13 @@ export const syncCollectionEngine = (): void => {
           else if (level === 'warn') console.warn(line)
           else console.log(line)
         },
-        onDirty: async item => {
-          await releaseCollected(item.productNo)
-          collectIdCache.delete(String(item.productNo || '').trim())
-        },
+        // 不再让引擎自动取消「未订阅」商品的收藏。
+        // 原因：新任务从「加入收藏」到「订阅落地」之间，翻页请求要和引擎扫描共用闸门排队，
+        // 这段时间商品会被短暂误判成无主脏数据而删掉——等订阅真正生效时商品已不在收藏夹，
+        // 引擎再也扫不到，任务就永远停在 0 次检测（本次线上三个收藏夹任务两个因此空转）。
+        // 收藏的清理统一交给任务生命周期：到货完成 / 删除时由 finish() 与 onRemove() 调 releaseCollected。
+        // 引擎约定：传了 onDirty 就只调它、不走默认的取消收藏；这里给空实现即彻底禁用自动清理。
+        onDirty: () => {},
       })
       activeAccountId = resolved.accountId
     } catch (error) {
