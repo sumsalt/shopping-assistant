@@ -332,6 +332,9 @@ export const stockDefinition: TaskKindDefinition<StockTaskState> = {
       state: {
         product: state.product,
         config: state.config,
+        // 保留收藏夹托管信息：restart 不会走 create 的 ensureCollected，
+        // 必须在 run 里据此把商品重新加回收藏夹引擎，否则扫不到、checkCount 永远 0
+        ...(state.collection ? { collection: state.collection } : {}),
         result: { checkCount: 0, errorCount: 0, detected: false },
         events: [],
       },
@@ -648,7 +651,30 @@ const runCollectionStockMonitor = (
       }
     }
 
-    subscribeCollection(productNo, handler)
+    // restart / restore 的任务不会走 create 里的 ensureCollected，而商品很可能已被
+    // 上一个同商品任务 finish() 时的 releaseCollected 移出收藏夹。引擎每轮是从账号收藏夹
+    // 列表拉取商品，商品不在列表里就永远不会推给 handler——checkCount 会一直停在 0。
+    // 所以订阅前必须先 ensureCollected 把商品重新加回收藏夹引擎。
+    void ensureCollected(productNo)
+      .then(collectId => {
+        // await 期间任务可能已被删除或超时结束，此时只做清理，不再订阅
+        if (settled || controller.signal.aborted) {
+          void releaseCollected(productNo)
+          return
+        }
+        if (collectId && state.collection?.collectId !== collectId) {
+          state.collection = { productNo, collectId }
+          ctx.save()
+        }
+        subscribeCollection(productNo, handler)
+      })
+      .catch(error => {
+        ctx.log(
+          `重新加入收藏夹失败，监控无法启动：${error instanceof Error ? error.message : String(error)}`,
+          'error'
+        )
+        finish()
+      })
 
     controller.signal.addEventListener('abort', () => finish())
 
