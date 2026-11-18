@@ -152,64 +152,10 @@ const previewOpen = ref(false)
 const currentIndex = ref(0)
 const scale = ref(1)
 
-// —— 打开时冻结页面滚动（与 Dialog 同一套方案：position:fixed 钉住 body）——
-// 多个浮层可能叠加，用模块级计数避免一个关闭把别的锁也解了
-let savedScrollY = 0
-let savedStyle: {
-  position: string
-  top: string
-  left: string
-  right: string
-  width: string
-  overflow: string
-  paddingRight: string
-  htmlOverflow: string
-} | null = null
-
-const lockScroll = () => {
-  if (typeof document === 'undefined') return
-  const body = document.body
-  const html = document.documentElement
-  savedScrollY = window.scrollY || document.documentElement.scrollTop || 0
-  savedStyle = {
-    position: body.style.position,
-    top: body.style.top,
-    left: body.style.left,
-    right: body.style.right,
-    width: body.style.width,
-    overflow: body.style.overflow,
-    paddingRight: body.style.paddingRight,
-    htmlOverflow: html.style.overflow,
-  }
-  const scrollbarGap = window.innerWidth - html.clientWidth
-  if (scrollbarGap > 0) body.style.paddingRight = `${scrollbarGap}px`
-  body.style.position = 'fixed'
-  body.style.top = `-${savedScrollY}px`
-  body.style.left = '0'
-  body.style.right = '0'
-  body.style.width = '100%'
-  body.style.overflow = 'hidden'
-  html.style.overflow = 'hidden'
-}
-
-const unlockScroll = () => {
-  if (typeof document === 'undefined' || !savedStyle) return
-  const body = document.body
-  const html = document.documentElement
-  body.style.position = savedStyle.position
-  body.style.top = savedStyle.top
-  body.style.left = savedStyle.left
-  body.style.right = savedStyle.right
-  body.style.width = savedStyle.width
-  body.style.overflow = savedStyle.overflow
-  body.style.paddingRight = savedStyle.paddingRight
-  html.style.overflow = savedStyle.htmlOverflow
-  savedStyle = null
-  const prevBehavior = html.style.scrollBehavior
-  html.style.scrollBehavior = 'auto'
-  window.scrollTo(0, savedScrollY)
-  html.style.scrollBehavior = prevBehavior
-}
+// —— 打开时冻结页面滚动 ——
+// 与 Dialog 共用一份实现（useScrollLock）：不再用 body{position:fixed} 钉页面，
+// 避免 iOS Safari 上 fixed 浮层的绘制层与命中层错位导致「看得见、点不到」。
+const { lock: lockScroll, unlock: unlockScroll } = useScrollLock()
 
 const openPreview = (index: number) => {
   currentIndex.value = index

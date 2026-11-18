@@ -10,7 +10,7 @@
       leave-from-class="opacity-100"
       leave-to-class="opacity-0"
     >
-      <!-- 遮罩容器：固定铺满视口。配合组件内的 body 冻结锁，页面不再滚动，
+      <!-- 遮罩容器：固定铺满视口。打开时页面被锁住不再滚动（见 useScrollLock），
            fixed 与视口严格对齐，弹窗始终在可见区居中 -->
       <!-- 页面被 keep-alive 缓存时用 display:none 藏起来：teleport 到 body 的遮罩不属于页面子树，
            页面切走后它会留在 body 上，变成盖住新页面的「幽灵弹窗」—— 看着是个弹窗，
@@ -117,100 +117,15 @@ const emit = defineEmits<{
   'update:open': [value: boolean]
 }>()
 
-// —— 打开时冻结页面滚动 ——
-// 只设 body{overflow:hidden} 在 iOS Safari 上拦不住滚动（已知问题），页面照样能滚：
-// 一滚，地址栏收缩、fixed 参照的视口跟着变，蒙层和弹窗看起来就「往上跑」，
-// 在蒙层上滑动也会把背景页滚走。改用 position:fixed 把 body 钉住
-// （top 取滚动量的负值，视觉位置不变），iOS / Android / 桌面都能真正冻住。
-// 多个弹窗可能叠加，用计数避免一个关闭把另一个的锁也解了。
-let openDialogCount = 0
-/** 加锁时的页面滚动位置，卸载/关闭时据此还原 */
-let savedScrollY = 0
-/** 页面被 keep-alive 缓存再回来时，用它把列表钉回离开时的位置 */
+// —— 打开时冻结页面滚动（实现见 composables/useScrollLock）——
+// 不再用 body{position:fixed; top:-scrollY} 钉页面：iOS Safari 下 fixed 浮层的
+// 绘制层与命中测试层会按不同坐标系算，页面滚动后打开弹窗，整层元素（含里头的列表、
+// 按钮）会整体错开一个滚动距离 —— 看着在 A 处、点下去命中 B 处。
+// 现在只锁滚动、不动文档：文档位置不变，fixed 与视口严格对齐，点击命中也就对上了。
+const { lock: lockScroll, unlock: unlockScroll, scrollPageTo } = useScrollLock()
+
+/** 页面被 keep-alive 缓存再回来时，用它把列表放回离开时的位置 */
 let rememberedScrollY = 0
-let savedStyle: {
-  position: string
-  top: string
-  left: string
-  right: string
-  width: string
-  overflow: string
-  paddingRight: string
-  htmlOverflow: string
-} | null = null
-let localLocked = false
-
-const applyBodyLock = (scrollY: number) => {
-  if (typeof document === 'undefined') return
-  openDialogCount += 1
-  if (openDialogCount > 1) return
-  const body = document.body
-  const html = document.documentElement
-  savedScrollY = scrollY
-  rememberedScrollY = scrollY
-  savedStyle = {
-    position: body.style.position,
-    top: body.style.top,
-    left: body.style.left,
-    right: body.style.right,
-    width: body.style.width,
-    overflow: body.style.overflow,
-    paddingRight: body.style.paddingRight,
-    htmlOverflow: html.style.overflow,
-  }
-  // 补偿滚动条宽度，避免桌面端页面横向跳动
-  const scrollbarGap = window.innerWidth - html.clientWidth
-  if (scrollbarGap > 0) body.style.paddingRight = `${scrollbarGap}px`
-  body.style.position = 'fixed'
-  body.style.top = `-${scrollY}px`
-  body.style.left = '0'
-  body.style.right = '0'
-  body.style.width = '100%'
-  body.style.overflow = 'hidden'
-  html.style.overflow = 'hidden'
-}
-
-const releaseBodyLock = (restoreScroll: boolean) => {
-  if (typeof document === 'undefined') return
-  if (openDialogCount <= 0) return
-  openDialogCount -= 1
-  if (openDialogCount > 0) return
-  if (!savedStyle) return
-  const body = document.body
-  const html = document.documentElement
-  body.style.position = savedStyle.position
-  body.style.top = savedStyle.top
-  body.style.left = savedStyle.left
-  body.style.right = savedStyle.right
-  body.style.width = savedStyle.width
-  body.style.overflow = savedStyle.overflow
-  body.style.paddingRight = savedStyle.paddingRight
-  html.style.overflow = savedStyle.htmlOverflow
-  savedStyle = null
-  if (restoreScroll) {
-    // body 被 fixed 后文档滚动量会归零，解锁后要手动滚回原位；
-    // html 上全局有 scroll-smooth，临时关掉避免解锁时页面缓动爬回去
-    const prevBehavior = html.style.scrollBehavior
-    html.style.scrollBehavior = 'auto'
-    window.scrollTo(0, savedScrollY)
-    html.style.scrollBehavior = prevBehavior
-  }
-}
-
-const lockScroll = (scrollY?: number) => {
-  if (localLocked) return
-  localLocked = true
-  const target =
-    scrollY ??
-    (typeof window === 'undefined' ? 0 : window.scrollY || document.documentElement.scrollTop || 0)
-  applyBodyLock(target)
-}
-
-const unlockScroll = (restoreScroll = true) => {
-  if (!localLocked) return
-  localLocked = false
-  releaseBodyLock(restoreScroll)
-}
 
 // —— 层级：后打开的弹窗永远盖住先打开的 ——
 // 不能靠 DOM 顺序（teleport 到 body + keep-alive 恢复会让顺序反转），
@@ -232,7 +147,7 @@ watch(
     if (!import.meta.client) return
     if (open) {
       acquireLayer()
-      lockScroll()
+      rememberedScrollY = lockScroll()
     } else {
       releaseLayer()
       unlockScroll()
@@ -244,7 +159,7 @@ watch(
 onMounted(() => {
   if (!props.open) return
   acquireLayer()
-  lockScroll()
+  rememberedScrollY = lockScroll()
 })
 
 // 页面被 keep-alive 缓存（如从弹窗点进商品详情）时先解锁，否则目标页滚不动；
@@ -262,7 +177,9 @@ onActivated(() => {
   pageActive.value = true
   if (!props.open) return
   acquireLayer()
-  lockScroll(rememberedScrollY)
+  // 先把页面放回离开时的位置，再上锁；顺序反了会把列表钉在错的位置
+  scrollPageTo(rememberedScrollY)
+  lockScroll()
 })
 
 onBeforeUnmount(() => {
