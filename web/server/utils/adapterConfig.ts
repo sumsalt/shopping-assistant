@@ -27,11 +27,8 @@ export interface ResolvedAdapterConfig {
 }
 
 /** 账号记录 → 适配器配置：叠加全局代理并判断登录态 */
-const resolveFromAccount = (
-  account: AccountRecord | null,
-  needAuth: boolean
-): ResolvedAdapterConfig => {
-  const config = buildAdapterConfigFromProfile(account?.requestProfile, needAuth)
+const resolveFromAccount = (account: AccountRecord | null): ResolvedAdapterConfig => {
+  const config = buildAdapterConfigFromProfile(account?.requestProfile)
 
   // 出口网卡绑定 IP：账号手动分配，透传到 HTTP 出口的 localAddress（进 IP 限流桶）
   config.localAddress = account?.localAddress || undefined
@@ -42,7 +39,7 @@ const resolveFromAccount = (
   }
   config.proxyEnabled = settings.proxyEnabled ? '1' : '0'
 
-  // 判断「能否登录」以账号的原始快照为准（匿名配置里已经删掉了 uid/token）
+  // 判断「能否登录」以账号的原始快照为准
   const hasCredential = account?.requestProfile
     ? hasProfileCredential(account.requestProfile)
     : Boolean(account?.uin && account.token)
@@ -56,12 +53,9 @@ const resolveFromAccount = (
  * 这是所有业务接口的默认入口：路由不接收前端传来的账号参数。
  *
  * @param username 登录用户名
- * @param needAuth 是否需要登录态；false 时剔除 uid/token 走匿名桶
  */
-export const resolveAdapterConfigForUser = (
-  username: string,
-  needAuth: boolean
-): ResolvedAdapterConfig => resolveFromAccount(getActiveAccount(username), needAuth)
+export const resolveAdapterConfigForUser = (username: string): ResolvedAdapterConfig =>
+  resolveFromAccount(getActiveAccount(username))
 
 /**
  * 按指定账号解析适配器配置
@@ -70,6 +64,5 @@ export const resolveAdapterConfigForUser = (
  * 调用方必须先校验 account.userId === 登录用户名，否则会越权使用他人抓包凭据。
  */
 export const resolveAdapterConfigForAccount = (
-  account: AccountRecord | null,
-  needAuth: boolean
-): ResolvedAdapterConfig => resolveFromAccount(account, needAuth)
+  account: AccountRecord | null
+): ResolvedAdapterConfig => resolveFromAccount(account)

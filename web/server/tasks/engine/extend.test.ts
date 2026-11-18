@@ -26,7 +26,7 @@ const makeDefinition = () => {
     kind: 'renew',
     label: '测试',
     version: 1,
-    requiresAuth: () => false,
+    resolveAccount: () => ({ accountId: '', hasCredential: false }),
     durationOf: (record: TaskRecordBase<FakeState>) => record.state.config.duration,
     run: () => {
       const controller = new AbortController()

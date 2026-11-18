@@ -151,7 +151,6 @@ export const renewDefinition: TaskKindDefinition<RenewTaskState> = {
   version: VERSION,
   // 同账号只能有一个任务：重新发起前先删原任务，避免两个循环同时续期
   removeOriginalOnRestart: true,
-  requiresAuth: () => true,
 
   resolveAccount({ body, user }) {
     const accountId = String(body?.accountId ?? '').trim()
@@ -164,7 +163,7 @@ export const renewDefinition: TaskKindDefinition<RenewTaskState> = {
       throw new TaskApiError(ErrorCode.INVALID_PARAMS, '账号不存在或无权操作')
     }
 
-    const resolved = resolveAdapterConfigForAccount(account, true)
+    const resolved = resolveAdapterConfigForAccount(account)
     if (!resolved.hasCredential) {
       throw new TaskApiError(
         ErrorCode.AUTH_REQUIRED,

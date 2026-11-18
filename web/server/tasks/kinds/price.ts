@@ -228,17 +228,14 @@ export const priceDefinition: TaskKindDefinition<PriceTaskState> = {
   version: VERSION,
   removeOriginalOnRestart: true,
 
-  // 比价必须用登录态拿货价，游客价口径不同
-  requiresAuth: () => true,
-
   resolveAccount({ body, user }) {
     // 收藏夹通道：监控由全局收藏夹账号执行，任务只快照「下单账号」= 当前激活账号；
     // 不落 secret，建立基线与下单时按 accountId 现取。
     if (body?.config?.channel === 'collection') {
-      const base = resolveAdapterConfigForUser(user.username, true)
+      const base = resolveAdapterConfigForUser(user.username)
       return { accountId: base.account?.id ?? '', hasCredential: base.hasCredential }
     }
-    const resolved = resolveAdapterConfigForUser(user.username, true)
+    const resolved = resolveAdapterConfigForUser(user.username)
     return { accountId: resolved.account?.id ?? '', secret: resolved.config, hasCredential: resolved.hasCredential }
   },
 

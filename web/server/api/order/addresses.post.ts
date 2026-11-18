@@ -18,10 +18,7 @@ export default defineEventHandler(async (event) => {
     }
 
     // 下单链路必须带一手登录态，账号快照由服务端按当前账号取
-    const { config: adapterConfig, hasCredential } = resolveAdapterConfigForUser(
-      currentUser.username,
-      true
-    )
+    const { config: adapterConfig, hasCredential } = resolveAdapterConfigForUser(currentUser.username)
 
     if (!hasCredential) {
       return createErrorResponse(

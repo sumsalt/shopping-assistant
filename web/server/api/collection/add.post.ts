@@ -30,7 +30,7 @@ export default defineEventHandler(async (event) => {
       return createErrorResponse(ErrorCode.INVALID_PARAMS, '缺少商品货号，无法收藏')
     }
 
-    const { config, hasCredential } = resolveAdapterConfigForUser(currentUser.username, true)
+    const { config, hasCredential } = resolveAdapterConfigForUser(currentUser.username)
     if (!hasCredential) {
       return createErrorResponse(ErrorCode.AUTH_REQUIRED, '当前账号没有登录态，请先在账号管理选择账号')
     }

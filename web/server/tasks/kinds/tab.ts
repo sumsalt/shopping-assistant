@@ -42,13 +42,9 @@ export const tabDefinition: TaskKindDefinition<TabTaskState> = {
   label: 'Tab 监控',
   version: VERSION,
 
-  // 不强制登录态：跟随当前账号——选了账号就带凭证（拿货价 + IP/UID 桶），
-  // 匿名模式就走匿名（游客参考价 + 仅 IP 桶）。Tab 列表接口两种模式都可用。
-  requiresAuth: () => false,
-
   resolveAccount({ user }) {
-    // needAuth=true 表示「有凭证就保留」，并非强制；无凭证时解析结果自然是匿名的。
-    const resolved = resolveAdapterConfigForUser(user.username, true)
+    // 跟随当前激活账号：有凭证就带，匿名模式则快照匿名配置
+    const resolved = resolveAdapterConfigForUser(user.username)
     return { accountId: resolved.account?.id ?? '', secret: resolved.config, hasCredential: resolved.hasCredential }
   },
 

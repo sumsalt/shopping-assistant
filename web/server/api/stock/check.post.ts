@@ -28,7 +28,7 @@ export default defineEventHandler(async (event) => {
     }
 
     // 不主动去掉登录态：按当前账号快照完整回放（有凭证就带上，没有也能查）
-    const { config: adapterConfig } = resolveAdapterConfigForUser(currentUser.username, true)
+    const { config: adapterConfig } = resolveAdapterConfigForUser(currentUser.username)
 
     const body = await readBody<CheckStockBody>(event)
     const productId = typeof body?.productId === 'string' ? body.productId.trim() : ''

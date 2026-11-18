@@ -26,7 +26,7 @@ export default defineEventHandler(async (event) => {
     }
 
     // 有登录态就用登录态（拿货价 + 真实收藏状态），没有也能查（游客参考价）
-    const { config: adapterConfig } = resolveAdapterConfigForUser(currentUser.username, true)
+    const { config: adapterConfig } = resolveAdapterConfigForUser(currentUser.username)
 
     const request: ProductSkuRequest = {
       platform: 'yishou',

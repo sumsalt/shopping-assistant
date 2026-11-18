@@ -69,10 +69,6 @@ export interface GateOptions {
   uidIntervalMs: number;
   /** 单个请求最长排队时间（毫秒），超时抛 GateTimeoutError */
   maxWaitMs: number;
-  /** @deprecated 兼容别名，等价于 uidIntervalMs */
-  authIntervalMs?: number;
-  /** @deprecated 兼容别名，等价于 ipIntervalMs */
-  anonIntervalMs?: number;
 }
 
 const readEnvInt = (name: string, fallback: number): number => {
@@ -89,17 +85,7 @@ const options: GateOptions = {
   ipIntervalMs: readEnvInt('GATE_IP_INTERVAL_MS', 1_000),
   uidIntervalMs: readEnvInt('GATE_UID_INTERVAL_MS', 1_000),
   maxWaitMs: readEnvInt('GATE_MAX_WAIT_MS', 10 * 60_000),
-  // 兼容别名初值，让旧消费者也能读到当前值
-  authIntervalMs: readEnvInt('GATE_UID_INTERVAL_MS', 1_000),
-  anonIntervalMs: readEnvInt('GATE_IP_INTERVAL_MS', 1_000),
 };
-
-/** 把兼容别名同步成当前实际值 */
-const syncAliases = () => {
-  options.authIntervalMs = options.uidIntervalMs;
-  options.anonIntervalMs = options.ipIntervalMs;
-};
-syncAliases();
 
 /**
  * 调整闸门参数（运行时可调用，例如从前端设置页下发生效）
@@ -107,20 +93,13 @@ syncAliases();
 export const configureRequestGate = (patch: Partial<GateOptions>): GateOptions => {
   if (typeof patch.ipIntervalMs === 'number' && patch.ipIntervalMs >= 0) {
     options.ipIntervalMs = patch.ipIntervalMs;
-  } else if (typeof patch.anonIntervalMs === 'number' && patch.anonIntervalMs >= 0) {
-    // 兼容旧字段：anonIntervalMs 现在映射到 IP 桶
-    options.ipIntervalMs = patch.anonIntervalMs;
   }
   if (typeof patch.uidIntervalMs === 'number' && patch.uidIntervalMs >= 0) {
     options.uidIntervalMs = patch.uidIntervalMs;
-  } else if (typeof patch.authIntervalMs === 'number' && patch.authIntervalMs >= 0) {
-    // 兼容旧字段：authIntervalMs 现在映射到 UID 桶
-    options.uidIntervalMs = patch.authIntervalMs;
   }
   if (typeof patch.maxWaitMs === 'number' && patch.maxWaitMs > 0) {
     options.maxWaitMs = patch.maxWaitMs;
   }
-  syncAliases();
   // 间隔变化后，已有桶需要按新间隔重新排期
   for (const bucket of buckets.values()) {
     bucket.intervalMs = bucket.intervalMsFor();

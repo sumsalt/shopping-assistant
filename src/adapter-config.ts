@@ -2,10 +2,11 @@
  * 账号请求快照 → 适配器配置（纯函数）
  *
  * 账号快照保存在服务端，发请求前统一在这里转成 AdapterConfig：
- *   - needAuth=false：剔除 uid/token，走匿名限流桶
- *   - needAuth=true：完整回放抓包里的公共参数与请求头
+ *   - 有快照：完整回放抓包里的公共参数、请求头与登录态（uid/token）
  *   - 没有快照（未选账号 / 账号没抓包）：回退默认 wx 匿名参数
  *
+ * 是否匿名取决于「当前是否选了带凭证的账号」：
+ * 所有请求一律跟随当前账号，无凭证时自然走匿名。
  * 不依赖数据库与 HTTP，便于单测；服务端只负责取快照与注入代理。
  */
 
@@ -37,35 +38,22 @@ const pickParam = (params: Record<string, string>, key: string): string => {
   return '';
 };
 
-/** 剔除登录态字段（匿名桶） */
-export const stripAuthParams = (params: Record<string, string>): Record<string, string> => {
-  const result: Record<string, string> = {};
-  for (const [key, value] of Object.entries(params)) {
-    const lower = key.toLowerCase();
-    if (lower !== 'uid' && lower !== 'token') {
-      result[key] = value;
-    }
-  }
-  return result;
-};
-
 /**
- * 构造适配器配置
+ * 构造适配器配置：完整回放当前账号的抓包快照
+ *
+ * 有 uid/token 就带上（登录态），没有就保持匿名——由当前账号决定，无额外开关。
  *
  * @param profile 账号保存的抓包快照
- * @param needAuth 是否需要登录态
  */
 export const buildAdapterConfigFromProfile = (
-  profile: StoredRequestProfile | null | undefined,
-  needAuth: boolean
+  profile: StoredRequestProfile | null | undefined
 ): AdapterConfig => {
   // 没有快照：回退默认 wx 匿名参数，不带任何登录态
   if (!profile?.params || Object.keys(profile.params).length === 0) {
     return { ...DEFAULT_WX_ADAPTER_CONFIG };
   }
 
-  const raw = profile.params;
-  const params = needAuth ? { ...raw } : stripAuthParams(raw);
+  const params = { ...profile.params };
 
   const config: AdapterConfig = {
     openid: pickParam(params, 'openid'),
@@ -79,12 +67,10 @@ export const buildAdapterConfigFromProfile = (
     channel: profile.channel,
   };
 
-  if (needAuth) {
-    const uid = pickParam(raw, 'uid');
-    const token = pickParam(raw, 'token');
-    if (uid) config.uid = uid;
-    if (token) config.token = token;
-  }
+  const uid = pickParam(params, 'uid');
+  const token = pickParam(params, 'token');
+  if (uid) config.uid = uid;
+  if (token) config.token = token;
 
   return config;
 };

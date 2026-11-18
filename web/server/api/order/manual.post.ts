@@ -20,10 +20,7 @@ export default defineEventHandler(async (event) => {
     }
 
     // 下单链路必须带一手登录态
-    const { config: adapterConfig, account, hasCredential } = resolveAdapterConfigForUser(
-      currentUser.username,
-      true
-    )
+    const { config: adapterConfig, account, hasCredential } = resolveAdapterConfigForUser(currentUser.username)
 
     const body = await readBody(event)
     const goodsId = String(body?.goodsId || '')

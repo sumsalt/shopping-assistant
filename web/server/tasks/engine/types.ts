@@ -45,7 +45,7 @@ export interface TaskCreateInput {
   user: { username: string; email: string }
   /** 服务端解析出的账号 ID；没有账号时为空串 */
   accountId: string
-  /** 服务端解析出的凭证；requiresAuth=false 时是匿名配置；收藏夹通道无凭证时为空 */
+  /** 服务端解析出的凭证；匿名模式为空配置，收藏夹通道无凭证时为空 */
   secret?: AdapterConfig
 }
 
@@ -80,15 +80,13 @@ export interface TaskKindDefinition<S> {
   /** 当前 payload schema 版本 */
   version: number
 
-  /** 创建时是否需要登录态（决定服务端解析完整快照还是匿名快照） */
-  requiresAuth(body: any): boolean
-
   /**
-   * 覆盖「用哪个账号创建」
+   * 解析「用哪个账号创建」
    *
-   * 默认取当前激活账号；续期这类任务需要用户显式选账号，由定义自己解析并校验归属。
+   * 跟随当前激活账号：有凭证就带、匿名模式则回退匿名配置。
+   * 是否需要登录态由任务在自己的 create/resolveAccount 里按业务校验。
    */
-  resolveAccount?(input: {
+  resolveAccount(input: {
     body: any
     user: { username: string; email: string }
   }): { accountId: string; secret?: AdapterConfig; hasCredential: boolean }

@@ -34,7 +34,7 @@ export const resolveOrderAccount = (accountId?: string): OrderAccountResolved | 
   const account = getAccount(id)
   if (!account) return null
 
-  const resolved = resolveAdapterConfigForAccount(account, true)
+  const resolved = resolveAdapterConfigForAccount(account)
   if (!resolved.hasCredential || !resolved.config.uid) return null
 
   return { accountId: id, adapterConfig: resolved.config }

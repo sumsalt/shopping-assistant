@@ -107,15 +107,11 @@ export const stockDefinition: TaskKindDefinition<StockTaskState> = {
   label: '到货监控',
   version: VERSION,
 
-  // 不强制登录态：跟随当前账号——选了账号就带凭证（拿货价 + IP/UID 桶），
-  // 匿名模式就走匿名（游客参考价 + 仅 IP 桶）。自动下单在无凭证时会静默降级为普通提醒。
-  requiresAuth: () => false,
-
   resolveAccount({ body, user }) {
     // 收藏夹通道：监控由全局收藏夹账号执行（引擎持有），任务只快照「下单账号」= 当前激活账号。
     // 不下发 secret：任务不落任何凭证，下单时按 accountId 现取。
     if (body?.config?.channel === 'collection') {
-      const base = resolveAdapterConfigForUser(user.username, true)
+      const base = resolveAdapterConfigForUser(user.username)
       if (body?.config?.autoOrder?.enabled && (!base.hasCredential || !base.account?.id)) {
         throw new TaskApiError(
           ErrorCode.AUTH_REQUIRED,
@@ -124,9 +120,8 @@ export const stockDefinition: TaskKindDefinition<StockTaskState> = {
       }
       return { accountId: base.account?.id ?? '', hasCredential: base.hasCredential }
     }
-    // 普通通道：跟随当前激活账号——有登录态就带凭证，匿名模式则快照匿名配置。
-    // needAuth=true 表示「有凭证就保留」，并非强制；无凭证时解析结果自然是匿名的。
-    const resolved = resolveAdapterConfigForUser(user.username, true)
+    // 普通通道：跟随当前激活账号——有登录态就带凭证，匿名模式则快照匿名配置
+    const resolved = resolveAdapterConfigForUser(user.username)
     return { accountId: resolved.account?.id ?? '', secret: resolved.config, hasCredential: resolved.hasCredential }
   },
 

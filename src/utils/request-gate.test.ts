@@ -175,14 +175,5 @@ describe('request-gate 双层闸门', () => {
     expect(uidBucket).toMatchObject({ scope: 'uid', intervalMs: 2_000 });
     expect(getGateOptions().ipIntervalMs).toBe(1_000);
     expect(getGateOptions().uidIntervalMs).toBe(2_000);
-    // 兼容别名仍可读
-    expect(getGateOptions().anonIntervalMs).toBe(1_000);
-    expect(getGateOptions().authIntervalMs).toBe(2_000);
-  });
-
-  it('兼容旧字段配置：anonIntervalMs 映射到 IP 桶、authIntervalMs 映射到 UID 桶', async () => {
-    configureRequestGate({ anonIntervalMs: 500, authIntervalMs: 700 });
-    expect(getGateOptions().ipIntervalMs).toBe(500);
-    expect(getGateOptions().uidIntervalMs).toBe(700);
   });
 });

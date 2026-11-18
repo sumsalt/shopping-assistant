@@ -39,7 +39,7 @@ export default defineEventHandler(async (event) => {
 
     // 代理是服务端全局设置，不再由前端传入
     const settings = getRuntimeSettings()
-    const config = buildAdapterConfigFromProfile(account.requestProfile, true)
+    const config = buildAdapterConfigFromProfile(account.requestProfile)
     if (settings.proxyUrl) {
       config.proxyUrl = settings.proxyUrl
     }

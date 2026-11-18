@@ -51,9 +51,9 @@ export default defineEventHandler(async (event) => {
       if (!target.requestProfile) {
         return createErrorResponse(ErrorCode.AUTH_REQUIRED, '该账号没有抓包请求信息，无法查看订单')
       }
-      resolved = resolveAdapterConfigForAccount(target, true)
+      resolved = resolveAdapterConfigForAccount(target)
     } else {
-      resolved = resolveAdapterConfigForUser(currentUser.username, true)
+      resolved = resolveAdapterConfigForUser(currentUser.username)
     }
 
     if (!resolved.hasCredential) {

@@ -6,7 +6,6 @@
  */
 
 import type { TaskSummary } from '@core/contract'
-import { resolveAdapterConfigForUser } from '../../utils/adapterConfig'
 import { describeTaskAccount } from '../../utils/taskAccount'
 import { ErrorCode } from '../../utils/response'
 import { generateTaskId, TaskRegistry } from './registry'
@@ -36,24 +35,14 @@ export class TaskService<S> {
 
   /** 创建任务 */
   async create({ body, user }: TaskCreateRequest): Promise<TaskRecordBase<S>> {
-    const needAuth = this.definition.requiresAuth(body)
-
-    // 默认用当前激活账号；需要显式选账号的任务（续期）由定义自己解析
-    const resolved = this.definition.resolveAccount
-      ? (() => {
-          const custom = this.definition.resolveAccount!({ body, user })
-          return { config: custom.secret, accountId: custom.accountId, hasCredential: custom.hasCredential }
-        })()
-      : (() => {
-          const base = resolveAdapterConfigForUser(user.username, needAuth)
-          return { config: base.config, accountId: base.account?.id ?? '', hasCredential: base.hasCredential }
-        })()
-
-    if (needAuth && !resolved.hasCredential) {
-      throw new TaskApiError(
-        ErrorCode.AUTH_REQUIRED,
-        '当前账号没有登录态（uid/token 不完整），请先在账号管理选择有效账号'
-      )
+    // 账号解析统一由各任务定义负责（4 种任务都实现了 resolveAccount）：
+    // 跟随当前激活账号，有凭证就用、匿名模式则回退匿名配置。
+    // 是否需要登录态由任务在自己的 create/resolveAccount 里按业务校验。
+    const custom = this.definition.resolveAccount!({ body, user })
+    const resolved = {
+      config: custom.secret,
+      accountId: custom.accountId,
+      hasCredential: custom.hasCredential,
     }
 
     const accountId = resolved.accountId

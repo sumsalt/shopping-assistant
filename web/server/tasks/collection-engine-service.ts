@@ -50,7 +50,7 @@ const resolveAccountConfig = (): { accountId: string; config: CollectionAccountC
   const account = getAccount(accountId)
   if (!account) return null
 
-  const resolved = resolveAdapterConfigForAccount(account, true)
+  const resolved = resolveAdapterConfigForAccount(account)
   if (!resolved.hasCredential || !resolved.config.uid) return null
 
   return {
