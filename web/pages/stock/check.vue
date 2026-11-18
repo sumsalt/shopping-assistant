@@ -336,6 +336,18 @@ const handleRetry = () => {
   }
 }
 
+// keepalive 页面从详情页切回时，复用上次的搜索条件刷新一次结果；
+// 没搜过（关键词为空）时 handleRetry 内部的 handleSearch 会直接返回，不会发请求。
+// 首次挂载时 onActivated 也会触发，跳过以免页面刚进来就重查。
+let isFirstActivation = true
+onActivated(() => {
+  if (isFirstActivation) {
+    isFirstActivation = false
+    return
+  }
+  handleRetry()
+})
+
 // 点击商品卡片（库存查询结果），按 goods_id 跳详情
 const handleProductClick = (item: any) => {
   if (item?.productId) {

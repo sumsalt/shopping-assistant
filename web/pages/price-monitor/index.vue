@@ -105,4 +105,15 @@ const handleRestart = async (task: TaskSummary) => {
 }
 
 onMounted(fetchTasks)
+
+// keepalive 页面从详情页等切回时不会重新 onMounted，激活时补拉一次保持列表新鲜。
+// 首次挂载时 onActivated 紧跟 onMounted 触发，跳过以免重复请求。
+let isFirstActivation = true
+onActivated(() => {
+  if (isFirstActivation) {
+    isFirstActivation = false
+    return
+  }
+  fetchTasks()
+})
 </script>

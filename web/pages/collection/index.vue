@@ -361,6 +361,17 @@ onMounted(() => {
   refresh()
 })
 
+// keepalive 页面从详情页等切回时不会重新 onMounted，激活时补拉一次保持列表新鲜。
+// 首次挂载时 onActivated 紧跟 onMounted 触发，跳过以免重复请求。
+let isFirstActivation = true
+onActivated(() => {
+  if (isFirstActivation) {
+    isFirstActivation = false
+    return
+  }
+  refresh()
+})
+
 // 切换账号或返回默认收藏夹（query 变化）时重新拉取，并清空上一账号的列表
 watch(accountId, () => {
   refresh()

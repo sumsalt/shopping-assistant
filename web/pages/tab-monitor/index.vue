@@ -426,7 +426,18 @@ const fillSeenList = async (depth = 0): Promise<void> => {
  * 注意：列表数据（seenItems / seenHasMore）由 keep-alive 保留，返回时不重新拉取，
  * 因此列表高度与离开时一致，设回 scrollTop 才能落在同一屏。
  */
+let isFirstActivation = true
 onActivated(() => {
+  // keepalive 页面切回时补拉任务列表保持新鲜；首次挂载由 onMounted 负责，跳过以免重复。
+  // 注意：累计商品弹窗列表（seenItems）由 keep-alive 保留，刻意不在这里重拉，
+  // 否则列表高度变化会让下面的滚动位置恢复失效。
+  if (isFirstActivation) {
+    isFirstActivation = false
+  } else {
+    fetchTasks()
+  }
+
+  // 恢复累计商品弹窗的滚动位置（见上方说明）
   if (!seenDialogOpen.value || rememberedSeenScrollTop <= 0) return
   void nextTick(() => {
     const el = seenListRef.value
