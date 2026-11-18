@@ -361,7 +361,7 @@ const toast = useToast()
 const { createPriceMonitorTask, isLoading } = usePriceMonitor()
 const { checkStock } = useStock()
 
-// 检测通道
+// 检测通道（有配置收藏夹账号时打开默认收藏夹，见下方 open watch）
 const channel = ref<'normal' | 'collection'>('normal')
 // 收藏夹通道：监控走系统配置里的专用账号，下单走「当前账号」
 const configStore = useConfigStore()
@@ -533,10 +533,16 @@ const handleSubmit = async () => {
   }
 }
 
+// 收藏夹通道不支持折扣计算：一旦选中，触发模式强制切「目标价」，
+// 折扣单选项在模板里已 disabled；这里再兜底保证数据一致（含默认选中/手动切换两条路径）
+watch(channel, value => {
+  if (value === 'collection') autoOrderMode.value = 'price'
+})
+
 // 每次打开时重置状态（自动下单部分交给共享表单复位）
 watch(
   () => props.open,
-  open => {
+  async open => {
     if (!open) {
       return
     }
@@ -544,9 +550,13 @@ watch(
     duration.value = DEFAULT_PRICE_MONITOR_DURATION
     notifyOn.value = 'any'
     minPriceDeltaInput.value = '0.01'
-    channel.value = 'normal'
     productNoCache.value = props.product?.productNo || ''
     resetAutoOrder()
+
+    // 先确保服务端配置已加载：插件是异步 load，弹窗若抢在前面打开会拿到空值误判
+    await configStore.load()
+    // 有配置收藏夹账号才默认收藏夹；watch(channel) 会同步把触发模式切到目标价
+    channel.value = configStore.collectionAccountId ? 'collection' : 'normal'
   }
 )
 </script>

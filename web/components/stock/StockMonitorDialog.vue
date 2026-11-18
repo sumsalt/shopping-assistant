@@ -304,7 +304,7 @@ const durationOptions: Array<{ value: number; label: string }> = STOCK_MONITOR_D
   option => ({ value: option.value, label: option.label })
 )
 const duration = ref<number>(DEFAULT_STOCK_MONITOR_DURATION)
-const channel = ref<'normal' | 'collection'>('collection')
+const channel = ref<'normal' | 'collection'>('normal')
 const channelOptions = [
   { value: 'normal' as const, label: '普通通道（每个任务独立检测）' },
   { value: 'collection' as const, label: '收藏夹通道（共享循环批量检测）' },
@@ -398,14 +398,16 @@ const handleOpenChange = (value: boolean) => {
   emit('update:open', value)
 }
 
-// 每次打开回到默认：默认走收藏夹通道、打开自动下单（无登录态时关闭），规格回到「全部」
+// 每次打开回到默认：有配置收藏夹账号时默认走收藏夹通道、否则普通通道；
+// 自动下单默认打开（无登录态时关闭），规格回到「全部」
 watch(
   () => props.open,
-  open => {
-    if (open) {
-      resetAutoOrder()
-      channel.value = 'collection'
-    }
+  async open => {
+    if (!open) return
+    resetAutoOrder()
+    // 先确保服务端配置已加载：插件是异步 load，弹窗若抢在前面打开会拿到空值误判
+    await configStore.load()
+    channel.value = configStore.collectionAccountId ? 'collection' : 'normal'
   }
 )
 
