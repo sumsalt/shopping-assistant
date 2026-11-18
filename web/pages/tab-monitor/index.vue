@@ -95,9 +95,23 @@
       @update:open="seenDialogOpen = $event"
     >
       <div class="flex h-full min-h-0 flex-col gap-3">
-        <!-- 排序切换：折扣排序在服务端做（全量排序后再分页），翻页顺序才连续 -->
-        <div v-if="!seenLoading && seenItems.length > 0" class="flex items-center justify-end">
-          <div class="inline-flex rounded-lg bg-gray-100 p-0.5 text-xs">
+        <!-- 市场筛选 + 排序切换：都在服务端做（全量筛选/排序后再分页），翻页顺序才连续 -->
+        <div
+          v-if="!seenLoading && (seenItems.length > 0 || seenMarket !== 'all')"
+          class="flex items-center justify-between gap-2"
+        >
+          <label class="flex min-w-0 items-center gap-1.5 text-xs text-gray-500">
+            <span class="shrink-0">市场</span>
+            <select
+              v-model="seenMarket"
+              class="max-w-[11rem] truncate rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700 outline-none focus:border-blue-400"
+              @change="changeSeenMarket"
+            >
+              <option value="all">全部（{{ seenTotalAll }}）</option>
+              <option v-for="m in seenMarkets" :key="m" :value="m">{{ m }}</option>
+            </select>
+          </label>
+          <div class="inline-flex shrink-0 rounded-lg bg-gray-100 p-0.5 text-xs">
             <button
               type="button"
               class="rounded-md px-3 py-1.5 font-medium transition-colors"
@@ -121,7 +135,7 @@
           加载中...
         </div>
         <div v-else-if="seenItems.length === 0" class="py-12 text-center text-sm text-gray-500">
-          暂无记录，任务发现新商品后会出现在这里
+          {{ seenMarket === 'all' ? '暂无记录，任务发现新商品后会出现在这里' : '该市场暂无记录，可切换到「全部」查看' }}
         </div>
         <div
           v-else
@@ -303,6 +317,12 @@ const seenDialogOpen = ref(false)
 const seenTaskId = ref('')
 /** 累计商品排序方式：最近发现（首次发现时间倒序）/ 折扣优先（折数低在前） */
 const seenSort = ref<'recent' | 'discount'>('recent')
+/** 累计商品市场筛选：'all' 表示全部，否则为具体市场名 */
+const seenMarket = ref('all')
+/** 当前任务可选的市场列表（由 seen 接口返回） */
+const seenMarkets = ref<string[]>([])
+/** 未做市场筛选的商品总数，供「全部」选项展示 */
+const seenTotalAll = ref(0)
 const seenItems = ref<TabSeenProductItem[]>([])
 const seenHasMore = ref(false)
 const seenLoading = ref(false)
@@ -332,13 +352,19 @@ const openSeenDialog = async (task: TaskSummary) => {
   seenItems.value = []
   seenHasMore.value = false
   seenLoading.value = true
+  // 每次打开都回到全部市场，避免沿用上次关闭时的筛选造成困惑
+  seenMarket.value = 'all'
+  seenMarkets.value = []
+  seenTotalAll.value = 0
   // 重新打开弹窗从顶部开始，清掉上一次可能残留的滚动位置
   rememberedSeenScrollTop = 0
 
-  const data = await fetchSeenProducts(task.id, 0, SEEN_PAGE_SIZE, seenSort.value)
+  const data = await fetchSeenProducts(task.id, 0, SEEN_PAGE_SIZE, seenSort.value, seenMarket.value)
   if (data) {
     seenItems.value = data.items
     seenHasMore.value = data.hasMore
+    seenMarkets.value = data.markets ?? []
+    seenTotalAll.value = data.totalAll ?? data.total
   }
   seenLoading.value = false
 
@@ -346,25 +372,44 @@ const openSeenDialog = async (task: TaskSummary) => {
   await fillSeenList()
 }
 
-/** 切换排序：重置到第一页重新拉，排序在服务端全局做完再分页 */
-const changeSeenSort = async (sort: 'recent' | 'discount') => {
-  if (seenSort.value === sort || !seenTaskId.value) return
-  seenSort.value = sort
+/** 重置并从第一页重新拉当前筛选/排序下的商品 */
+const reloadSeenFromStart = async () => {
+  if (!seenTaskId.value) return
   seenItems.value = []
   seenHasMore.value = false
   rememberedSeenScrollTop = 0
   if (seenListRef.value) seenListRef.value.scrollTop = 0
   seenLoading.value = true
   try {
-    const data = await fetchSeenProducts(seenTaskId.value, 0, SEEN_PAGE_SIZE, seenSort.value)
+    const data = await fetchSeenProducts(
+      seenTaskId.value,
+      0,
+      SEEN_PAGE_SIZE,
+      seenSort.value,
+      seenMarket.value
+    )
     if (data) {
       seenItems.value = data.items
       seenHasMore.value = data.hasMore
+      seenMarkets.value = data.markets ?? []
+      seenTotalAll.value = data.totalAll ?? data.total
     }
   } finally {
     seenLoading.value = false
   }
   await fillSeenList()
+}
+
+/** 切换排序：重置到第一页重新拉，排序在服务端全局做完再分页 */
+const changeSeenSort = async (sort: 'recent' | 'discount') => {
+  if (seenSort.value === sort) return
+  seenSort.value = sort
+  await reloadSeenFromStart()
+}
+
+/** 切换市场：重置到第一页重新拉，筛选在服务端全局做完再分页 */
+const changeSeenMarket = async () => {
+  await reloadSeenFromStart()
 }
 
 const loadMoreSeen = async () => {
@@ -376,7 +421,8 @@ const loadMoreSeen = async () => {
       seenTaskId.value,
       seenItems.value.length,
       SEEN_PAGE_SIZE,
-      seenSort.value
+      seenSort.value,
+      seenMarket.value
     )
     if (data) {
       // 空页说明数据已经到底，避免滚动反复请求同一页

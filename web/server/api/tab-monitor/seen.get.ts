@@ -1,9 +1,9 @@
 /**
  * 查询 Tab 监控任务累计记录的商品 API
- * GET /api/tab-monitor/seen?taskId=xxx&offset=0&limit=50
+ * GET /api/tab-monitor/seen?taskId=xxx&offset=0&limit=50&sort=recent|discount&market=市场名
  *
- * 按首次发现时间倒序返回，用于任务卡片上的「查看累计商品」。
- * 只返回当前用户自己的任务。
+ * 按首次发现时间倒序返回（sort=discount 可按折扣排），支持按市场筛选。
+ * 返回 markets 为当前任务可选的市场列表。只返回当前用户自己的任务。
  */
 
 import type { TabSeenProduct } from '@core'
@@ -63,13 +63,31 @@ export default defineEventHandler(async (event) => {
       listBlacklistedSupplyIds(currentUser.username)
     )
 
+    // 市场筛选选项：从全量（已排除黑名单）记录里提取，供前端下拉展示。
+    // 空市场不进列表；按中文 locale 排序，保证顺序稳定。
+    const markets = Array.from(
+      new Set(
+        visibleProducts
+          .map(item => (item.marketName || '').trim())
+          .filter(name => name.length > 0)
+      )
+    ).sort((a, b) => a.localeCompare(b, 'zh-CN'))
+
+    // 市场筛选：传具体市场名时只保留该市场的商品；'all' 或空表示全部。
+    // 与排序一样在服务端做：先筛后排序再分页，翻页顺序才连续、total 才准确。
+    const market = String(query.market || '').trim()
+    const filteredProducts =
+      market && market !== 'all'
+        ? visibleProducts.filter(item => (item.marketName || '').trim() === market)
+        : visibleProducts
+
     // 排序必须在服务端做：全量数据都在内存里，按折扣排完再分页，翻页顺序才连续。
     // 默认按首次发现时间倒序（同一轮发现的保持原有顺序）。
     const sort = String(query.sort || '').trim()
     const byTimeDesc = (a: TabSeenProduct, b: TabSeenProduct) =>
       new Date(b.firstSeenAt).getTime() - new Date(a.firstSeenAt).getTime()
 
-    const sorted = [...visibleProducts]
+    const sorted = [...filteredProducts]
     if (sort === 'discount') {
       // 折扣比率 = 现价 / 原价（0~1，越小折扣越低、力度越大）。
       // 没有原价或原价不高于现价时视为「无折扣」，排在有折扣商品之后。
@@ -120,6 +138,9 @@ export default defineEventHandler(async (event) => {
     return createSuccessResponse({
       taskId,
       tabName: state.tab.name,
+      markets,
+      /** 未做市场筛选的总数，供「全部」选项展示 */
+      totalAll: visibleProducts.length,
       total: sorted.length,
       offset,
       limit,

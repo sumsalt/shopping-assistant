@@ -29,6 +29,10 @@ export interface TabSeenProductItem {
 export interface TabSeenListResponse {
   taskId: string
   tabName: string
+  /** 当前任务累计商品涉及的市场（已排除黑名单、去重排序），用于筛选下拉 */
+  markets: string[]
+  /** 未做市场筛选的总数 */
+  totalAll: number
   total: number
   offset: number
   limit: number
@@ -43,11 +47,12 @@ export const useTabSeen = () => {
     taskId: string,
     offset = 0,
     limit = 50,
-    sort: 'recent' | 'discount' = 'recent'
+    sort: 'recent' | 'discount' = 'recent',
+    market = 'all'
   ): Promise<TabSeenListResponse | null> => {
     try {
       const response = await $fetch<ApiResponse<TabSeenListResponse>>('/api/tab-monitor/seen', {
-        query: { taskId, offset, limit, sort },
+        query: { taskId, offset, limit, sort, market },
       })
       if (response.success && response.data) return response.data
 
