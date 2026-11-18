@@ -10,14 +10,16 @@
       leave-from-class="opacity-100"
       leave-to-class="opacity-0"
     >
-      <!-- 遮罩容器：固定铺满视口。打开时页面被锁住不再滚动（见 useScrollLock），
-           fixed 与视口严格对齐，弹窗始终在可见区居中 -->
+      <!-- 遮罩容器：固定铺满「动态视口」。打开时页面被锁住不再滚动（见 useScrollLock）。
+           高度必须用 100dvh 显式给定、不能用 inset-0——移动端 Chrome 滚动后地址栏隐藏，
+           inset-0 走的是布局视口（更大），而面板高度走 100dvh（动态视口），两者差一个地址栏
+           高度，面板就会整体偏移。遮罩与面板统一用 dvh 基准即可对齐。 -->
       <!-- 页面被 keep-alive 缓存时用 display:none 藏起来：teleport 到 body 的遮罩不属于页面子树，
            页面切走后它会留在 body 上，变成盖住新页面的「幽灵弹窗」—— 看着是个弹窗，
            实际整页都点不动。用 display 而不是卸载，返回页面时 DOM 与滚动位置原样保留 -->
       <div
         v-if="open"
-        class="fixed inset-0 flex items-center justify-center p-4 overscroll-contain"
+        class="dialog-backdrop fixed left-0 right-0 top-0 flex items-center justify-center p-4 overscroll-contain"
         :style="{ zIndex, display: pageActive ? undefined : 'none' }"
         @click="handleBackdropClick"
       >
@@ -211,22 +213,30 @@ const close = () => {
 
 <style scoped>
 /*
- * 面板高度上限必须用动态视口单位：
- * 移动端 vh 对应「地址栏收起时的大视口」，地址栏展开时 100vh 比可视高度大几十到上百 px，
- * 按 90vh 限高会让面板整体超出屏幕，内部滚动永远触发不了（内容被屏幕边缘裁掉）。
- * 2rem 是遮罩层 p-4 的上下内边距，扣除后正好贴合可视区。
- * 先写 vh 供老浏览器降级，再写 dvh 覆盖。
+ * 移动端 Chrome 地址栏会随滚动收起/展开，视口单位由此分两套：
+ *   - 布局视口（inset-0、100vh）：地址栏收起时的大视口，滚动后变大；
+ *   - 动态视口（100dvh）：始终等于当前可见高度，地址栏展开时更小。
+ * 之前遮罩用 inset-0（布局视口）、面板用 100dvh（动态视口），滚动后地址栏一收起，
+ * 两者就差出一个地址栏高度，面板相对遮罩居中时整体上移，标题被地址栏裁掉。
+ * 现在遮罩与面板统一到 dvh 这一个基准：
+ *   遮罩 height = 100dvh；面板高度用百分比，相对遮罩内容区计算
+ *   （遮罩带 p-4，flex 项的 100% 已自动扣除上下共 2rem 内边距）。
+ *   地址栏怎么收展，两者都一起变，不再错位。
+ * vh 行仅作老浏览器降级（不支持 dvh 时退回 vh）。
  */
-.dialog-panel {
-  max-height: calc(100vh - 2rem);
-  max-height: calc(100dvh - 2rem);
+.dialog-backdrop {
+  height: 100vh;
+  height: 100dvh;
 }
 
-/* fill 模式：列表类弹窗。内部列表用 flex-1 撑开，必须有确定高度才能算出可用空间，
-   所以这里是固定高度而非 max-height —— 但取值和默认模式的上限完全一致，
-   两种弹窗在屏幕上的上下边界对齐，不再一个 85dvh、一个 100dvh-2rem */
+/* 面板上限相对遮罩内容区，用百分比而非 dvh，保证与遮罩同一基准。 */
+.dialog-panel {
+  max-height: 100%;
+}
+
+/* fill 模式：列表类弹窗。内部列表用 flex-1 撑开，需要确定高度才能算可用空间。
+   遮罩是 flex 容器且已定高，面板 height:100% 即撑满遮罩内容区（自动扣除 p-4）。 */
 .dialog-panel--fill {
-  height: calc(100vh - 2rem);
-  height: calc(100dvh - 2rem);
+  height: 100%;
 }
 </style>
