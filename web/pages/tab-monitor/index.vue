@@ -99,7 +99,7 @@
           <span class="shrink-0 ml-3">共 {{ seenTotal }} 个</span>
         </div>
         <p v-if="isMobileViewport" class="text-xs text-gray-400">
-          点击商品查看详情；左上角星标加入/取消收藏，右上角「App」在 App 内打开；卡片下方可发起到货监控、价格监控与一键下单。
+          点击商品查看详情；左上角星标加入/取消收藏；卡片下方可发起到货监控、用一手 App 打开与一键下单。
         </p>
 
         <div v-if="seenLoading" class="py-12 text-center text-sm text-gray-500">
@@ -111,7 +111,7 @@
         <div
           v-else
           ref="seenListRef"
-          class="min-h-0 flex-1 overflow-y-auto overscroll-contain"
+          class="seen-list-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain"
           @scroll.passive="handleSeenScroll"
         >
           <div class="grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-3">
@@ -148,17 +148,13 @@
                   />
                 </svg>
               </button>
-              <div class="absolute right-1.5 top-1.5 z-10 flex items-center gap-1">
-                <button
-                  v-if="isMobileViewport && item.productId"
-                  type="button"
-                  class="rounded-md bg-black/55 px-1.5 py-0.5 text-[11px] font-medium text-white backdrop-blur-sm active:bg-black/70"
-                  title="用一手 App 打开这个商品"
-                  @click="openSeenApp(item)"
-                >
-                  App
-                </button>
-              </div>
+              <span
+                v-if="seenDiscount(item)"
+                class="absolute right-1.5 top-1.5 z-10 rounded-md bg-red-500/90 px-1.5 py-0.5 text-[11px] font-semibold text-white shadow-sm backdrop-blur-sm"
+                :title="`现价 ¥${formatSeenPrice(item.price)}，原价 ¥${formatSeenPrice(item.originalPrice ?? 0)}`"
+              >
+                {{ seenDiscount(item) }}
+              </span>
               <a
                 :href="seenDetailPath(item) || undefined"
                 :target="seenDetailPath(item) ? '_blank' : undefined"
@@ -196,17 +192,18 @@
 
               <div class="px-2 py-2">
                 <p
-                  class="truncate text-xs font-medium leading-4 text-gray-800"
+                  class="line-clamp-2 min-h-[2rem] text-xs font-medium leading-4 text-gray-800"
                   :title="formatSeenTitle(item)"
                 >
                   {{ formatSeenName(item) }}
                 </p>
                 <StockProductQuickActions
                   show-order
+                  :show-app="isMobileViewport"
                   :order-disabled="!item.productNo || orderingId === item.productId"
                   :order-loading="orderingId === item.productId"
                   @stock="openSeenStockMonitor(item)"
-                  @price="openSeenPriceMonitor(item)"
+                  @open-app="openSeenApp(item)"
                   @order="orderSeenItem(item)"
                 />
               </div>
@@ -226,14 +223,10 @@
       </div>
     </UiDialog>
 
-    <!-- 到货监控 / 价格监控弹窗（与收藏夹、详情页同一组件） -->
+    <!-- 到货监控弹窗（与收藏夹、详情页同一组件） -->
     <StockMonitorDialog
       v-model:open="showStockMonitorDialog"
       :product="stockMonitorProduct"
-    />
-    <PriceMonitorDialog
-      v-model:open="showPriceDialog"
-      :product="priceMonitorProduct"
     />
   </div>
 </template>
@@ -310,11 +303,9 @@ let rememberedSeenScrollTop = 0
 /** 正在下单的商品 ID，避免重复点击 */
 const orderingId = ref('')
 
-/** 到货监控 / 价格监控弹窗 */
+/** 到货监控弹窗 */
 const showStockMonitorDialog = ref(false)
-const showPriceDialog = ref(false)
 const stockMonitorProduct = ref<PriceMonitorProduct | null>(null)
-const priceMonitorProduct = ref<PriceMonitorProduct | null>(null)
 
 const SEEN_PAGE_SIZE = 50
 
@@ -405,11 +396,18 @@ onActivated(() => {
   })
 })
 
+// 折扣：现价 ÷ 原价 × 10，保留一位小数并去掉多余的 .0；没有原价或原价不高于现价时不展示
+const seenDiscount = (item: TabSeenProductItem): string => {
+  const original = item.originalPrice
+  if (!original || original <= 0 || item.price <= 0 || original <= item.price) return ''
+  return `${Number(((item.price / original) * 10).toFixed(1))}折`
+}
+
 // 图片悬浮提示：完整商品名 + 首次发现时间
 const formatSeenTitle = (item: TabSeenProductItem): string => {
   const base = `${item.productName || formatSeenName(item)} · 首次发现 ${formatSeenTime(item.firstSeenAt)}`
   if (!seenDetailPath(item)) return base
-  return `${base}（${isMobileViewport.value ? '点击查看本站库存详情，右上角「App」用一手 App 打开' : '点击在新窗口查看库存详情'}）`
+  return `${base}（${isMobileViewport.value ? '点击查看本站库存详情，下方「App」图标用一手 App 打开' : '点击在新窗口查看库存详情'}）`
 }
 
 // 系统内 SKU 详情页地址：一手外链已不可用，统一跳到本站详情页
@@ -470,7 +468,7 @@ const formatSeenName = (item: TabSeenProductItem): string =>
   item.productName?.replace(/^\s*【[^】]*】\s*/, '').trim() ||
   `商品 ${item.productId}`
 
-/* ---------------- 卡片快捷操作：到货监控 / 价格监控 / 一键下单 ---------------- */
+/* ---------------- 卡片快捷操作：到货监控 / 一键下单 ---------------- */
 
 /** Tab 商品条目 → 监控弹窗需要的商品信息 */
 const toMonitorProduct = (item: TabSeenProductItem): PriceMonitorProduct => ({
@@ -484,12 +482,6 @@ const toMonitorProduct = (item: TabSeenProductItem): PriceMonitorProduct => ({
 const openSeenStockMonitor = (item: TabSeenProductItem) => {
   stockMonitorProduct.value = toMonitorProduct(item)
   showStockMonitorDialog.value = true
-}
-
-/** 价格监控：需要一手登录态，缺少时弹窗内会给出提示 */
-const openSeenPriceMonitor = (item: TabSeenProductItem) => {
-  priceMonitorProduct.value = toMonitorProduct(item)
-  showPriceDialog.value = true
 }
 
 /**
@@ -588,3 +580,16 @@ const formatSeenClock = (iso: string): string => {
 
 onMounted(fetchTasks)
 </script>
+
+<style scoped>
+/*
+ * 累计商品列表滚动条：在右侧预留一条独立空白槽。
+ * 悬浮式滚动条（iOS/macOS）默认直接盖在最右列图片上，看着「位置奇怪」；
+ * scrollbar-gutter 让浏览器为滚动条固定留出空间，右内边距再兜底老浏览器，
+ * 滚动条就落在右侧空白处，不再压住商品图。
+ */
+.seen-list-scroll {
+  scrollbar-gutter: stable;
+  padding-right: 0.5rem;
+}
+</style>

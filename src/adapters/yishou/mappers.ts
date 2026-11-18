@@ -223,6 +223,11 @@ export const mapCollectionItemToResult = (
 /** Tab 商品 → 库存结果 */
 export const mapTabItemToResult = (data: YishouTabGoodsData): CollectionStockResult => {
   const inStock = isCollectionItemInStock(data);
+  const price = Number.parseFloat(data.shop_price) || 0;
+  // 原价：划线价 old_price 优先，其次门市价 shoppe_price；必须高于拿货价才算折扣（与详情页口径一致）
+  const oldPrice = toOptionalNumber(data.old_price);
+  const shoppePrice = toOptionalNumber(data.shoppe_price);
+  const originalPrice = price > 0 ? [oldPrice, shoppePrice].find(p => p !== undefined && p > price) : undefined;
 
   return {
     platform: 'yishou',
@@ -234,7 +239,8 @@ export const mapTabItemToResult = (data: YishouTabGoodsData): CollectionStockRes
     brandName: data.brand_name,
     productNo: data.goods_no,
     inStock,
-    price: Number.parseFloat(data.shop_price) || 0,
+    price,
+    ...(originalPrice !== undefined ? { originalPrice } : {}),
     productUrl: goodsUrl(data.goods_id),
     productImage: data.goods_img || data.goods_thumb,
     marketName: data.one_market_name,

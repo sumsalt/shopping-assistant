@@ -491,6 +491,30 @@ describe('收藏状态透传（一手 collect_id）', () => {
     // 老接口没返回时按未收藏处理（列表字段是必填的，前端据此展示未收藏）
     expect(mapTabItemToResult(base).collectId).toBe('0');
   });
+
+  it('Tab 商品：划线价/门市价高于拿货价时带出 originalPrice 供卡片展示折扣', () => {
+    const base = {
+      goods_id: '340219457',
+      goods_no: '1381206701',
+      goods_name: '测试商品',
+      brand_name: '测试店铺',
+      shop_price: '69.00',
+    } as unknown as Parameters<typeof mapTabItemToResult>[0];
+
+    // 划线价高于现价 → 作为原价
+    expect(mapTabItemToResult({ ...base, old_price: '77.83' }).originalPrice).toBe(77.83);
+    // 没有划线价时回落到门市价
+    expect(mapTabItemToResult({ ...base, shoppe_price: '98.99' }).originalPrice).toBe(98.99);
+    // 划线价优先于门市价
+    expect(
+      mapTabItemToResult({ ...base, old_price: '77.83', shoppe_price: '98.99' }).originalPrice
+    ).toBe(77.83);
+    // 原价不高于现价、缺失、非法值都不下发
+    expect('originalPrice' in mapTabItemToResult({ ...base, old_price: '0.00' })).toBe(false);
+    expect('originalPrice' in mapTabItemToResult({ ...base, old_price: '50.00' })).toBe(false);
+    expect('originalPrice' in mapTabItemToResult({ ...base, old_price: 'invalid' })).toBe(false);
+    expect('originalPrice' in mapTabItemToResult(base)).toBe(false);
+  });
 });
 
 describe('mapGoodsToSkuResult - 原价与折扣', () => {

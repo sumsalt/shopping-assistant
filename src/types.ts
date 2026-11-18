@@ -230,6 +230,10 @@ export interface YishouTabGoodsData {
   brand_name: string;
   /** 拿货价 */
   shop_price: string;
+  /** 划线价（原价候选，高于拿货价时可算折扣） */
+  old_price?: string;
+  /** 门市价（原价候选，仅登录态返回） */
+  shoppe_price?: string;
   /** 商品缩略图 */
   goods_thumb: string;
   /** 商品主图 */
@@ -290,8 +294,10 @@ export interface CollectionStockResult {
   productNo: string;
   /** 是否有货 */
   inStock: boolean;
-  /** 价格 */
+  /** 价格（拿货价） */
   price: number;
+  /** 原价（划线价 old_price / 门市价 shoppe_price，高于现价时可用） */
+  originalPrice?: number;
   /** 商品链接 */
   productUrl: string;
   /** 商品主图 */

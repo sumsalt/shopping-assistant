@@ -14,6 +14,8 @@ export interface TabSeenProductItem {
   shortName?: string
   productNo?: string
   price: number
+  /** 原价（划线价/门市价，高于现价时可算折扣） */
+  originalPrice?: number
   productImage?: string
   productUrl?: string
   supplyId?: string

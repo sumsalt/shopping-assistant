@@ -106,8 +106,10 @@ export interface TabSeenProduct {
   productNo?: string;
   /** 不带店铺名的商品名称（接口 goods_name_without_brand_name，用于卡片展示） */
   shortName?: string;
-  /** 价格 */
+  /** 价格（拿货价） */
   price: number;
+  /** 原价（划线价/门市价，高于拿货价时可用于展示折扣） */
+  originalPrice?: number;
   /** 商品图片 */
   productImage?: string;
   /** 商品链接 */
@@ -500,6 +502,7 @@ export const createCancellableTabMonitor = (
           ...(item.productNo ? { productNo: item.productNo } : {}),
           ...(item.productNameWithoutBrand ? { shortName: item.productNameWithoutBrand } : {}),
           price: item.price,
+          ...(item.originalPrice !== undefined ? { originalPrice: item.originalPrice } : {}),
           ...(item.productImage ? { productImage: item.productImage } : {}),
           ...(item.productUrl ? { productUrl: item.productUrl } : {}),
           ...(item.supplyId ? { supplyId: item.supplyId } : {}),
