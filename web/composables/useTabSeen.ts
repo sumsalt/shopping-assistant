@@ -42,11 +42,12 @@ export const useTabSeen = () => {
   const fetchSeenProducts = async (
     taskId: string,
     offset = 0,
-    limit = 50
+    limit = 50,
+    sort: 'recent' | 'discount' = 'recent'
   ): Promise<TabSeenListResponse | null> => {
     try {
       const response = await $fetch<ApiResponse<TabSeenListResponse>>('/api/tab-monitor/seen', {
-        query: { taskId, offset, limit },
+        query: { taskId, offset, limit, sort },
       })
       if (response.success && response.data) return response.data
 

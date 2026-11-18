@@ -95,6 +95,28 @@
       @update:open="seenDialogOpen = $event"
     >
       <div class="flex h-full min-h-0 flex-col gap-3">
+        <!-- 排序切换：折扣排序在服务端做（全量排序后再分页），翻页顺序才连续 -->
+        <div v-if="!seenLoading && seenItems.length > 0" class="flex items-center justify-end">
+          <div class="inline-flex rounded-lg bg-gray-100 p-0.5 text-xs">
+            <button
+              type="button"
+              class="rounded-md px-3 py-1.5 font-medium transition-colors"
+              :class="seenSort === 'recent' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'"
+              @click="changeSeenSort('recent')"
+            >
+              最近发现
+            </button>
+            <button
+              type="button"
+              class="rounded-md px-3 py-1.5 font-medium transition-colors"
+              :class="seenSort === 'discount' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'"
+              @click="changeSeenSort('discount')"
+            >
+              折扣优先
+            </button>
+          </div>
+        </div>
+
         <div v-if="seenLoading" class="py-12 text-center text-sm text-gray-500">
           加载中...
         </div>
@@ -279,6 +301,8 @@ const handleRestart = async (task: TaskSummary) => {
 
 const seenDialogOpen = ref(false)
 const seenTaskId = ref('')
+/** 累计商品排序方式：最近发现（首次发现时间倒序）/ 折扣优先（折数低在前） */
+const seenSort = ref<'recent' | 'discount'>('recent')
 const seenItems = ref<TabSeenProductItem[]>([])
 const seenHasMore = ref(false)
 const seenLoading = ref(false)
@@ -311,7 +335,7 @@ const openSeenDialog = async (task: TaskSummary) => {
   // 重新打开弹窗从顶部开始，清掉上一次可能残留的滚动位置
   rememberedSeenScrollTop = 0
 
-  const data = await fetchSeenProducts(task.id, 0, SEEN_PAGE_SIZE)
+  const data = await fetchSeenProducts(task.id, 0, SEEN_PAGE_SIZE, seenSort.value)
   if (data) {
     seenItems.value = data.items
     seenHasMore.value = data.hasMore
@@ -322,12 +346,38 @@ const openSeenDialog = async (task: TaskSummary) => {
   await fillSeenList()
 }
 
+/** 切换排序：重置到第一页重新拉，排序在服务端全局做完再分页 */
+const changeSeenSort = async (sort: 'recent' | 'discount') => {
+  if (seenSort.value === sort || !seenTaskId.value) return
+  seenSort.value = sort
+  seenItems.value = []
+  seenHasMore.value = false
+  rememberedSeenScrollTop = 0
+  if (seenListRef.value) seenListRef.value.scrollTop = 0
+  seenLoading.value = true
+  try {
+    const data = await fetchSeenProducts(seenTaskId.value, 0, SEEN_PAGE_SIZE, seenSort.value)
+    if (data) {
+      seenItems.value = data.items
+      seenHasMore.value = data.hasMore
+    }
+  } finally {
+    seenLoading.value = false
+  }
+  await fillSeenList()
+}
+
 const loadMoreSeen = async () => {
   if (seenLoadingMore.value || !seenHasMore.value) return
 
   seenLoadingMore.value = true
   try {
-    const data = await fetchSeenProducts(seenTaskId.value, seenItems.value.length, SEEN_PAGE_SIZE)
+    const data = await fetchSeenProducts(
+      seenTaskId.value,
+      seenItems.value.length,
+      SEEN_PAGE_SIZE,
+      seenSort.value
+    )
     if (data) {
       // 空页说明数据已经到底，避免滚动反复请求同一页
       if (data.items.length === 0) {

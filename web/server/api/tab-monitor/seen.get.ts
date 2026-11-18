@@ -63,10 +63,41 @@ export default defineEventHandler(async (event) => {
       listBlacklistedSupplyIds(currentUser.username)
     )
 
-    // 按首次发现时间倒序（同一轮发现的保持原有顺序）
-    const sorted = [...visibleProducts].sort(
-      (a, b) => new Date(b.firstSeenAt).getTime() - new Date(a.firstSeenAt).getTime()
-    )
+    // 排序必须在服务端做：全量数据都在内存里，按折扣排完再分页，翻页顺序才连续。
+    // 默认按首次发现时间倒序（同一轮发现的保持原有顺序）。
+    const sort = String(query.sort || '').trim()
+    const byTimeDesc = (a: TabSeenProduct, b: TabSeenProduct) =>
+      new Date(b.firstSeenAt).getTime() - new Date(a.firstSeenAt).getTime()
+
+    const sorted = [...visibleProducts]
+    if (sort === 'discount') {
+      // 折扣比率 = 现价 / 原价（0~1，越小折扣越低、力度越大）。
+      // 没有原价或原价不高于现价时视为「无折扣」，排在有折扣商品之后。
+      const discountRatio = (item: TabSeenProduct): number | null => {
+        if (
+          !item.originalPrice ||
+          item.originalPrice <= 0 ||
+          item.price <= 0 ||
+          item.originalPrice <= item.price
+        ) {
+          return null
+        }
+        return item.price / item.originalPrice
+      }
+      sorted.sort((a, b) => {
+        const da = discountRatio(a)
+        const db = discountRatio(b)
+        // 有折扣的排在无折扣前面
+        if (da === null && db !== null) return 1
+        if (da !== null && db === null) return -1
+        // 都有折扣：折数低的（力度大的）在前
+        if (da !== null && db !== null && da !== db) return da - db
+        // 折扣相同、或都无折扣：按首次发现时间倒序，保证顺序稳定
+        return byTimeDesc(a, b)
+      })
+    } else {
+      sorted.sort(byTimeDesc)
+    }
 
     const rawOffset = Number(query.offset)
     const rawLimit = Number(query.limit)
