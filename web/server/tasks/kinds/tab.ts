@@ -8,7 +8,6 @@
 import {
   createCancellableTabMonitor,
   MAX_TAB_SEEN_PRODUCTS,
-  normalizeActiveWindow,
   type TabMonitorConfig,
   type TabMonitorTask,
   type TabSeenProduct,
@@ -49,14 +48,6 @@ export const tabDefinition: TaskKindDefinition<TabTaskState> = {
     if (!body?.tabId) throw new TaskApiError(ErrorCode.INVALID_PARAMS, 'Tab ID 不能为空')
     if (!body?.tabName) throw new TaskApiError(ErrorCode.INVALID_PARAMS, 'Tab 名称不能为空')
 
-    const activeWindow = normalizeActiveWindow(body?.config?.activeWindow)
-    if (body?.config?.activeWindow && !activeWindow) {
-      throw new TaskApiError(
-        ErrorCode.INVALID_PARAMS,
-        '生效时段格式不正确，应为 HH:mm（如 09:00），且开始与结束时间不能相同'
-      )
-    }
-
     void user
 
     return {
@@ -66,7 +57,6 @@ export const tabDefinition: TaskKindDefinition<TabTaskState> = {
           mode: body?.config?.mode === 'diff' ? 'diff' : 'accumulate',
           interval: num(body?.config?.interval, 60),
           duration: num(body?.config?.duration, 7 * 24 * 60 * 60),
-          ...(activeWindow ? { activeWindow } : {}),
           ...(body?.config?.page !== undefined ? { page: num(body.config.page, 1) } : {}),
           ...(body?.config?.pageSize !== undefined ? { pageSize: num(body.config.pageSize, 20) } : {}),
           ...(body?.config?.sort !== undefined ? { sort: num(body.config.sort, 1) } : {}),
@@ -212,14 +202,6 @@ export const tabDefinition: TaskKindDefinition<TabTaskState> = {
           text: state.config.mode === 'diff' ? '逐轮对比' : '累计新商品',
           tone: state.config.mode === 'diff' ? 'info' : 'success',
         },
-        ...(state.config.activeWindow
-          ? [
-              {
-                text: `生效 ${state.config.activeWindow.start}–${state.config.activeWindow.end}`,
-                tone: 'neutral' as Tone,
-              },
-            ]
-          : []),
       ],
       stats: [
         { key: 'checks', label: '次检测', value: state.checkCount },
@@ -231,7 +213,6 @@ export const tabDefinition: TaskKindDefinition<TabTaskState> = {
         interval: state.config.interval,
         duration: state.config.duration,
         mode: state.config.mode,
-        ...(state.config.activeWindow ? { activeWindow: state.config.activeWindow } : {}),
       },
       events,
       order: null,
@@ -257,10 +238,6 @@ export const tabDefinition: TaskKindDefinition<TabTaskState> = {
 
   durationOf(record) {
     return record.state.config.duration
-  },
-
-  activeWindowOf(record) {
-    return record.state.config.activeWindow
   },
 
   restore(record) {

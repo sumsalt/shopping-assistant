@@ -127,7 +127,6 @@ export interface TabTaskState {
     mode: 'accumulate' | 'diff'
     interval: number
     duration: number
-    activeWindow?: { start: string; end: string }
     page?: number
     pageSize?: number
     sort?: number

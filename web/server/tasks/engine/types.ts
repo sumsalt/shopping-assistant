@@ -108,9 +108,6 @@ export interface TaskKindDefinition<S> {
   /** 任务时长（秒），用于重启后计算剩余时长；undefined 表示不限时 */
   durationOf(record: TaskRecordBase<S>): number | undefined
 
-  /** 生效时段：配置后，休眠时间不消耗时长（Tab 任务） */
-  activeWindowOf?(record: TaskRecordBase<S>): { start: string; end: string } | undefined
-
   /** 创建前查重（抛 TaskApiError） */
   uniqueness?(record: TaskRecordBase<S>, all: TaskRecordBase<S>[]): void
 

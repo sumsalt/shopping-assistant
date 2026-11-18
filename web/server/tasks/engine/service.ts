@@ -5,7 +5,6 @@
  * 路由、definition、前端都不得绕过它直接操作任务。
  */
 
-import { activeSecondsBetween } from '@core/utils/active-window'
 import type { TaskSummary } from '@core/contract'
 import { resolveAdapterConfigForUser } from '../../utils/adapterConfig'
 import { describeTaskAccount } from '../../utils/taskAccount'
@@ -25,13 +24,9 @@ export interface TaskCreateRequest {
   user: { username: string; email: string }
 }
 
-/** 计算已运行秒数：配了生效时段时，休眠时间不消耗时长 */
-const elapsedSeconds = (record: TaskRecordBase, window?: { start: string; end: string }): number => {
-  const now = new Date()
-  return window
-    ? activeSecondsBetween(record.createdAt, now, window)
-    : (now.getTime() - record.createdAt.getTime()) / 1000
-}
+/** 计算已运行秒数 */
+const elapsedSeconds = (record: TaskRecordBase): number =>
+  (new Date().getTime() - record.createdAt.getTime()) / 1000
 
 export class TaskService<S> {
   constructor(
@@ -244,7 +239,7 @@ export class TaskService<S> {
 
         const duration = this.definition.durationOf(record)
         const remaining = Number.isFinite(duration)
-          ? Math.max(0, Number(duration) - elapsedSeconds(record, this.definition.activeWindowOf?.(record)))
+          ? Math.max(0, Number(duration) - elapsedSeconds(record))
           : Number.POSITIVE_INFINITY
 
         if (remaining <= 0) {

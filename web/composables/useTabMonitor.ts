@@ -18,8 +18,6 @@ interface TabMonitorConfig {
   minChangeCount?: number
   /** 监控模式：accumulate 累计新商品 / diff 逐轮对比 */
   mode?: 'accumulate' | 'diff'
-  /** 每日生效时段（可选） */
-  activeWindow?: { start: string; end: string }
 }
 
 // 创建任务响应类型
@@ -82,7 +80,6 @@ export const useTabMonitor = () => {
       maxPrice: config.maxPrice || 0,
       minChangeCount: config.minChangeCount || 2,
       mode: config.mode ?? 'accumulate',
-      ...(config.activeWindow ? { activeWindow: config.activeWindow } : {}),
     }
 
     const data = await submit<CreateTabTaskResponse>(

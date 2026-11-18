@@ -204,14 +204,6 @@ export {
   runWithGateContext,
   GateTimeoutError,
 } from './utils/request-gate';
-export {
-  activeSecondsBetween,
-  isWithinActiveWindow,
-  msUntilActiveWindowStart,
-  normalizeActiveWindow,
-  parseTimeOfDay,
-} from './utils/active-window';
-export type { ActiveWindow } from './utils/active-window';
 export type {
   GateContext,
   GateOptions,

@@ -100,6 +100,13 @@
           </p>
         </div>
 
+        <!-- 价格排序方式 -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1.5">价格排序方式</label>
+          <UiSelect v-model="form.sort" :options="SORT_OPTIONS" />
+          <p class="mt-1 text-xs text-gray-500">只影响抓取到的商品顺序，不改变监控范围</p>
+        </div>
+
         <!-- 触发阈值 -->
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1.5">
@@ -122,54 +129,6 @@
           </p>
         </div>
 
-        <!-- 高级选项（默认收起，避免表单过长） -->
-        <details class="border border-gray-200 rounded-lg">
-          <summary class="flex items-center justify-between gap-2 px-4 py-3 cursor-pointer select-none">
-            <span class="text-sm font-medium text-gray-700">高级选项</span>
-            <span class="text-xs text-gray-400">生效时段 · 排序方式</span>
-          </summary>
-
-          <div class="px-4 pb-4 pt-1 space-y-4 border-t border-gray-100">
-            <div class="pt-3">
-              <label class="flex items-center gap-2 cursor-pointer select-none">
-                <input
-                  v-model="form.useActiveWindow"
-                  type="checkbox"
-                  class="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <span class="text-sm font-medium text-gray-700">只在指定时段运行（可选）</span>
-              </label>
-              <div v-if="form.useActiveWindow" class="mt-3 grid grid-cols-2 gap-4">
-                <div>
-                  <label class="block text-sm font-medium text-gray-700 mb-1.5">每天开始时间</label>
-                  <input
-                    v-model="form.windowStart"
-                    type="time"
-                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
-                  />
-                </div>
-                <div>
-                  <label class="block text-sm font-medium text-gray-700 mb-1.5">每天结束时间</label>
-                  <input
-                    v-model="form.windowEnd"
-                    type="time"
-                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
-                  />
-                </div>
-              </div>
-              <p v-if="form.useActiveWindow" class="mt-2 text-xs text-gray-500">
-                时段外任务休眠、不发请求，也不消耗监控时长；结束时间早于开始时间表示跨天（如 22:00–02:00）。
-                进入时段时会重新建立基线，休眠期间的商品变化不会补推。
-              </p>
-            </div>
-
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1.5">价格排序方式</label>
-              <UiSelect v-model="form.sort" :options="SORT_OPTIONS" />
-              <p class="mt-1 text-xs text-gray-500">只影响抓取到的商品顺序，不改变监控范围</p>
-            </div>
-          </div>
-        </details>
       </div>
     </form>
 
@@ -230,9 +189,6 @@ const defaultForm = () => ({
   sort: 1,
   mode: 'accumulate' as 'accumulate' | 'diff',
   minChangeCount: 2,
-  useActiveWindow: false,
-  windowStart: '09:00',
-  windowEnd: '23:00',
 })
 
 /** 快速选择下拉选项 */
@@ -263,11 +219,7 @@ const handleSelectTabFromDropdown = () => {
 const handleSubmit = async () => {
   if (!form.value.tabId.trim() || !form.value.tabName.trim()) return
 
-  const { useActiveWindow, windowStart, windowEnd, ...rest } = form.value
-  const taskId = await createTabMonitorTask({
-    ...rest,
-    ...(useActiveWindow ? { activeWindow: { start: windowStart, end: windowEnd } } : {}),
-  })
+  const taskId = await createTabMonitorTask({ ...form.value })
   if (!taskId) return
 
   form.value = defaultForm()

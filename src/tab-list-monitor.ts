@@ -14,14 +14,6 @@ import {
   loadTabEmailConfigFromEnv,
 } from './email';
 import { runWithGateContext } from './utils/request-gate';
-import {
-  activeSecondsBetween,
-  isWithinActiveWindow,
-  msUntilActiveWindowStart,
-  normalizeActiveWindow,
-  type ActiveWindow,
-} from './utils/active-window';
-
 // SMTP 配置来自环境变量（SMTP_PASS 等），代码里不保存授权码
 const emailConfig = loadEmailConfigFromEnv();
 if (emailConfig) {
@@ -64,8 +56,6 @@ export interface TabMonitorConfig {
   mode?: TabMonitorMode;
   /** 触发提醒的阈值（accumulate 下是累计新增数，diff 下是单轮变化数，默认10） */
   minChangeCount?: number;
-  /** 每日生效时段（可选）：只在这个时间段内检测，时段外休眠且不计入监控时长 */
-  activeWindow?: ActiveWindow;
   /**
    * 每天重建基线的时刻（本地时间 0-23，默认 4 点）
    *
@@ -534,13 +524,6 @@ export const createCancellableTabMonitor = (
     // 已发现但还没达到提醒阈值的新商品，凑够 minChangeCount 个再一次性推送
     let pendingNewProducts: CollectionStockResult[] = [];
 
-    // 生效时段（可选）：配置后只在时段内检测，时段外休眠
-    const activeWindow = normalizeActiveWindow(config.activeWindow);
-
-    // 从时段外休眠醒来后需要先重建基线：休眠可能持续几个小时，
-    // 醒来后直接把休眠期间上架的商品当成「刚发现的新商品」推送，会打扰用户
-    let needBaselineRefresh = false;
-
     /**
      * 最近一个「每日重建时刻」的时间戳
      *
@@ -556,14 +539,11 @@ export const createCancellableTabMonitor = (
       return boundary.getTime();
     };
 
-    /** 上次重建基线的时间：初始化 / 时段重建 / 每日重建都会刷新 */
+    /** 上次重建基线的时间：初始化 / 每日重建都会刷新 */
     let lastBaselineResetAt = startTime;
 
-    /** 已运行时长（秒）：配置了生效时段时只累计时段内的时间，休眠不消耗时长 */
-    const getElapsedSeconds = (): number =>
-      activeWindow
-        ? Math.floor(activeSecondsBetween(new Date(startTime), new Date(), activeWindow))
-        : Math.floor((Date.now() - startTime) / 1000);
+    /** 已运行时长（秒） */
+    const getElapsedSeconds = (): number => Math.floor((Date.now() - startTime) / 1000);
 
     /** 上报进度（newlySeenProducts 用于把本轮新记住的商品落盘到任务上） */
     const reportProgress = (
@@ -827,50 +807,41 @@ export const createCancellableTabMonitor = (
     };
 
     // 首次获取商品列表（只记录基线，不发送通知）
-    // 启动时若正好在生效时段外，就先不建基线：休眠到下一个时段入口再建，
-    // 否则会把「上次运行结束到本次启动」之间的商品都算成新商品
-    if (activeWindow && !isWithinActiveWindow(new Date(), activeWindow)) {
-      needBaselineRefresh = true;
-      console.log(
-        `[Tab监控] 启动时不在生效时段 ${activeWindow.start}-${activeWindow.end}，进入时段后再建立基线，Tab ID: ${tabId}`
-      );
-    } else {
-      try {
-        // 新建任务时翻页抓全部商品建立完整基线，任务创建前就存在的商品不会被当成「新上架」；
-        // 累计模式续跑时已见集合已落盘，只抓第一页即可；逐轮对比模式没有落盘基线，需要全量重建
-        const initPages =
-          mode === 'diff' || config.fullInitialScan ? MAX_TAB_FULL_SCAN_PAGE_COUNT : 1;
+    try {
+      // 新建任务时翻页抓全部商品建立完整基线，任务创建前就存在的商品不会被当成「新上架」；
+      // 累计模式续跑时已见集合已落盘，只抓第一页即可；逐轮对比模式没有落盘基线，需要全量重建
+      const initPages =
+        mode === 'diff' || config.fullInitialScan ? MAX_TAB_FULL_SCAN_PAGE_COUNT : 1;
 
-        if (initPages > 1) {
-          console.log(
-            `[Tab监控] 初始化全量翻页（最多 ${initPages} 页），Tab ID: ${tabId}`
-          );
-        }
-
-        const { list, newlySeen, pagesFetched } = await fetchAndMarkSeen(initPages);
-        previousList = list;
-        checkCount++;
-
-        // 初始化只记录首页基准，不打印（避免一上来刷 20 个 id）
-        observeFirstPageOrder(list.slice(0, pageSize), checkCount, true);
-
+      if (initPages > 1) {
         console.log(
-          `[Tab监控] 初始化完成，Tab ID: ${tabId}, 翻页 ${pagesFetched} 页, 本次抓取商品数: ${previousList.length}, 累计已记录: ${seenProducts.length}`
+          `[Tab监控] 初始化全量翻页（最多 ${initPages} 页），Tab ID: ${tabId}`
         );
-
-        if (initPages === MAX_TAB_FULL_SCAN_PAGE_COUNT && pagesFetched >= initPages) {
-          console.warn(
-            `[Tab监控] 初始化已达 ${initPages} 页上限，更靠后的商品不会被记入基线，Tab ID: ${tabId}`
-          );
-        }
-
-        // 初次建基线同样只记录不推送（重启续跑时 initialSeenProducts 已包含历史商品）
-        lastBaselineResetAt = Date.now();
-        reportProgress(newlySeen);
-      } catch (error) {
-        console.error('[Tab监控] 初始化失败:', error);
-        throw new Error(`初始化Tab监控失败: ${error instanceof Error ? error.message : String(error)}`);
       }
+
+      const { list, newlySeen, pagesFetched } = await fetchAndMarkSeen(initPages);
+      previousList = list;
+      checkCount++;
+
+      // 初始化只记录首页基准，不打印（避免一上来刷 20 个 id）
+      observeFirstPageOrder(list.slice(0, pageSize), checkCount, true);
+
+      console.log(
+        `[Tab监控] 初始化完成，Tab ID: ${tabId}, 翻页 ${pagesFetched} 页, 本次抓取商品数: ${previousList.length}, 累计已记录: ${seenProducts.length}`
+      );
+
+      if (initPages === MAX_TAB_FULL_SCAN_PAGE_COUNT && pagesFetched >= initPages) {
+        console.warn(
+          `[Tab监控] 初始化已达 ${initPages} 页上限，更靠后的商品不会被记入基线，Tab ID: ${tabId}`
+        );
+      }
+
+      // 初次建基线同样只记录不推送（重启续跑时 initialSeenProducts 已包含历史商品）
+      lastBaselineResetAt = Date.now();
+      reportProgress(newlySeen);
+    } catch (error) {
+      console.error('[Tab监控] 初始化失败:', error);
+      throw new Error(`初始化Tab监控失败: ${error instanceof Error ? error.message : String(error)}`);
     }
 
     // 等待第一次间隔后再开始监控
@@ -885,77 +856,12 @@ export const createCancellableTabMonitor = (
 
       const elapsedTime = getElapsedSeconds();
 
-      // 检查是否达到总时长限制（休眠不计时，不会因为停在时段外而被判到期）
+      // 检查是否达到总时长限制
       if (duration && elapsedTime >= duration) {
         break;
       }
 
-      // 不在生效时段：休眠到下次开始，期间不发请求、不消耗监控时长
-      if (activeWindow && !isWithinActiveWindow(new Date(), activeWindow)) {
-        const waitMs = msUntilActiveWindowStart(new Date(), activeWindow);
-
-        console.log(
-          `[Tab监控] 不在生效时段 ${activeWindow.start}-${activeWindow.end}，休眠 ${Math.round(
-            waitMs / 1000
-          )} 秒后继续，Tab ID: ${tabId}`
-        );
-
-        reportProgress();
-
-        await sleepInterruptible(waitMs, signal);
-
-        // 醒来后进入时段，先重建基线再开始检测
-        needBaselineRefresh = true;
-        continue;
-      }
-
-      // 刚进入生效时段：先抓一轮并入「已见」集合，不比对、不推送
-      if (needBaselineRefresh) {
-        try {
-          const { list, newlySeen, pagesFetched } = await fetchAndMarkSeen(
-            MAX_TAB_FULL_SCAN_PAGE_COUNT
-          );
-
-          previousList = list;
-          checkCount++;
-          needBaselineRefresh = false;
-          lastBaselineResetAt = Date.now();
-
-          // 重建基线时同步刷新首页顺序基准
-          observeFirstPageOrder(list.slice(0, pageSize), checkCount, true);
-
-          console.log(
-            `[Tab监控] 已进入生效时段，重建基线，Tab ID: ${tabId}, 翻页 ${pagesFetched} 页, 当前商品数: ${previousList.length}`
-          );
-
-          reportProgress(newlySeen);
-
-          // 基线建好后等一个间隔再检测，避免把「建基线」和「检测」压在同一时刻
-          await sleepInterruptible(interval * 1000, signal);
-          continue;
-        } catch (error) {
-          errorCount++;
-          const message = error instanceof Error ? error.message : String(error);
-          console.error('[Tab监控] 进入生效时段后建立基线失败:', error);
-
-          if (resultCallback) {
-            resultCallback({
-              tabId,
-              detected: false,
-              error: message,
-              checkCount,
-              errorCount,
-            });
-          }
-
-          // 保持待重建状态，下一个间隔继续重试，不拿旧基线做检测
-          await sleepInterruptible(interval * 1000, signal);
-          continue;
-        }
-      }
-
       // 每日定时重建：任务跨天运行时，每天到点清空已见记录，以当下在售商品为起点重新开始
-      // 放在生效时段检查之后、正常检测之前：时段外不发请求，醒来后先建基线再判断是否到点
       if (dailyResetEnabled && lastBaselineResetAt < lastDailyResetBoundary(new Date())) {
         try {
           // 先抓取成功再清空：抓取失败时保留旧基线，下一轮继续重试

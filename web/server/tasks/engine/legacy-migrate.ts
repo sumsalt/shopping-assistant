@@ -225,7 +225,6 @@ export const migrateTab = (raw: Raw): MigratedTask => {
         mode: config.mode === 'diff' ? 'diff' : 'accumulate',
         interval: num(config.interval, 300),
         duration: num(config.duration, 3 * 60 * 60),
-        ...(config.activeWindow ? { activeWindow: config.activeWindow } : {}),
         ...(config.page !== undefined ? { page: num(config.page) } : {}),
         ...(config.pageSize !== undefined ? { pageSize: num(config.pageSize) } : {}),
         ...(config.sort !== undefined ? { sort: num(config.sort) } : {}),

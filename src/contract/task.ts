@@ -110,8 +110,6 @@ export interface TaskConfigView {
   skus?: string[] | null
   /** 自动下单配置 */
   autoOrder?: AutoOrderView | null
-  /** Tab 生效时段 */
-  activeWindow?: { start: string; end: string } | null
   /** Tab 模式 */
   mode?: 'accumulate' | 'diff'
   /** 续期任务来源 */
