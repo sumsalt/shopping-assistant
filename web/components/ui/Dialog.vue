@@ -10,17 +10,20 @@
       leave-from-class="opacity-100"
       leave-to-class="opacity-0"
     >
-      <!-- 遮罩容器：固定铺满「动态视口」。打开时页面被锁住不再滚动（见 useScrollLock）。
-           高度必须用 100dvh 显式给定、不能用 inset-0——移动端 Chrome 滚动后地址栏隐藏，
-           inset-0 走的是布局视口（更大），而面板高度走 100dvh（动态视口），两者差一个地址栏
-           高度，面板就会整体偏移。遮罩与面板统一用 dvh 基准即可对齐。 -->
+      <!-- 遮罩容器：钉在「视觉视口」(visualViewport) 上，而不是靠 fixed + dvh 那套会随
+           移动端地址栏显隐漂移的基准。位置/尺寸由 JS 读 visualViewport 的 offsetTop/
+           offsetLeft/width/height 实时写入 viewportStyle（见下方 syncViewport）。
+           原因：页面滚动后地址栏隐藏，打开弹窗锁滚动会让地址栏重新出现；此时面板高度
+           按隐藏时的大视口算、而 fixed top:0 锚在大视口顶部被地址栏盖住，整块面板就
+           上移一个地址栏高度（标题栏被裁、底部露出页面）。用 visualViewport 后，遮罩
+           始终严格贴合当前可见区域，地址栏怎么显隐都跟着变。 -->
       <!-- 页面被 keep-alive 缓存时用 display:none 藏起来：teleport 到 body 的遮罩不属于页面子树，
            页面切走后它会留在 body 上，变成盖住新页面的「幽灵弹窗」—— 看着是个弹窗，
            实际整页都点不动。用 display 而不是卸载，返回页面时 DOM 与滚动位置原样保留 -->
       <div
         v-if="open"
-        class="dialog-backdrop fixed left-0 right-0 top-0 flex items-center justify-center p-4 overscroll-contain"
-        :style="{ zIndex, display: pageActive ? undefined : 'none' }"
+        class="dialog-backdrop fixed flex items-center justify-center p-4 overscroll-contain"
+        :style="{ ...viewportStyle, zIndex, display: pageActive ? undefined : 'none' }"
         @click="handleBackdropClick"
       >
         <!-- 背景遮罩：touch-none 让在蒙层上起手滑动不再驱动页面滚动（body 锁失效时的兜底） -->
@@ -152,15 +155,68 @@ const { zIndex, acquire: acquireLayer, release: releaseLayer } = useDialogLayer(
  */
 const pageActive = ref(true)
 
+/**
+ * 遮罩钉在「视觉视口」上。
+ *
+ * 移动端 Chrome/Safari 的地址栏会随滚动收起、随弹窗锁滚动重新出现，导致
+ * layout viewport（fixed + dvh 的基准）与当前可见区域不一致：面板按大视口定高、
+ * 却锚在大视口顶部，被重新出现的地址栏盖住一截，看起来整块弹窗上移。
+ * visualViewport 直接给出当前可见区域的高度和相对布局视口的偏移，
+ * 用它显式定位遮罩，地址栏怎么变都能贴合。
+ */
+const viewportStyle = ref<Record<string, string>>({})
+let viewportBound = false
+
+const syncViewport = () => {
+  if (!import.meta.client) return
+  const vv = window.visualViewport
+  if (!vv) {
+    // 不支持 visualViewport 的老浏览器：退回 fixed inset-0 + dvh
+    viewportStyle.value = { top: '0px', left: '0px', width: '100%', height: '100dvh' }
+    return
+  }
+  // visualViewport 的 width/height/offsetLeft/offsetTop 均以 CSS 像素给出，
+  // 直接可用，不要除 scale（除了会让缩放时算错，没有别的作用）。
+  // fixed 元素相对布局视口定位，而 offsetLeft/offsetTop 正是可视区相对布局视口的偏移。
+  viewportStyle.value = {
+    top: `${vv.offsetTop}px`,
+    left: `${vv.offsetLeft}px`,
+    width: `${vv.width}px`,
+    height: `${vv.height}px`,
+  }
+}
+
+const bindViewport = () => {
+  if (!import.meta.client || viewportBound) return
+  syncViewport()
+  // 地址栏收起/展开会触发 resize，滚动导致可视区相对布局视口位移会触发 scroll
+  window.visualViewport?.addEventListener('resize', syncViewport)
+  window.visualViewport?.addEventListener('scroll', syncViewport)
+  window.addEventListener('resize', syncViewport)
+  viewportBound = true
+}
+
+const unbindViewport = () => {
+  if (!viewportBound) return
+  window.visualViewport?.removeEventListener('resize', syncViewport)
+  window.visualViewport?.removeEventListener('scroll', syncViewport)
+  window.removeEventListener('resize', syncViewport)
+  viewportBound = false
+}
+
 watch(
   () => props.open,
   (open) => {
     if (!import.meta.client) return
     if (open) {
       acquireLayer()
+      bindViewport()
       rememberedScrollY = lockScroll()
+      // 锁滚动可能让地址栏重新出现、改变可视区，锁完再同步一次
+      syncViewport()
     } else {
       releaseLayer()
+      unbindViewport()
       unlockScroll()
     }
   },
@@ -170,7 +226,9 @@ watch(
 onMounted(() => {
   if (!props.open) return
   acquireLayer()
+  bindViewport()
   rememberedScrollY = lockScroll()
+  syncViewport()
 })
 
 // 页面被 keep-alive 缓存（如从弹窗点进商品详情）时先解锁，否则目标页滚不动；
@@ -180,6 +238,7 @@ onDeactivated(() => {
   pageActive.value = false
   if (!props.open) return
   releaseLayer()
+  unbindViewport()
   unlockScroll(false)
 })
 // 回到缓存的页面：按离开时的位置重新钉住，弹窗与列表位置原样恢复；
@@ -190,11 +249,14 @@ onActivated(() => {
   acquireLayer()
   // 先把页面放回离开时的位置，再上锁；顺序反了会把列表钉在错的位置
   scrollPageTo(rememberedScrollY)
+  bindViewport()
   lockScroll()
+  syncViewport()
 })
 
 onBeforeUnmount(() => {
   releaseLayer()
+  unbindViewport()
   unlockScroll()
 })
 
@@ -213,23 +275,14 @@ const close = () => {
 
 <style scoped>
 /*
- * 移动端 Chrome 地址栏会随滚动收起/展开，视口单位由此分两套：
- *   - 布局视口（inset-0、100vh）：地址栏收起时的大视口，滚动后变大；
- *   - 动态视口（100dvh）：始终等于当前可见高度，地址栏展开时更小。
- * 之前遮罩用 inset-0（布局视口）、面板用 100dvh（动态视口），滚动后地址栏一收起，
- * 两者就差出一个地址栏高度，面板相对遮罩居中时整体上移，标题被地址栏裁掉。
- * 现在遮罩与面板统一到 dvh 这一个基准：
- *   遮罩 height = 100dvh；面板高度用百分比，相对遮罩内容区计算
- *   （遮罩带 p-4，flex 项的 100% 已自动扣除上下共 2rem 内边距）。
- *   地址栏怎么收展，两者都一起变，不再错位。
- * vh 行仅作老浏览器降级（不支持 dvh 时退回 vh）。
+ * 遮罩的定位与尺寸不在这里写死，而是由 JS 读 visualViewport 实时写入内联样式
+ * （见脚本里的 viewportStyle / syncViewport）。这样遮罩严格贴合当前可见区域，
+ * 不受移动端地址栏显隐导致的「布局视口 vs 可视视口」错位影响。
+ *
+ * 面板高度相对遮罩内容区用百分比计算：
+ *   遮罩带 p-4，flex 项的 100% 已自动扣除上下共 2rem 内边距，
+ *   与遮罩同一基准，地址栏怎么变都不会错位。
  */
-.dialog-backdrop {
-  height: 100vh;
-  height: 100dvh;
-}
-
-/* 面板上限相对遮罩内容区，用百分比而非 dvh，保证与遮罩同一基准。 */
 .dialog-panel {
   max-height: 100%;
 }
