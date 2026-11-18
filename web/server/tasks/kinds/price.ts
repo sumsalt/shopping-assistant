@@ -717,6 +717,10 @@ const runCollectionPriceMonitor = (
         detected: false,
         currentPrice: price,
         checkCount: state.checkCount,
+        // 必须带上库存：applyPriceResult 会用 result 整体覆盖上面的 state.snapshot，
+        // 不带就会把刚写进去的 inStock/stockMessage 抹掉，导致卡片不显示有货/无货。
+        ...(item.inStock !== undefined ? { inStock: item.inStock } : {}),
+        ...(item.message ? { stockMessage: item.message } : {}),
       }
 
       try {
