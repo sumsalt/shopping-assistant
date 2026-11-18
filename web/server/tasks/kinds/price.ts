@@ -496,6 +496,8 @@ export const priceDefinition: TaskKindDefinition<PriceTaskState> = {
         ...(state.config.duration !== undefined ? { duration: state.config.duration } : {}),
         notifyOn: state.config.notifyOn,
         minPriceDelta: state.config.minPriceDelta,
+        // 老任务没有 channel 字段，按普通通道处理
+        channel: state.config.channel === 'collection' ? 'collection' : 'normal',
         autoOrder: toAutoOrderView(policy),
       },
       events,

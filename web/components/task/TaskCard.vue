@@ -178,9 +178,9 @@ const KIND_LABEL: Record<TaskKind, string> = {
 
 const kindLabel = computed(() => KIND_LABEL[props.task.kind])
 
-/** 到货任务的监控通道标签；其他 kind 不展示 */
+/** 到货 / 价格任务的监控通道标签；其他 kind 不展示 */
 const channelLabel = computed(() => {
-  if (props.task.kind !== 'stock') return ''
+  if (props.task.kind !== 'stock' && props.task.kind !== 'price') return ''
   return props.task.config.channel === 'collection' ? '收藏夹' : '普通'
 })
 
