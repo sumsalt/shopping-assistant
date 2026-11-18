@@ -357,7 +357,9 @@
           </div>
         </div>
 
-        <!-- 星级选择 -->
+        <!-- 星级选择：显示完全由选中的 draft 驱动（所见即所得）。
+             不用 mouseenter/mouseleave 做悬停预览——触屏（iOS Safari）会合成 mouseenter 但常常不触发
+             mouseleave，hover 值卡住后，点击的星与保存的值对不上，看着像"点保存变成 5 星/保存不了"。 -->
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-2">星级</label>
           <div class="flex items-center gap-1">
@@ -365,15 +367,14 @@
               v-for="n in 5"
               :key="n"
               type="button"
-              class="p-1 rounded transition-transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              class="p-1 rounded transition-transform active:scale-110 focus:outline-none focus:ring-2 focus:ring-blue-500"
               :aria-label="`${n} 星`"
+              :aria-pressed="shopRatingDraft === n"
               @click="shopRatingDraft = n"
-              @mouseenter="hoverShopRating = n"
-              @mouseleave="hoverShopRating = 0"
             >
               <svg
                 class="w-9 h-9 transition-colors"
-                :class="n <= (hoverShopRating || shopRatingDraft) ? 'text-amber-400' : 'text-gray-200'"
+                :class="n <= shopRatingDraft ? 'text-amber-400' : 'text-gray-200'"
                 fill="currentColor"
                 viewBox="0 0 20 20"
               >
@@ -381,11 +382,11 @@
               </svg>
             </button>
             <span class="ml-2 text-sm font-medium text-gray-600">
-              {{ shopRatingMeta(hoverShopRating || shopRatingDraft) }}
+              {{ shopRatingMeta(shopRatingDraft) }}
             </span>
           </div>
           <p
-            v-if="(hoverShopRating || shopRatingDraft) === 1"
+            v-if="shopRatingDraft === 1"
             class="mt-2 rounded-lg bg-red-50 px-3 py-2 text-xs leading-5 text-red-700"
           >
             评 1 星会拉黑该店铺：之后该店铺的商品不再被抓取，也不会出现在 Tab 监控的累计记录里。
@@ -513,42 +514,52 @@ const handleToggleCollection = async () => {
 /* ---------------- 店铺评分（评 1 星即拉黑） ---------------- */
 const showShopRatingDialog = ref(false)
 const shopRating = ref(0)          // 已保存的评分，0 = 未评分
-const shopRatingDraft = ref(5)     // 弹窗里的临时选择
-const hoverShopRating = ref(0)
+const shopRatingDraft = ref(0)     // 弹窗里的临时选择，0 = 尚未选星（必须明确选一颗才能保存）
 const shopRatingError = ref('')
 const savingShopRating = ref(false)
 
 const shopRatingMeta = (rating: number): string =>
   ({ 1: '1 星 · 拉黑', 2: '2 星 · 谨慎下单', 3: '3 星 · 一般', 4: '4 星 · 值得回购', 5: '5 星 · 强烈推荐' })[rating] ?? '选择星级'
 
-/** 打开评分弹窗：先按 supplyId 回显已保存的评分，并自动带出图标 */
-const openShopRating = async () => {
-  const provider = skuResult.value?.provider
-  if (!provider?.supplyId) return
-
-  shopRatingError.value = ''
-  shopRatingDraft.value = shopRating.value > 0 ? shopRating.value : 5
-  showShopRatingDialog.value = true
-
+/** 页面加载后按 supplyId 回显已保存评分，让评分按钮刷新后仍显示正确星级 */
+const loadShopRating = async () => {
+  const supplyId = skuResult.value?.provider?.supplyId
+  if (!supplyId) {
+    shopRating.value = 0
+    return
+  }
   try {
     const response = await $fetch<{
       success: boolean
       data?: { rating: number }
-      error?: { message?: string }
-    }>('/api/shops/rating', { query: { supplyId: provider.supplyId } })
-    if (response.success && response.data && response.data.rating > 0) {
-      shopRating.value = response.data.rating
-      shopRatingDraft.value = response.data.rating
-    }
+    }>('/api/shops/rating', { query: { supplyId } })
+    shopRating.value = response.success && response.data ? response.data.rating : 0
   } catch {
-    // 回显失败不阻塞评分，用默认值继续
+    shopRating.value = 0
   }
+}
+
+/** 打开评分弹窗：用已加载的评分回显。评分在页面加载时查好，这里不重复发请求，
+ *  避免异步回显在用户选星之后到达、把选择覆盖掉。 */
+const openShopRating = () => {
+  const provider = skuResult.value?.provider
+  if (!provider?.supplyId) return
+
+  shopRatingError.value = ''
+  // 回显已保存评分；没评过分则保持未选（0），避免默认 5 星被误存
+  shopRatingDraft.value = shopRating.value
+  showShopRatingDialog.value = true
 }
 
 /** 保存评分：按 supplyId upsert，带上一手 provider 的名称 / 市场 / 图标 */
 const saveShopRating = async () => {
   const provider = skuResult.value?.provider
   if (!provider?.supplyId || savingShopRating.value) return
+
+  if (shopRatingDraft.value < 1 || shopRatingDraft.value > 5) {
+    shopRatingError.value = '请先选择星级'
+    return
+  }
 
   savingShopRating.value = true
   shopRatingError.value = ''
@@ -719,6 +730,8 @@ const handleRetry = () => {
 const loadSkuData = async () => {
   if (!productId.value) return
   await getProductSkus(productId.value)
+  // 商品数据就绪后回显店铺评分（有 supplyId 才查，失败不阻塞页面）
+  void loadShopRating()
 }
 
 // 页面加载时获取数据
