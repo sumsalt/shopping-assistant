@@ -25,9 +25,10 @@ export const useConfig = () => {
   const toast = useToast()
   const router = useRouter()
 
-  const formData = ref<{ proxyUrl: string; proxyEnabled: boolean }>({
+  const formData = ref<{ proxyUrl: string; proxyEnabled: boolean; collectionAccountId: string }>({
     proxyUrl: '',
     proxyEnabled: false,
+    collectionAccountId: '',
   })
 
   const formErrors = ref<Record<string, string>>({})
@@ -46,6 +47,7 @@ export const useConfig = () => {
     formData.value = {
       proxyUrl: configStore.proxyUrl || '',
       proxyEnabled: Boolean(configStore.proxyEnabled),
+      collectionAccountId: configStore.collectionAccountId || '',
     }
     formErrors.value = {}
     selectedAccountId.value = configStore.activeAccount?.id || ''
@@ -112,13 +114,14 @@ export const useConfig = () => {
     }
   }
 
-  /** 保存代理设置 */
+  /** 保存运行设置（代理 + 收藏夹监控账号） */
   const saveConfig = async (): Promise<boolean> => {
     isSaving.value = true
     try {
       const ok = await configStore.saveSettings({
         proxyUrl: formData.value.proxyUrl.trim(),
         proxyEnabled: Boolean(formData.value.proxyEnabled),
+        collectionAccountId: formData.value.collectionAccountId.trim(),
       })
       if (!ok) {
         toast.error('配置保存失败')
@@ -135,7 +138,7 @@ export const useConfig = () => {
   const resetConfig = async (): Promise<void> => {
     isResetting.value = true
     try {
-      await configStore.saveSettings({ proxyUrl: '', proxyEnabled: false })
+      await configStore.saveSettings({ proxyUrl: '', proxyEnabled: false, collectionAccountId: '' })
       await configStore.clearActiveAccount()
       initFormData()
       toast.info('配置已重置')

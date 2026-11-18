@@ -140,8 +140,14 @@ export class TaskService<S> {
   }
 
   /** 删除 */
-  remove(username: string, taskId: string): void {
-    this.requireOwned(username, taskId, '删除')
+  async remove(username: string, taskId: string): Promise<void> {
+    const record = this.requireOwned(username, taskId, '删除')
+    // 删除前清理副作用（如收藏夹通道取消收藏 + 注销订阅），失败不阻止删除
+    try {
+      await this.definition.onRemove?.(record)
+    } catch (error) {
+      console.error(`[${this.definition.label}] 删除清理失败:`, error)
+    }
     this.registry.abort(taskId)
     this.registry.remove(taskId)
   }

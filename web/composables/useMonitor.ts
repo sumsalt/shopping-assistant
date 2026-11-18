@@ -23,6 +23,8 @@ interface MonitorConfig {
   skus?: string[]
   /** 有货自动下单（需要登录态） */
   autoOrder?: AutoOrderSettings
+  /** 检测通道：normal=各自循环；collection=共享收藏夹循环 */
+  channel?: 'normal' | 'collection'
 }
 
 // 创建任务响应类型
@@ -86,6 +88,7 @@ export const useMonitor = () => {
       duration: config?.duration || DEFAULT_STOCK_MONITOR_DURATION,
       ...(config?.skus?.length ? { skus: config.skus } : {}),
       ...(config?.autoOrder ? { autoOrder: config.autoOrder } : {}),
+      channel: config?.channel || 'normal',
     }
 
     const data = await submit<CreateTaskResponse>(

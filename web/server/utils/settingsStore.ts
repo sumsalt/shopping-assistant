@@ -5,7 +5,7 @@
  * 代理开关与地址必须由服务端保存，不能由前端每次请求携带
  * （否则任何客户端都能把服务器的出口改到内网地址）。
  *
- * 目前只有代理；后续新增运行级配置继续放这里，key 用扁平字符串。
+ * 目前有代理与收藏夹监控专用账号；后续新增运行级配置继续放这里，key 用扁平字符串。
  */
 
 import { getDb } from './db'
@@ -16,14 +16,18 @@ export interface RuntimeSettings {
   proxyUrl: string
   /** 是否启用代理 */
   proxyEnabled: boolean
+  /** 收藏夹监控专用账号 ID（该账号收藏夹由自动监控任务全权托管） */
+  collectionAccountId: string
 }
 
 const KEY_PROXY_URL = 'proxyUrl'
 const KEY_PROXY_ENABLED = 'proxyEnabled'
+const KEY_COLLECTION_ACCOUNT_ID = 'collectionAccountId'
 
 const DEFAULT_SETTINGS: RuntimeSettings = {
   proxyUrl: '',
   proxyEnabled: false,
+  collectionAccountId: '',
 }
 
 /** 读取全部设置 */
@@ -42,6 +46,7 @@ export const getRuntimeSettings = (): RuntimeSettings => {
     return {
       proxyUrl: map.get(KEY_PROXY_URL) ?? DEFAULT_SETTINGS.proxyUrl,
       proxyEnabled: map.get(KEY_PROXY_ENABLED) === '1',
+      collectionAccountId: map.get(KEY_COLLECTION_ACCOUNT_ID) ?? DEFAULT_SETTINGS.collectionAccountId,
     }
   } catch (error) {
     console.error('[Settings] 读取运行设置失败:', error)
@@ -77,6 +82,9 @@ export const saveRuntimeSettings = (input: Partial<RuntimeSettings>): RuntimeSet
     }
     if (input.proxyEnabled !== undefined) {
       put(KEY_PROXY_ENABLED, input.proxyEnabled ? '1' : '0')
+    }
+    if (input.collectionAccountId !== undefined) {
+      put(KEY_COLLECTION_ACCOUNT_ID, input.collectionAccountId.trim())
     }
     db.exec('COMMIT')
   } catch (error) {

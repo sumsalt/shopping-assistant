@@ -39,6 +39,15 @@
         中选择带登录态的账号并设为当前账号。
       </div>
 
+      <!-- 检测通道 -->
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">检测通道</label>
+        <UiSelect v-model="channel" :options="channelOptions" :disabled="isLoading" />
+        <p class="mt-1 text-xs text-gray-400">
+          收藏夹通道由单个共享循环批量监控（需在系统配置里指定专用账号），只支持按指定价格下单，不支持折扣 / 优惠券计算
+        </p>
+      </div>
+
       <!-- 监控时长 -->
       <div>
         <label class="block text-sm font-medium text-gray-700 mb-1">监控时长</label>
@@ -103,9 +112,18 @@
             <input v-model="autoOrderMode" type="radio" value="price" :disabled="isLoading" class="rounded border-gray-300">
             目标价
           </label>
-          <label class="flex items-center gap-1 text-sm text-gray-700 cursor-pointer">
-            <input v-model="autoOrderMode" type="radio" value="discount" :disabled="isLoading" class="rounded border-gray-300">
-            折扣
+          <label
+            class="flex items-center gap-1 text-sm cursor-pointer"
+            :class="channel === 'collection' ? 'text-gray-400 cursor-not-allowed' : 'text-gray-700'"
+          >
+            <input
+              v-model="autoOrderMode"
+              type="radio"
+              value="discount"
+              :disabled="isLoading || channel === 'collection'"
+              class="rounded border-gray-300"
+            >
+            折扣<span v-if="channel === 'collection'" class="text-xs">（收藏夹通道不支持）</span>
           </label>
         </div>
         <div
@@ -340,6 +358,12 @@ const toast = useToast()
 const { createPriceMonitorTask, isLoading } = usePriceMonitor()
 const { checkStock } = useStock()
 
+// 检测通道
+const channel = ref<'normal' | 'collection'>('normal')
+const channelOptions = [
+  { value: 'normal' as const, label: '普通通道（每个任务独立检测）' },
+  { value: 'collection' as const, label: '收藏夹通道（共享循环批量检测）' },
+]
 // 监控时长（默认 72 小时）
 const duration = ref(DEFAULT_PRICE_MONITOR_DURATION)
 // 通知条件
@@ -464,8 +488,15 @@ const handleSubmit = async () => {
       return
     }
 
+    // 收藏夹通道不支持折扣，强制按指定价格触发
+    if (channel.value === 'collection') autoOrderMode.value = 'price'
+
     const trigger = validateTrigger()
     if (!trigger) {
+      return
+    }
+    if (channel.value === 'collection' && trigger.mode !== 'price') {
+      toast.warning('收藏夹通道只支持指定价格下单')
       return
     }
 
@@ -483,6 +514,7 @@ const handleSubmit = async () => {
     notifyOn: notifyOn.value,
     minPriceDelta: Number.isFinite(minPriceDelta) && minPriceDelta > 0 ? minPriceDelta : 0.01,
     ...(autoOrder ? { autoOrder } : {}),
+    channel: channel.value,
   })
 
   if (taskId) {
@@ -502,6 +534,7 @@ watch(
     duration.value = DEFAULT_PRICE_MONITOR_DURATION
     notifyOn.value = 'any'
     minPriceDeltaInput.value = '0.01'
+    channel.value = 'normal'
     productNoCache.value = props.product?.productNo || ''
     resetAutoOrder()
   }

@@ -41,6 +41,8 @@ export interface ActiveAccountSummary {
 export interface RuntimeSettings {
   proxyUrl: string
   proxyEnabled: boolean
+  /** 收藏夹监控专用账号 ID */
+  collectionAccountId: string
 }
 
 // API 响应基础类型

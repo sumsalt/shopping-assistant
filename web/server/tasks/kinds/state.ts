@@ -17,6 +17,14 @@ import type {
   TaskEvent,
 } from '@core/contract'
 
+/** 收藏夹通道的任务托管信息（创建时加入收藏夹、结束时移除） */
+export interface CollectionCustody {
+  /** 商品货号（一手收藏按 goods_no 定位） */
+  productNo: string
+  /** 收藏条目 ID（取消收藏要用） */
+  collectId: string
+}
+
 /** 到货任务的落盘状态 */
 export interface StockTaskState {
   product: ProductRef
@@ -26,7 +34,11 @@ export interface StockTaskState {
     /** 限定规格；为空表示全部规格 */
     skus?: string[]
     autoOrder?: AutoOrderPolicy
+    /** 检测通道：normal=各自循环；collection=共享收藏夹循环 */
+    channel?: 'normal' | 'collection'
   }
+  /** 收藏夹通道的托管信息（仅 channel=collection 时有值） */
+  collection?: CollectionCustody
   result: {
     checkCount: number
     errorCount: number
@@ -56,7 +68,11 @@ export interface PriceTaskState {
     notifyOn: 'any' | 'drop' | 'rise'
     minPriceDelta: number
     autoOrder?: AutoOrderPolicy
+    /** 检测通道：normal=各自循环；collection=共享收藏夹循环 */
+    channel?: 'normal' | 'collection'
   }
+  /** 收藏夹通道的托管信息（仅 channel=collection 时有值） */
+  collection?: CollectionCustody
   checkCount: number
   detectedCount: number
   /** 最近一次快照，用于列表展示与重启基线 */

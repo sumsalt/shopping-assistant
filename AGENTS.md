@@ -55,4 +55,9 @@ sshpass -p '<服务器密码>' ssh ubuntu@43.143.118.204 \
   - 账号出口 IP：给账号填 `localAddress=10.206.0.17` 即走第二个出口；留空走 ip:default（eth0，公网 1.13.23.184）。据此做多 IP 分桶风控验证。注意 Node HTTP 用 localAddress 绑内网 IP，策略路由保证从对应网卡出去。
   - 账号管理的「出口网卡 IP」已改为纯下拉（commit e648376）：后端 `GET /api/network/addresses` 用 `os.networkInterfaces()` 枚举内网 IP + 腾讯云 metadata 按 MAC 查公网 IP（非云环境优雅降级），前端下拉显示「网卡名 · 内网IP → 公网IP」+「默认路由」项。端到端已验证返回 eth1→119.45.202.128 / eth0→1.13.23.184。
   - 价格监控弹窗已移除「检测间隔」输入框（commit e648376）：节奏完全由闸门控制，后端 interval 仅用默认值做时长边界预估。到货监控 / Tab 监控表单仍保留检测间隔字段（用户当次只要求改价格监控）。
+  - **收藏夹通道（多任务共享单循环）**：到货 / 价格任务表单可选「检测通道」，选 `collection` 时走共享收藏夹监控。架构：
+    - 核心 `src/collection-monitor.ts` 单例 `CollectionMonitorEngine`：一个循环按 `pageSize=20` 全量翻页 `checkCollectionStock`，按 `goods_no` 分发给订阅者，未订阅商品当脏数据默认 `removeProductFromCollection` 清理；循环不 sleep，跑在 `runWithGateContext(accountKey=收藏账号)` 里由登录桶控制节奏。
+    - server 单例 `web/server/tasks/collection-engine-service.ts` 持有引擎；`web/server/tasks/kinds/collection-support.ts` 提供解析收藏夹账号 / 加收藏 / 删收藏 / 订阅封装。收藏夹专用账号存在 `RuntimeSettings.collectionAccountId`（系统配置页选择，必须带登录态），变更时 `syncCollectionEngine()` 停旧启新；无账号 / 无订阅时停引擎。
+    - 任务生命周期：create 时 `requireCollectionAccount` + `addToCollection` 存 `state.collection={productNo,collectId}`；resolveAccount 返回收藏夹账号凭证（也用于下单）；run 时 collection 通道不启自身循环，改为 `subscribeCollection`（到货命中 / 价格到点触发下单+邮件后自动注销订阅结束；时长到期也结束）；`TaskKindDefinition.onRemove` 钩子在 service.remove 里调用，删任务时 unsubscribe + removeCollection。
+    - 限制：收藏夹通道不能选 SKU、不支持券后价 / 折扣计算、价格只支持指定目标价（collection 时强制 triggerMode=price）。一商品只能有一个收藏夹监控。
 - 部署到实验机时目标地址是 `1.13.23.184`，不要误覆盖主线 `43.143.118.204`。

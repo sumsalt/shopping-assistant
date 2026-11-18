@@ -182,6 +182,17 @@ export type {
   PriceResultCallback,
 } from './price-monitor';
 
+// 导出共享收藏夹监控引擎
+export {
+  CollectionMonitorEngine,
+} from './collection-monitor';
+export type {
+  CollectionAccountConfig,
+  CollectionItemHandler,
+  CollectionDirtyHandler,
+  CollectionMonitorConfig,
+} from './collection-monitor';
+
 // 导出全局请求闸门
 export {
   acquireRequestSlot,

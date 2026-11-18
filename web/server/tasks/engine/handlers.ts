@@ -79,7 +79,7 @@ export const deleteTaskHandler = <S>(service: TaskService<S>) =>
     const taskId = getQuery(event).taskId as string
     if (!taskId) throw new TaskApiError(ErrorCode.INVALID_PARAMS, '缺少任务 ID')
 
-    service.remove(user.username, taskId)
+    await service.remove(user.username, taskId)
     return createSuccessResponse({ message: '任务已删除', taskId })
   })
 

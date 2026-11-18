@@ -118,6 +118,12 @@ export interface TaskKindDefinition<S> {
   removeOriginalOnRestart?: boolean
 
   /**
+   * 删除任务前的清理钩子（如收藏夹通道取消收藏、注销共享引擎订阅）。
+   * 在 service.remove 调用，失败不应阻止任务删除。
+   */
+  onRemove?(record: TaskRecordBase<S>): void | Promise<void>
+
+  /**
    * 重启后续跑前的校正：
    * 返回 false 表示不续跑（已到期 / 已下单 / 结果未知），由 service 标记结束。
    */

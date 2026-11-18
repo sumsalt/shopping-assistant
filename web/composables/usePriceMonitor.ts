@@ -59,6 +59,8 @@ export interface PriceMonitorOptions {
   minPriceDelta?: number
   /** 价格到点自动下单（可选） */
   autoOrder?: PriceAutoOrderOptions
+  /** 检测通道：normal=各自循环；collection=共享收藏夹循环 */
+  channel?: 'normal' | 'collection'
 }
 
 /** 创建任务响应 */
@@ -150,6 +152,7 @@ export const usePriceMonitor = () => {
           notifyOn: options.notifyOn || 'any',
           minPriceDelta: options.minPriceDelta ?? 0.01,
           ...(options.autoOrder ? { autoOrder: options.autoOrder } : {}),
+          channel: options.channel || 'normal',
         },
       },
       { successMessage: '已创建价格监控任务', failureMessage: '创建价格监控失败' }

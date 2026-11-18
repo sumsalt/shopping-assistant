@@ -120,6 +120,26 @@
             </div>
           </div>
 
+          <hr class="border-gray-200" />
+
+          <!-- 收藏夹监控专用账号 -->
+          <div>
+            <h3 class="text-lg font-medium text-gray-900 mb-1">收藏夹监控专用账号</h3>
+            <p class="text-xs text-gray-500 mb-4">
+              收藏夹通道的到货 / 价格监控会共用一个循环，用这个账号的收藏夹存放被监控商品。
+              该账号的收藏夹应初始为空、且不要手动添加商品——创建任务时自动加入、任务结束自动移除，其余商品会被当作脏数据清理。
+            </p>
+            <label class="block text-sm font-medium text-gray-700 mb-1">专用账号</label>
+            <UiSelect
+              v-model="formData.collectionAccountId"
+              :options="collectionAccountOptions"
+              :disabled="isLoadingAccounts"
+            />
+            <p v-if="formData.collectionAccountId" class="mt-2 text-xs text-amber-600">
+              请勿在此账号的收藏夹里手动添加商品，否则会被监控循环自动清理。
+            </p>
+          </div>
+
           <!-- 操作按钮 -->
           <div class="flex items-center justify-between pt-4">
             <UiButton type="button" variant="ghost" @click="handleReset">
@@ -182,6 +202,18 @@ const accountOptions = computed(() => [
       accountDisplayName(item) +
       (item.uin ? ' · ' + item.uin : '') +
       (item.requestChannel ? ' · ' + (item.requestChannel === 'app' ? 'App' : '小程序') : '') +
+      (item.hasRequestProfile ? '' : ' · 无抓包信息'),
+  })),
+])
+
+/** 收藏夹专用账号下拉：含「不指定」+ 带登录态的账号（无凭证的禁用提示） */
+const collectionAccountOptions = computed(() => [
+  { value: '', label: '不指定（收藏夹通道不可用）' },
+  ...accountList.value.map(item => ({
+    value: item.id,
+    label:
+      accountDisplayName(item) +
+      (item.uin ? ' · ' + item.uin : '') +
       (item.hasRequestProfile ? '' : ' · 无抓包信息'),
   })),
 ])

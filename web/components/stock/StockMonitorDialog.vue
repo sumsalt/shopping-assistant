@@ -23,6 +23,15 @@
         </div>
       </div>
 
+      <!-- 检测通道 -->
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">检测通道</label>
+        <UiSelect v-model="channel" :options="channelOptions" :disabled="isLoading" />
+        <p class="mt-1 text-xs text-gray-400">
+          收藏夹通道由单个共享循环批量监控（需在系统配置里指定专用账号），不支持按规格监控
+        </p>
+      </div>
+
       <!-- 监控时长：普通到货监控与自动下单共用 -->
       <div>
         <label class="block text-sm font-medium text-gray-700 mb-1">监控时长</label>
@@ -37,7 +46,7 @@
             监控规格
             <span class="ml-1 text-xs font-normal text-gray-400">不选则监控全部规格</span>
           </label>
-          <div class="flex items-center gap-2 text-xs">
+          <div v-if="channel !== 'collection'" class="flex items-center gap-2 text-xs">
             <button
               type="button"
               class="text-blue-600 hover:underline disabled:text-gray-300"
@@ -57,7 +66,10 @@
           </div>
         </div>
 
-        <div v-if="isLoadingSkus" class="py-2 text-xs text-gray-500">加载规格中…</div>
+        <div v-if="channel === 'collection'" class="py-2 text-xs text-blue-600">
+          收藏夹通道按商品级有货判定，不支持指定规格
+        </div>
+        <div v-else-if="isLoadingSkus" class="py-2 text-xs text-gray-500">加载规格中…</div>
         <div v-else-if="skuError" class="py-2 text-xs text-amber-600">
           {{ skuError }}（将监控全部规格）
         </div>
@@ -281,6 +293,11 @@ const durationOptions: Array<{ value: number; label: string }> = STOCK_MONITOR_D
   option => ({ value: option.value, label: option.label })
 )
 const duration = ref<number>(DEFAULT_STOCK_MONITOR_DURATION)
+const channel = ref<'normal' | 'collection'>('normal')
+const channelOptions = [
+  { value: 'normal' as const, label: '普通通道（每个任务独立检测）' },
+  { value: 'collection' as const, label: '收藏夹通道（共享循环批量检测）' },
+]
 
 /** 自动下单的共享表单逻辑（与价格监控同一份） */
 const {
@@ -342,7 +359,7 @@ const handleSubmit = async () => {
     num: num.value,
     payTool: payTool.value,
     addressId: addressId.value || undefined,
-    skus: selectedSkus.value,
+    skus: channel.value === 'collection' ? [] : selectedSkus.value,
   })
 
   const taskId = await createMonitorTask(
@@ -353,7 +370,7 @@ const handleSubmit = async () => {
       // 落库货号，列表页据此跳转商品详情页（历史任务无货号则降级为不可跳）
       ...(props.product.productNo ? { productNo: props.product.productNo } : {}),
     },
-    config
+    { ...config, channel: channel.value }
   )
 
   if (taskId) {
@@ -376,6 +393,7 @@ watch(
   open => {
     if (open) {
       resetAutoOrder()
+      channel.value = 'normal'
     }
   }
 )

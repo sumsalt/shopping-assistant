@@ -7,18 +7,34 @@
 
 import {
   createCancellableMonitor,
+  getOrderAdapter,
+  placeAutoOrder,
+  sendEmail,
+  createBackInStockTemplate,
+  createAutoOrderTemplate,
+  createAutoOrderFailedTemplate,
   MAX_AUTO_ORDER_NUM,
   type AutoOrderConfig,
+  type CollectionStockResult,
   type MonitorResult,
   type MonitorTask,
   type StockMonitorConfig,
 } from '@core'
 import type { TaskKind, TaskSummary, Tone } from '@core/contract'
 import { ErrorCode } from '../../utils/response'
+import { resolveAdapterConfigForUser } from '../../utils/adapterConfig'
 import { ensureAutoRenewFromOrder } from '../auto-renew'
 import { TaskApiError, capEvents, makeEvent } from '../engine/types'
 import type { TaskKindDefinition, TaskRecordBase, TaskRunContext } from '../engine/types'
 import type { StockTaskState } from './state'
+import {
+  requireCollectionAccount,
+  requireCollectionAccountSafe,
+  addToCollection,
+  removeFromCollection,
+  subscribeCollection,
+  unsubscribeCollection,
+} from './collection-support'
 
 const KIND: TaskKind = 'stock'
 const VERSION = 2
@@ -95,7 +111,19 @@ export const stockDefinition: TaskKindDefinition<StockTaskState> = {
   // 按规格监控已改走匿名 get_goods_info_v2，不再要求凭证
   requiresAuth: body => Boolean(body?.config?.autoOrder?.enabled),
 
-  create({ body, secret }) {
+  resolveAccount({ body, user }) {
+    // 收藏夹通道：用专用收藏夹账号凭证（也用于下单）
+    if (body?.config?.channel === 'collection') {
+      const account = requireCollectionAccount()
+      return { accountId: account.accountId, secret: account.adapterConfig, hasCredential: true }
+    }
+    // 普通通道：沿用当前激活账号
+    const needAuth = Boolean(body?.config?.autoOrder?.enabled)
+    const resolved = resolveAdapterConfigForUser(user.username, needAuth)
+    return { accountId: resolved.account?.id ?? '', secret: resolved.config, hasCredential: resolved.hasCredential }
+  },
+
+  async create({ body, secret }) {
     const product = body?.product
     if (!product?.productId) {
       throw new TaskApiError(
@@ -103,6 +131,8 @@ export const stockDefinition: TaskKindDefinition<StockTaskState> = {
         '请指定要监控的商品（一个任务只能监控一个商品）'
       )
     }
+
+    const channel: 'normal' | 'collection' = body?.config?.channel === 'collection' ? 'collection' : 'normal'
 
     const rawInterval = body?.config?.interval
     // 实验分支：节奏由双层闸门控制，interval 仅作时长边界预估；缺省记为 0（自动设置）。
@@ -115,8 +145,26 @@ export const stockDefinition: TaskKindDefinition<StockTaskState> = {
       throw new TaskApiError(ErrorCode.INVALID_PARAMS, '检测间隔不能为负数')
     }
 
-    const skus = readSkus(body?.config?.skus)
-    const autoOrder = readAutoOrder(body?.config?.autoOrder, secret)
+    // 收藏夹通道：不能用 SKU，用专用账号凭证校验下单配置，并把商品加入收藏夹
+    const isCollection = channel === 'collection'
+    const skus = isCollection ? [] : readSkus(body?.config?.skus)
+    let orderSecret = secret
+    let custody: StockTaskState['collection']
+
+    if (isCollection) {
+      const collectionAccount = requireCollectionAccount()
+      orderSecret = collectionAccount.adapterConfig
+      if (!product.productNo) {
+        throw new TaskApiError(
+          ErrorCode.INVALID_PARAMS,
+          '收藏夹通道需要商品货号（productNo），请从收藏夹 / 详情页选择商品'
+        )
+      }
+      const collectId = await addToCollection(String(product.productNo), collectionAccount.adapterConfig)
+      custody = { productNo: String(product.productNo), collectId }
+    }
+
+    const autoOrder = readAutoOrder(body?.config?.autoOrder, orderSecret)
 
     return {
       state: {
@@ -131,7 +179,9 @@ export const stockDefinition: TaskKindDefinition<StockTaskState> = {
           duration: num(body?.config?.duration, DEFAULT_DURATION),
           ...(skus.length ? { skus } : {}),
           ...(autoOrder ? { autoOrder } : {}),
+          channel,
         },
+        ...(custody ? { collection: custody } : {}),
         result: {
           checkCount: 0,
           errorCount: 0,
@@ -147,6 +197,11 @@ export const stockDefinition: TaskKindDefinition<StockTaskState> = {
     const adapterConfig = record.secret
     if (!adapterConfig) {
       throw new TaskApiError(ErrorCode.AUTH_REQUIRED, '任务缺少账号快照，无法继续监控')
+    }
+
+    // 收藏夹通道：不启动自身循环，订阅共享收藏夹引擎
+    if (state.config.channel === 'collection') {
+      return runCollectionStockMonitor(record, state, ctx, adapterConfig)
     }
 
     const task: MonitorTask = {
@@ -289,6 +344,21 @@ export const stockDefinition: TaskKindDefinition<StockTaskState> = {
     }
     return true
   },
+
+  async onRemove(record) {
+    const state = record.state
+    if (state.config.channel !== 'collection' || !state.collection) return
+    unsubscribeCollection(state.collection.productNo)
+    const config = requireCollectionAccountSafe() ?? record.secret
+    if (config) {
+      await removeFromCollection(
+        state.collection.productNo,
+        state.collection.collectId,
+        state.product.productId,
+        config
+      )
+    }
+  },
 }
 
 /** 把一轮结果映射到 state + 事件 */
@@ -411,4 +481,141 @@ const buildNotice = (state: StockTaskState): TaskSummary['notice'] => {
     }
   }
   return null
+}
+
+/**
+ * 收藏夹通道的到货监控 runner。
+ *
+ * 不自己轮询，而是订阅共享收藏夹引擎；引擎每轮把该商品的最新状态推到 handler。
+ * 命中到货后复用普通通道的下单 / 邮件逻辑，然后注销订阅、结束任务。
+ */
+const runCollectionStockMonitor = (
+  record: TaskRecordBase<StockTaskState>,
+  state: StockTaskState,
+  ctx: TaskRunContext,
+  adapterConfig: NonNullable<TaskRecordBase<StockTaskState>['secret']>
+) => {
+  const controller = new AbortController()
+  const productNo = state.collection?.productNo || state.product.productNo || ''
+  let settled = false
+
+  const promise = new Promise<void>(resolve => {
+    const finish = () => {
+      if (settled) return
+      settled = true
+      clearTimeout(durationTimer)
+      unsubscribeCollection(productNo)
+      resolve()
+    }
+
+    const orderPolicy = state.config.autoOrder
+    const orderAdapter = orderPolicy?.enabled ? getOrderAdapter('yishou', adapterConfig) : null
+    let orderCooldownUntil = 0
+
+    const handler = async (item: CollectionStockResult) => {
+      if (settled || controller.signal.aborted || state.result.detected) return
+
+      state.result.checkCount++
+      ctx.save()
+
+      if (!item.inStock) {
+        // 仍无货：不触发，等下一轮
+        return
+      }
+
+      // 到货：命中。收藏夹通道不支持 SKU，直接按商品级状态触发
+      const result: MonitorResult = {
+        productId: item.productId,
+        productName: item.productName || state.product.productName || item.productId,
+        detected: false,
+        checkCount: state.result.checkCount,
+      }
+
+      try {
+        if (orderAdapter && orderPolicy && Date.now() >= orderCooldownUntil) {
+          const orderResult = await placeAutoOrder(orderAdapter, {
+            goodsId: item.productId,
+            goodsNo: item.productNo,
+            config: toCoreAutoOrder(state) || { enabled: true },
+            skus: [],
+          })
+          result.orderAttempts = (result.orderAttempts || 0) + 1
+          result.orderStage = orderResult.stage
+          if (!orderResult.success && orderResult.cooldownMs) {
+            orderCooldownUntil = Date.now() + orderResult.cooldownMs
+          }
+          if (orderResult.success) {
+            result.detected = true
+            result.orderSn = orderResult.orderSn
+            result.orderAmount = orderResult.orderAmount
+            result.orderExpireAt = orderResult.expireAt
+            result.orderSkuLabel = orderResult.skuLabel
+            result.orderItems = orderResult.items
+            result.orderNum = orderResult.num
+            const email = await sendEmail({
+              to: record.userEmail,
+              subject: `✅ 已自动下单（收藏夹监控）：${result.productName}（订单 ${orderResult.orderSn}）`,
+              html: createAutoOrderTemplate({
+                productName: result.productName,
+                productImage: item.productImage || state.product.productImage,
+                orderSn: orderResult.orderSn,
+                orderAmount: orderResult.orderAmount,
+                skuLabel: orderResult.skuLabel,
+                items: orderResult.items,
+                num: orderResult.num,
+                requestedNum: orderResult.requestedNum,
+                payTool: orderResult.payTool,
+                expireAt: orderResult.expireAt,
+              }),
+            })
+            result.emailSent = email.success
+          } else {
+            result.orderError = orderResult.message
+            result.orderUncertain = orderResult.uncertain
+            ctx.log(`收藏夹通道下单失败：${orderResult.message}`, 'warn')
+            // 可重试 / 冷却中：本轮不结束任务，下一轮再试
+            applyResult(record, state, result, ctx)
+            ctx.save()
+            return
+          }
+        } else {
+          // 纯到货通知
+          result.detected = true
+          const email = await sendEmail({
+            to: record.userEmail,
+            subject: `🎉 已到货（收藏夹监控）：${result.productName}`,
+            html: createBackInStockTemplate(
+              result.productName,
+              item.price,
+              item.productImage || state.product.productImage
+            ),
+          })
+          result.emailSent = email.success
+        }
+
+        applyResult(record, state, result, ctx)
+        ctx.save()
+        // 命中到货：任务完成，注销订阅并结束
+        finish()
+      } catch (error) {
+        result.error = error instanceof Error ? error.message : String(error)
+        applyResult(record, state, result, ctx)
+        ctx.save()
+      }
+    }
+
+    subscribeCollection(productNo, handler)
+
+    controller.signal.addEventListener('abort', () => finish())
+
+    // 时长边界：到期自动结束（收藏夹通道靠这里控制总时长，请求节奏靠闸门）
+    const durationSec = ctx.durationSeconds ?? state.config.duration
+    const durationTimer = setTimeout(
+      () => finish(),
+      durationSec > 0 ? durationSec * 1000 : 24 * 60 * 60 * 1000
+    )
+    if (typeof durationTimer.unref === 'function') durationTimer.unref()
+  })
+
+  return { controller, promise }
 }

@@ -10,7 +10,13 @@ import {
   DEFAULT_MIN_PRICE_DELTA,
   DEFAULT_PRICE_MONITOR_INTERVAL,
   getAdapter,
+  getOrderAdapter,
+  placeAutoOrder,
+  sendEmail,
+  createAutoOrderTemplate,
+  createAutoOrderFailedTemplate,
   type AutoOrderConfig,
+  type CollectionStockResult,
   type PriceMonitorConfig,
   type PriceMonitorResult,
   type PriceMonitorTask,
@@ -24,10 +30,19 @@ import type {
   Tone,
 } from '@core/contract'
 import { ErrorCode } from '../../utils/response'
+import { resolveAdapterConfigForUser } from '../../utils/adapterConfig'
 import { ensureAutoRenewFromOrder } from '../auto-renew'
 import { TaskApiError, capEvents, makeEvent } from '../engine/types'
 import type { TaskKindDefinition, TaskRecordBase, TaskRunContext } from '../engine/types'
 import type { PriceTaskState } from './state'
+import {
+  requireCollectionAccount,
+  requireCollectionAccountSafe,
+  addToCollection,
+  removeFromCollection,
+  subscribeCollection,
+  unsubscribeCollection,
+} from './collection-support'
 
 const KIND: TaskKind = 'price'
 const VERSION = 2
@@ -216,6 +231,15 @@ export const priceDefinition: TaskKindDefinition<PriceTaskState> = {
   // 比价必须用登录态拿货价，游客价口径不同
   requiresAuth: () => true,
 
+  resolveAccount({ body, user }) {
+    if (body?.config?.channel === 'collection') {
+      const account = requireCollectionAccount()
+      return { accountId: account.accountId, secret: account.adapterConfig, hasCredential: true }
+    }
+    const resolved = resolveAdapterConfigForUser(user.username, true)
+    return { accountId: resolved.account?.id ?? '', secret: resolved.config, hasCredential: resolved.hasCredential }
+  },
+
   async create({ body, secret, accountId }) {
     const product = body?.product
     if (!product?.productId) {
@@ -271,6 +295,27 @@ export const priceDefinition: TaskKindDefinition<PriceTaskState> = {
 
     void accountId
 
+    const channel: 'normal' | 'collection' = body?.config?.channel === 'collection' ? 'collection' : 'normal'
+    let custody: PriceTaskState['collection']
+    if (channel === 'collection') {
+      // 收藏夹通道：不支持折扣 / 券后价计算，只支持「指定价格下单」
+      if (autoOrder?.triggerMode === 'discount') {
+        throw new TaskApiError(
+          ErrorCode.INVALID_PARAMS,
+          '收藏夹通道不支持折扣下单，请改用指定目标价'
+        )
+      }
+      const productNo = product.productNo || initialSnapshot.productNo
+      if (!productNo) {
+        throw new TaskApiError(
+          ErrorCode.INVALID_PARAMS,
+          '收藏夹通道需要商品货号（productNo）'
+        )
+      }
+      const collectId = await addToCollection(String(productNo), secret)
+      custody = { productNo: String(productNo), collectId }
+    }
+
     return {
       state: {
         product: {
@@ -291,7 +336,9 @@ export const priceDefinition: TaskKindDefinition<PriceTaskState> = {
           notifyOn: notifyOnOf(body?.config?.notifyOn),
           minPriceDelta: num(body?.config?.minPriceDelta, DEFAULT_MIN_PRICE_DELTA),
           ...(autoOrder ? { autoOrder } : {}),
+          channel,
         },
+        ...(custody ? { collection: custody } : {}),
         checkCount: 0,
         detectedCount: 0,
         snapshot: {
@@ -316,6 +363,11 @@ export const priceDefinition: TaskKindDefinition<PriceTaskState> = {
     const adapterConfig = record.secret
     if (!adapterConfig) {
       throw new TaskApiError(ErrorCode.AUTH_REQUIRED, '任务缺少登录态，无法继续监控')
+    }
+
+    // 收藏夹通道：不启动自身循环，订阅共享收藏夹引擎
+    if (state.config.channel === 'collection') {
+      return runCollectionPriceMonitor(record, state, ctx, adapterConfig)
     }
 
     const duration = ctx.durationSeconds ?? state.config.duration
@@ -362,84 +414,7 @@ export const priceDefinition: TaskKindDefinition<PriceTaskState> = {
         ctx.save()
       },
       result => {
-        if (result.currentPrice !== undefined) {
-          state.snapshot = {
-            productId: result.productId,
-            productName: result.productName,
-            ...(state.product.productNo ? { productNo: state.product.productNo } : {}),
-            ...(state.product.productImage ? { productImage: state.product.productImage } : {}),
-            shopPrice: result.currentPrice,
-            checkedAt: Date.now(),
-            ...(result.inStock !== undefined ? { inStock: result.inStock } : {}),
-            ...(result.stockMessage ? { stockMessage: result.stockMessage } : {}),
-            ...(result.coupons ? { coupons: result.coupons } : {}),
-            ...(result.couponsNew ? { couponsNew: result.couponsNew } : {}),
-          }
-        }
-
-        state.lastError = result.error
-
-        if (result.orderSn && state.order?.orderSn !== result.orderSn) {
-          state.order = {
-            orderSn: result.orderSn,
-            ...(result.orderAmount !== undefined ? { amount: result.orderAmount } : {}),
-            ...(result.orderSkuLabel ? { skuLabel: result.orderSkuLabel } : {}),
-            ...(result.orderItems ? { items: result.orderItems } : {}),
-            ...(result.orderNum !== undefined ? { num: result.orderNum } : {}),
-            ...(result.orderExpireAt !== undefined ? { expireAt: result.orderExpireAt } : {}),
-            placedAt: Date.now(),
-          }
-          state.events = capEvents(
-            [
-              makeEvent('order.created', {
-                title: '价格到点已自动下单',
-                detail: `订单 ${result.orderSn}`,
-                tone: 'success',
-                orderSn: result.orderSn,
-                ...(result.orderAmount !== undefined ? { amount: result.orderAmount } : {}),
-              }),
-              ...state.events,
-            ],
-            MAX_EVENTS
-          )
-
-          // 自动下单成功：为对应账号补一个 12 小时续期任务（一次性守卫）
-          const guard = {
-            accountId: record.accountId,
-            autoRenewTriggered: state.autoRenewTriggered,
-            userId: record.userId,
-            userEmail: record.userEmail,
-            id: record.id,
-          }
-          void ensureAutoRenewFromOrder(guard, () => ctx.save('soon')).then(() => {
-            state.autoRenewTriggered = guard.autoRenewTriggered
-          })
-        }
-
-        state.orderError = result.orderError
-        state.orderSkipped = result.orderSkipped
-
-        if (!result.orderSn && result.orderError) {
-          const existing = state.events.find(
-            item => item.type === 'order.failed' && item.detail === result.orderError
-          )
-          if (!existing) {
-            state.events = capEvents(
-              [
-                makeEvent('order.failed', {
-                  title: '自动下单未成功',
-                  detail: result.orderError,
-                  tone: result.orderSkipped === 'no_stock' ? 'warning' : 'danger',
-                }),
-                ...state.events,
-              ],
-              MAX_EVENTS
-            )
-          }
-        }
-
-        pushEvent(state, priceEvent(state, result))
-        pushEvent(state, couponEvent(state, result))
+        applyPriceResult(record, state, result, ctx)
         ctx.save()
       }
     )
@@ -555,4 +530,256 @@ export const priceDefinition: TaskKindDefinition<PriceTaskState> = {
     }
     return true
   },
+
+  async onRemove(record) {
+    const state = record.state
+    if (state.config.channel !== 'collection' || !state.collection) return
+    unsubscribeCollection(state.collection.productNo)
+    const config = requireCollectionAccountSafe() ?? record.secret
+    if (config) {
+      await removeFromCollection(
+        state.collection.productNo,
+        state.collection.collectId,
+        state.product.productId,
+        config
+      )
+    }
+  },
+}
+
+/** 把一轮价格结果映射到 state + 事件（普通通道与收藏夹通道共用） */
+const applyPriceResult = (
+  record: TaskRecordBase<PriceTaskState>,
+  state: PriceTaskState,
+  result: PriceMonitorResult,
+  ctx: TaskRunContext
+): void => {
+  if (result.currentPrice !== undefined) {
+    state.snapshot = {
+      productId: result.productId,
+      productName: result.productName,
+      ...(state.product.productNo ? { productNo: state.product.productNo } : {}),
+      ...(state.product.productImage ? { productImage: state.product.productImage } : {}),
+      shopPrice: result.currentPrice,
+      checkedAt: Date.now(),
+      ...(result.inStock !== undefined ? { inStock: result.inStock } : {}),
+      ...(result.stockMessage ? { stockMessage: result.stockMessage } : {}),
+      ...(result.coupons ? { coupons: result.coupons } : {}),
+      ...(result.couponsNew ? { couponsNew: result.couponsNew } : {}),
+    }
+  }
+
+  state.lastError = result.error
+
+  if (result.orderSn && state.order?.orderSn !== result.orderSn) {
+    state.order = {
+      orderSn: result.orderSn,
+      ...(result.orderAmount !== undefined ? { amount: result.orderAmount } : {}),
+      ...(result.orderSkuLabel ? { skuLabel: result.orderSkuLabel } : {}),
+      ...(result.orderItems ? { items: result.orderItems } : {}),
+      ...(result.orderNum !== undefined ? { num: result.orderNum } : {}),
+      ...(result.orderExpireAt !== undefined ? { expireAt: result.orderExpireAt } : {}),
+      placedAt: Date.now(),
+    }
+    state.events = capEvents(
+      [
+        makeEvent('order.created', {
+          title: '价格到点已自动下单',
+          detail: `订单 ${result.orderSn}`,
+          tone: 'success',
+          orderSn: result.orderSn,
+          ...(result.orderAmount !== undefined ? { amount: result.orderAmount } : {}),
+        }),
+        ...state.events,
+      ],
+      MAX_EVENTS
+    )
+
+    const guard = {
+      accountId: record.accountId,
+      autoRenewTriggered: state.autoRenewTriggered,
+      userId: record.userId,
+      userEmail: record.userEmail,
+      id: record.id,
+    }
+    void ensureAutoRenewFromOrder(guard, () => ctx.save('soon')).then(() => {
+      state.autoRenewTriggered = guard.autoRenewTriggered
+    })
+  }
+
+  state.orderError = result.orderError
+  state.orderSkipped = result.orderSkipped
+
+  if (!result.orderSn && result.orderError) {
+    const existing = state.events.find(
+      item => item.type === 'order.failed' && item.detail === result.orderError
+    )
+    if (!existing) {
+      state.events = capEvents(
+        [
+          makeEvent('order.failed', {
+            title: '自动下单未成功',
+            detail: result.orderError,
+            tone: result.orderSkipped === 'no_stock' ? 'warning' : 'danger',
+          }),
+          ...state.events,
+        ],
+        MAX_EVENTS
+      )
+    }
+  }
+
+  pushEvent(state, priceEvent(state, result))
+  pushEvent(state, couponEvent(state, result))
+}
+
+/**
+ * 收藏夹通道的价格监控 runner。
+ *
+ * 订阅共享收藏夹引擎；每轮用收藏夹的 shop_price（拿货价）与目标价比较。
+ * 收藏夹通道不支持券后价 / 折扣计算，只用 shop_price ≤ targetPrice 判定。
+ */
+const runCollectionPriceMonitor = (
+  record: TaskRecordBase<PriceTaskState>,
+  state: PriceTaskState,
+  ctx: TaskRunContext,
+  adapterConfig: NonNullable<TaskRecordBase<PriceTaskState>['secret']>
+) => {
+  const controller = new AbortController()
+  const productNo = state.collection?.productNo || state.product.productNo || ''
+  let settled = false
+
+  const promise = new Promise<void>(resolve => {
+    const finish = () => {
+      if (settled) return
+      settled = true
+      clearTimeout(durationTimer)
+      unsubscribeCollection(productNo)
+      resolve()
+    }
+
+    const autoOrder = state.config.autoOrder
+    const orderAdapter = autoOrder?.enabled ? getOrderAdapter('yishou', adapterConfig) : null
+    const targetPrice = autoOrder && autoOrder.triggerMode !== 'discount' ? Number(autoOrder.targetPrice) : NaN
+    let orderCooldownUntil = 0
+
+    const handler = async (item: CollectionStockResult) => {
+      if (settled || controller.signal.aborted) return
+
+      state.checkCount++
+      const price = item.price
+
+      // 更新基线快照（用收藏夹的拿货价，无券/折扣）
+      state.snapshot = {
+        productId: item.productId,
+        productName: item.productName || state.product.productName || item.productId,
+        ...(state.product.productNo ? { productNo: state.product.productNo } : {}),
+        ...(state.product.productImage ? { productImage: state.product.productImage } : {}),
+        shopPrice: price,
+        checkedAt: Date.now(),
+        ...(item.inStock !== undefined ? { inStock: item.inStock } : {}),
+        ...(item.message ? { stockMessage: item.message } : {}),
+      }
+
+      const result: PriceMonitorResult = {
+        productId: item.productId,
+        productName: state.snapshot.productName,
+        detected: false,
+        currentPrice: price,
+        checkCount: state.checkCount,
+      }
+
+      try {
+        // 价格到点（仅指定价格模式）+ 已启用自动下单
+        const hit = Number.isFinite(targetPrice) && price > 0 && price <= targetPrice
+        if (hit && orderAdapter && autoOrder && Date.now() >= orderCooldownUntil) {
+          if (item.inStock === false) {
+            result.orderSkipped = 'no_stock'
+            result.orderError = `商品当前无货（${item.message || '暂时缺货'}），已到目标价，等待补货`
+          } else {
+            const orderResult = await placeAutoOrder(orderAdapter, {
+              goodsId: item.productId,
+              goodsNo: item.productNo,
+              config: autoOrder,
+              skus: [],
+            })
+            result.orderAttempts = (result.orderAttempts || 0) + 1
+            result.orderStage = orderResult.stage
+            if (!orderResult.success && orderResult.cooldownMs) {
+              orderCooldownUntil = Date.now() + orderResult.cooldownMs
+            }
+            if (orderResult.success) {
+              result.orderTriggered = true
+              result.orderSn = orderResult.orderSn
+              result.orderAmount = orderResult.orderAmount
+              result.orderExpireAt = orderResult.expireAt
+              result.orderSkuLabel = orderResult.skuLabel
+              result.orderItems = orderResult.items
+              result.orderNum = orderResult.num
+              const email = await sendEmail({
+                to: record.userEmail,
+                subject: `✅ 价格到点已自动下单（收藏夹监控）：${result.productName}（订单 ${orderResult.orderSn}）`,
+                html: createAutoOrderTemplate({
+                  productName: result.productName,
+                  productImage: item.productImage || state.product.productImage,
+                  orderSn: orderResult.orderSn,
+                  orderAmount: orderResult.orderAmount,
+                  skuLabel: orderResult.skuLabel,
+                  items: orderResult.items,
+                  num: orderResult.num,
+                  requestedNum: orderResult.requestedNum,
+                  payTool: orderResult.payTool,
+                  expireAt: orderResult.expireAt,
+                  targetPrice,
+                }),
+              })
+              result.emailSent = email.success
+            } else {
+              result.orderError = orderResult.message
+              result.orderUncertain = orderResult.uncertain
+              ctx.log(`收藏夹通道价格下单失败：${orderResult.message}`, 'warn')
+              result.emailSent = (
+                await sendEmail({
+                  to: record.userEmail,
+                  subject: `⚠️ 价格到点下单失败（收藏夹监控）：${result.productName}`,
+                  html: createAutoOrderFailedTemplate({
+                    productName: result.productName,
+                    message: orderResult.message || '未知原因',
+                    stage: orderResult.stage,
+                    uncertain: orderResult.uncertain,
+                  }),
+                })
+              ).success
+              applyPriceResult(record, state, result, ctx)
+              ctx.save()
+              return
+            }
+          }
+        }
+
+        applyPriceResult(record, state, result, ctx)
+        ctx.save()
+
+        // 下单成功 → 任务完成；否则继续盯（价格未到 / 无货 / 重试中）
+        if (result.orderSn) finish()
+      } catch (error) {
+        result.error = error instanceof Error ? error.message : String(error)
+        applyPriceResult(record, state, result, ctx)
+        ctx.save()
+      }
+    }
+
+    subscribeCollection(productNo, handler)
+
+    controller.signal.addEventListener('abort', () => finish())
+
+    const durationSec = ctx.durationSeconds ?? state.config.duration
+    const durationTimer = setTimeout(
+      () => finish(),
+      durationSec && durationSec > 0 ? durationSec * 1000 : 24 * 60 * 60 * 1000
+    )
+    if (typeof durationTimer.unref === 'function') durationTimer.unref()
+  })
+
+  return { controller, promise }
 }

@@ -52,6 +52,7 @@ const toSummary = (payload: ActiveAccountPayload['account']): ActiveAccountSumma
 export const useConfigStore = defineStore('config', () => {
   const proxyUrl = ref('')
   const proxyEnabled = ref(false)
+  const collectionAccountId = ref('')
   const activeAccount = ref<ActiveAccountSummary | null>(null)
   const isLoading = ref(false)
   const isInitialized = ref(false)
@@ -65,6 +66,7 @@ export const useConfigStore = defineStore('config', () => {
       if (response.success && response.data) {
         proxyUrl.value = response.data.proxyUrl || ''
         proxyEnabled.value = Boolean(response.data.proxyEnabled)
+        collectionAccountId.value = response.data.collectionAccountId || ''
       }
     } catch {
       // 未登录或网络异常时保持默认值，页面上的保存动作会给出明确错误
@@ -204,14 +206,16 @@ export const useConfigStore = defineStore('config', () => {
   const reset = (): void => {
     proxyUrl.value = ''
     proxyEnabled.value = false
+    collectionAccountId.value = ''
     activeAccount.value = null
     isInitialized.value = false
   }
 
-  /** 保存运行设置（代理） */
+  /** 保存运行设置（代理 + 收藏夹监控账号） */
   const saveSettings = async (input: {
     proxyUrl: string
     proxyEnabled: boolean
+    collectionAccountId: string
   }): Promise<boolean> => {
     try {
       const response = await request<ApiResponse<RuntimeSettings>>('/api/settings', {
@@ -223,6 +227,7 @@ export const useConfigStore = defineStore('config', () => {
       }
       proxyUrl.value = response.data.proxyUrl || ''
       proxyEnabled.value = Boolean(response.data.proxyEnabled)
+      collectionAccountId.value = response.data.collectionAccountId || ''
       return true
     } catch {
       return false
@@ -232,6 +237,7 @@ export const useConfigStore = defineStore('config', () => {
   return {
     proxyUrl,
     proxyEnabled,
+    collectionAccountId,
     activeAccount,
     isLoading,
     isInitialized,
