@@ -39,7 +39,6 @@ vi.mock('./email', () => ({
 
 import { createCancellableMonitor } from './stock-monitor'
 import type { MonitorResult } from './stock-monitor'
-import { getGateContext } from './utils/request-gate'
 
 const task = {
   request: { platform: 'yishou' as const, productId: '338956151' },
@@ -221,7 +220,7 @@ describe('库存监控 × 自动下单', () => {
     expect(result.orderError).toContain('冷却中')
   })
 
-  it('检测阶段落在匿名桶，不占用账号配额', async () => {
+  it('检测链路跟随任务凭证，不再强制剥离登录态', async () => {
     mocks.placeAutoOrder.mockResolvedValue({
       success: false,
       stage: 'sku',
@@ -229,21 +228,15 @@ describe('库存监控 × 自动下单', () => {
       message: '该商品当前没有可售规格',
     })
 
-    const contexts: Array<{ taskId: string; accountKey?: string }> = []
-    mocks.checkStock.mockImplementation(async () => {
-      const context = getGateContext()
-      contexts.push({
-        taskId: context?.taskId ?? '',
-        accountKey: context?.accountKey,
-      })
-      return outOfStockResult
-    })
-
-    // startAndRun 的 adapterConfig 里有 uid，检测仍然不能带上它
     await startAndRun({}, 2)
 
-    expect(contexts.length).toBeGreaterThan(0)
-    expect(contexts.every(ctx => ctx.accountKey === undefined)).toBe(true)
+    const calls = mocks.checkStock.mock.calls
+    expect(calls.length).toBeGreaterThan(0)
+    // 检测直接用任务快照里的凭证（uid/token 保留），桶由 HTTP 出口按实际凭证决定
+    for (const [, options] of calls) {
+      expect(options?.adapterConfig?.uid).toBe('20478621')
+      expect(options?.adapterConfig?.token).toBe('token')
+    }
   })
 
   it('检测错误在下一轮成功后被清空，不一直挂在卡片上', async () => {

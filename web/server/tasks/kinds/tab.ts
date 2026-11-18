@@ -15,6 +15,7 @@ import {
 import type { TaskKind, TaskSummary, Tone } from '@core/contract'
 import { ErrorCode } from '../../utils/response'
 import { listBlacklistedSupplyIds } from '../../utils/shopBlacklistStore'
+import { resolveAdapterConfigForUser } from '../../utils/adapterConfig'
 import { TaskApiError, capEvents, makeEvent } from '../engine/types'
 import type { TaskKindDefinition, TaskRecordBase, TaskRunContext } from '../engine/types'
 import { filterVisibleSeen } from './tab-seen'
@@ -41,8 +42,15 @@ export const tabDefinition: TaskKindDefinition<TabTaskState> = {
   label: 'Tab 监控',
   version: VERSION,
 
-  // Tab 列表接口匿名可用
+  // 不强制登录态：跟随当前账号——选了账号就带凭证（拿货价 + IP/UID 桶），
+  // 匿名模式就走匿名（游客参考价 + 仅 IP 桶）。Tab 列表接口两种模式都可用。
   requiresAuth: () => false,
+
+  resolveAccount({ user }) {
+    // needAuth=true 表示「有凭证就保留」，并非强制；无凭证时解析结果自然是匿名的。
+    const resolved = resolveAdapterConfigForUser(user.username, true)
+    return { accountId: resolved.account?.id ?? '', secret: resolved.config, hasCredential: resolved.hasCredential }
+  },
 
   create({ body, user }) {
     if (!body?.tabId) throw new TaskApiError(ErrorCode.INVALID_PARAMS, 'Tab ID 不能为空')
@@ -102,6 +110,8 @@ export const tabDefinition: TaskKindDefinition<TabTaskState> = {
       ...state.config,
       tabId: state.tab.id,
       taskId: record.id,
+      // 跟随创建时的账号凭证；老任务没有 secret，回退到 {} 即匿名模式
+      adapterConfig: record.secret ?? {},
       ...(ctx.durationSeconds !== undefined ? { duration: ctx.durationSeconds } : {}),
       initialCheckCount: state.checkCount,
       initialDetectedCount: state.detectedCount,

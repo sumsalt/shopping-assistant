@@ -90,7 +90,7 @@ describe('库存监控（无 sleep，闸门控节奏）', () => {
     expect(mocks.checkStock.mock.calls.length).toBeGreaterThanOrEqual(3)
   })
 
-  it('检测请求剔除 uid/token，凭证只留给下单链路', async () => {
+  it('检测请求跟随任务凭证，uid/token 与设备参数原样透传', async () => {
     await runRounds(
       {
         adapterConfig: {
@@ -111,10 +111,10 @@ describe('库存监控（无 sleep，闸门控节奏）', () => {
         requestParams?: Record<string, string>
       }
     }
-    expect(options.adapterConfig.uid).toBeUndefined()
-    expect(options.adapterConfig.token).toBeUndefined()
-    expect(options.adapterConfig.requestParams?.uid).toBeUndefined()
-    expect(options.adapterConfig.requestParams?.token).toBeUndefined()
+    expect(options.adapterConfig.uid).toBe('20536811')
+    expect(options.adapterConfig.token).toBe('tok')
+    expect(options.adapterConfig.requestParams?.uid).toBe('20536811')
+    expect(options.adapterConfig.requestParams?.token).toBe('tok')
     expect(options.adapterConfig.requestParams?.udid).toBe('dev-1')
     expect(options.adapterConfig.openid).toBe('oXxx123')
   })

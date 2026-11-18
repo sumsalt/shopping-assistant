@@ -22,7 +22,6 @@ import {
   loadEmailConfigFromEnv,
 } from './email';
 import { runWithGateContext, type GateContext } from './utils/request-gate';
-import { toAnonymousAdapterConfig } from './adapter-config';
 
 // SMTP 配置来自环境变量（SMTP_PASS 等），代码里不保存授权码
 const emailConfig = loadEmailConfigFromEnv();
@@ -207,9 +206,9 @@ export const monitorSingleStock = async (
 /**
  * 库存监控的闸门上下文
  *
- * 检测阶段固定走匿名桶：即使任务带了登录态（自动下单必须配 uid/token），
- * 轮询本身不用身份、也不占账号配额，否则检测节奏会被压到 5 秒一次。
- * 登录态只在真正下单时使用，那条链路 skipGate，不进闸门排队。
+ * 检测跟随任务凭证：当前账号有登录态就带凭证走 IP+UID 两层桶，
+ * 匿名模式则只有 IP 桶（两层间隔都是 1 秒，节奏一致）。
+ * 下单链路 skipGate，不进闸门排队。
  */
 export const createStockGateContext = (config: StockMonitorConfig): GateContext => ({
   taskId: config.taskId || 'stock-monitor',
@@ -234,9 +233,9 @@ export const createCancellableMonitor = (
   const controller = new AbortController();
   const { signal } = controller;
 
-  // 打上任务上下文：循环内所有 HTTP 请求都会经过全局请求闸门（用户手动操作无上下文，不受限）
-  // 桶由每次请求实际带的凭证决定：检测用匿名配置 → 匿名桶；下单 skipGate，不排队
-  const promise = runWithGateContext(
+      // 打上任务上下文：循环内所有 HTTP 请求都会经过全局请求闸门（用户手动操作无上下文，不受限）
+      // 桶由每次请求实际带的凭证决定：检测带凭证 → IP+UID 桶，匿名 → 仅 IP 桶；下单 skipGate，不排队
+      const promise = runWithGateContext(
     createStockGateContext(config),
     async (): Promise<MonitorResult> => {
       const {
@@ -276,11 +275,6 @@ export const createCancellableMonitor = (
       // 只监控指定规格时，商品级有货还要再看这些规格是否真的有货
       const monitorSkus = (config.skus || []).filter(Boolean);
 
-      // 检测与 SKU 明细统一走匿名配置：get_goods_info_v2 免登录、匿名桶 1 秒一槽，
-      // 不再因为「限定规格」把整条检测链路抬进 5 秒账号桶（价格回退游客参考价）。
-      // 自动下单仍用 adapterConfig（带凭证），两者互不影响。
-      const detectionConfig = toAnonymousAdapterConfig(adapterConfig);
-
       const startTime = Date.now();
 
       // 建单失败后的冷却截止时间：一手会给「订单支付中」临时锁，冷却期内只检测不重复下单
@@ -316,7 +310,7 @@ export const createCancellableMonitor = (
           result.emailSent = undefined;
 
           const checkResult: StockCheckResult = await checkStock(task.request, {
-            adapterConfig: detectionConfig,
+            adapterConfig,
           });
           result.productName = checkResult.productName;
           result.checkCount++;
@@ -328,10 +322,10 @@ export const createCancellableMonitor = (
           let inStock = checkResult.inStock;
 
           if (inStock && monitorSkus.length > 0) {
-            // SKU 查询走同一份匿名配置：检测链路不带登录态，排的是匿名桶
+            // SKU 查询与检测用同一份配置，跟随任务凭证
             const skuDetail = await getProductSkus(
               { platform: task.request.platform, productId: checkResult.productId },
-              { adapterConfig: detectionConfig }
+              { adapterConfig }
             );
             const hits = skuDetail.skuList.filter(
               item => monitorSkus.includes(item.skuId) && item.saleStock > 0
@@ -460,7 +454,7 @@ export const createCancellableMonitor = (
             resultCallback(result);
           }
 
-          // 请求节奏由全局请求闸门控制（匿名 1 秒 / 登录态 5 秒），轮次节奏由下方 sleep 控制
+          // 请求节奏由全局请求闸门控制（IP / UID 两层各 1 秒），轮次节奏由下方 sleep 控制
         } catch (error) {
           result.error = error instanceof Error ? error.message : String(error);
           result.checkCount++;

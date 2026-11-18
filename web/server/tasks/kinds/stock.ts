@@ -107,9 +107,9 @@ export const stockDefinition: TaskKindDefinition<StockTaskState> = {
   label: '到货监控',
   version: VERSION,
 
-  // 自动下单要拿真实库存并下单，必须登录态；
-  // 按规格监控已改走匿名 get_goods_info_v2，不再要求凭证
-  requiresAuth: body => Boolean(body?.config?.autoOrder?.enabled),
+  // 不强制登录态：跟随当前账号——选了账号就带凭证（拿货价 + IP/UID 桶），
+  // 匿名模式就走匿名（游客参考价 + 仅 IP 桶）。自动下单在无凭证时会静默降级为普通提醒。
+  requiresAuth: () => false,
 
   resolveAccount({ body, user }) {
     // 收藏夹通道：监控由全局收藏夹账号执行（引擎持有），任务只快照「下单账号」= 当前激活账号。
@@ -124,9 +124,9 @@ export const stockDefinition: TaskKindDefinition<StockTaskState> = {
       }
       return { accountId: base.account?.id ?? '', hasCredential: base.hasCredential }
     }
-    // 普通通道：沿用当前激活账号
-    const needAuth = Boolean(body?.config?.autoOrder?.enabled)
-    const resolved = resolveAdapterConfigForUser(user.username, needAuth)
+    // 普通通道：跟随当前激活账号——有登录态就带凭证，匿名模式则快照匿名配置。
+    // needAuth=true 表示「有凭证就保留」，并非强制；无凭证时解析结果自然是匿名的。
+    const resolved = resolveAdapterConfigForUser(user.username, true)
     return { accountId: resolved.account?.id ?? '', secret: resolved.config, hasCredential: resolved.hasCredential }
   },
 
