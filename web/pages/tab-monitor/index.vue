@@ -91,6 +91,7 @@
       size="lg"
       :teleport="false"
       :fill="true"
+      :compact="true"
       @update:open="seenDialogOpen = $event"
     >
       <div class="flex h-full min-h-0 flex-col gap-3">
@@ -584,15 +585,17 @@ onMounted(fetchTasks)
 
 <style scoped>
 /*
- * 累计商品列表滚动条：左右对称留白，滚动条落在右侧空白处且不压图片。
- * 悬浮式滚动条（iOS/macOS）默认直接盖在最右列图片上，看着「位置奇怪」；
- * both-edges 让左右两侧都预留滚动条宽度，配合左右相等的内边距保持视觉对称
- * （只写 stable 会是右侧单侧留白，右边比左边宽）。iOS 老版本不支持 gutter 时，
- * 由左右相等的 padding 兜底，仍能保持两侧平衡、滚动条不压住商品图。
+ * 累计商品列表：卡片左右边缘与上方标题行对齐，滚动条落在右侧空白且不压图片。
+ * 用负 margin 把容器向两侧各撑 0.5rem，再用等额 padding 把内容拉回原位——
+ * 净效果是卡片与标题同宽对齐，同时右侧留出一条滚动条槽（悬浮滚动条 iOS/macOS
+ * 默认盖在最右列图片上，这条槽让它落在空白处）。不用 both-edges，否则左侧会
+ * 白白多留一条滚动条宽、把内容挤窄，看着比标题缩一圈。
+ * overflow 容器上的负 margin 只扩展可滚动区、不改变 padding box 的定位基准。
  */
 .seen-list-scroll {
   scrollbar-gutter: stable;
-  scrollbar-gutter: stable both-edges;
+  margin-left: -0.5rem;
+  margin-right: -0.5rem;
   padding-left: 0.5rem;
   padding-right: 0.5rem;
 }

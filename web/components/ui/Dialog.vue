@@ -42,7 +42,8 @@
             <!-- 标题 -->
             <div
               v-if="title"
-              class="px-6 py-4 border-b border-gray-200 flex-shrink-0 flex items-start justify-between gap-3"
+              class="border-b border-gray-200 flex-shrink-0 flex items-start justify-between gap-3"
+              :class="compact ? 'px-4 py-3' : 'px-6 py-4'"
             >
               <h3 class="text-lg font-semibold text-gray-900">{{ title }}</h3>
               <button
@@ -60,7 +61,8 @@
             <!-- 内容区：默认自身滚动；fill 模式改为 flex 容器、不滚动，由 slot 内部自行管理滚动 -->
             <div
               :class="[
-                'px-6 py-4 flex-1 min-h-0',
+                'flex-1 min-h-0',
+                compact ? 'px-4 py-3' : 'px-6 py-4',
                 fill ? 'flex flex-col' : 'overflow-y-auto',
               ]"
             >
@@ -68,7 +70,11 @@
             </div>
 
             <!-- 底部按钮 -->
-            <div v-if="$slots.footer" class="px-6 py-4 border-t border-gray-200 flex-shrink-0">
+            <div
+              v-if="$slots.footer"
+              class="border-t border-gray-200 flex-shrink-0"
+              :class="compact ? 'px-4 py-3' : 'px-6 py-4'"
+            >
               <slot name="footer" />
             </div>
           </div>
@@ -90,6 +96,8 @@ interface Props {
   teleport?: boolean
   /** 铺满模式：弹窗固定为动态视口高度，内容区不滚动、由 slot 内部自行管理滚动（列表类弹窗用） */
   fill?: boolean
+  /** 紧凑留白：标题/内容/底部内边距从 px-6 py-4 收小为 px-4 py-3（列表类弹窗用） */
+  compact?: boolean
 }
 
 // 默认属性
@@ -99,6 +107,7 @@ const props = withDefaults(defineProps<Props>(), {
   size: 'md',
   teleport: true,
   fill: false,
+  compact: false,
 })
 
 // 宽度映射
