@@ -14,6 +14,7 @@
     </button>
 
     <button
+      v-if="showPrice"
       type="button"
       class="flex h-7 w-7 items-center justify-center rounded-md border border-emerald-200 text-emerald-600 transition-colors hover:bg-emerald-50 focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:ring-offset-1"
       title="价格监控"
@@ -76,6 +77,8 @@
  * 「打开一手 App」只在手机端出现：桌面浏览器没有 App 可开。
  */
 interface Props {
+  /** 是否显示「价格监控」（Tab 卡片不需要时传 false） */
+  showPrice?: boolean
   /** 是否显示「打开一手 App」（手机端才为 true） */
   showApp?: boolean
   /** 是否显示「取消收藏」（收藏夹场景下为 true） */
@@ -89,6 +92,7 @@ interface Props {
 }
 
 withDefaults(defineProps<Props>(), {
+  showPrice: true,
   showApp: false,
   showRemove: false,
   showOrder: false,

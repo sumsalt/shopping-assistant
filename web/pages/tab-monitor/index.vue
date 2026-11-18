@@ -199,6 +199,7 @@
                 </p>
                 <StockProductQuickActions
                   show-order
+                  :show-price="false"
                   :show-app="isMobileViewport"
                   :order-disabled="!item.productNo || orderingId === item.productId"
                   :order-loading="orderingId === item.productId"
