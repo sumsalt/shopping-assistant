@@ -15,6 +15,7 @@ import type {
 } from './types';
 import { getAdapter } from './adapters';
 import type { AdapterConfig } from './adapters';
+import type { GateFlow } from './utils/request-gate';
 
 /**
  * 库存查询配置
@@ -22,6 +23,11 @@ import type { AdapterConfig } from './adapters';
 export interface CheckStockOptions {
   /** 平台认证配置 */
   adapterConfig?: AdapterConfig;
+  /**
+   * 业务流，决定闸门策略。页面手动调用传 'manual'（bypass 不被限流）；
+   * 后台监控不传，走各方法默认的 monitor.* / collection.sync（过闸门）。
+   */
+  flow?: GateFlow;
 }
 
 /**
@@ -86,7 +92,7 @@ export const checkStock = async (
   options: CheckStockOptions = {}
 ): Promise<StockCheckResult> => {
   const { platform, productId, sku } = request;
-  const { adapterConfig = {} } = options;
+  const { adapterConfig = {}, flow } = options;
 
   // 校验参数
   if (!platform) {
@@ -107,7 +113,7 @@ export const checkStock = async (
   const adapter = getAdapter(platform, adapterConfig);
 
   // 调用适配器查询库存
-  return adapter.checkStock(productId, sku);
+  return adapter.checkStock(productId, sku, flow);
 };
 
 /**
@@ -138,7 +144,7 @@ export const checkCollectionStock = async (
   options: CheckStockOptions = {}
 ): Promise<CollectionStockCheckResult> => {
   const { platform, page = 1, pageSize = 20 } = request;
-  const { adapterConfig = {} } = options;
+  const { adapterConfig = {}, flow } = options;
 
   // 校验参数
   if (!platform) {
@@ -152,7 +158,7 @@ export const checkCollectionStock = async (
   const adapter = getAdapter(platform, adapterConfig);
 
   // 调用适配器查询收藏夹库存
-  return adapter.checkCollectionStock(page, pageSize);
+  return adapter.checkCollectionStock(page, pageSize, flow);
 };
 
 /**
@@ -219,7 +225,7 @@ export const getProductSkus = async (
   options: CheckStockOptions = {}
 ): Promise<ProductSkuResult> => {
   const { platform, productId } = request;
-  const { adapterConfig = {} } = options;
+  const { adapterConfig = {}, flow } = options;
 
   // 校验参数
   if (!platform) {
@@ -240,7 +246,7 @@ export const getProductSkus = async (
   const adapter = getAdapter(platform, adapterConfig);
 
   // 调用适配器获取商品 SKU
-  return adapter.getProductSkus(productId);
+  return adapter.getProductSkus(productId, flow);
 };
 
 /**

@@ -4,6 +4,7 @@
 
 import type { Platform, StockCheckResult, CollectionStockCheckResult, ProductSkuResult, PriceSnapshot } from '../types';
 import type { PlatformAdapter, AdapterConfig } from './types';
+import type { GateFlow } from '../utils/request-gate';
 
 /**
  * 基础适配器抽象类
@@ -28,17 +29,17 @@ export abstract class BaseAdapter implements PlatformAdapter {
   /**
    * 查询商品库存状态（抽象方法，子类必须实现）
    */
-  abstract checkStock(productId: string, sku?: string): Promise<StockCheckResult>;
+  abstract checkStock(productId: string, sku?: string, flow?: GateFlow): Promise<StockCheckResult>;
 
   /**
    * 查询收藏夹内商品的库存状态（抽象方法，子类必须实现）
    */
-  abstract checkCollectionStock(page?: number, pageSize?: number): Promise<CollectionStockCheckResult>;
+  abstract checkCollectionStock(page?: number, pageSize?: number, flow?: GateFlow): Promise<CollectionStockCheckResult>;
 
   /**
    * 获取商品的所有 SKU 信息（抽象方法，子类必须实现）
    */
-  abstract getProductSkus(productId: string): Promise<ProductSkuResult>;
+  abstract getProductSkus(productId: string, flow?: GateFlow): Promise<ProductSkuResult>;
 
   /**
    * 获取商品价格快照（抽象方法，子类必须实现）

@@ -114,6 +114,15 @@ describe('getProductSkus（POST /goods/get_goods_info_v2）', () => {
     expect(optionsOf(0).gate?.flow).toBe('monitor.stock')
   })
 
+  it('页面手动查看详情传 manual flow（bypass，不被监控令牌拖慢）', async () => {
+    mocks.httpPost.mockResolvedValue({ code: '200', msg: 'success', data: goodsData })
+
+    const adapter = new YishouAdapter(authConfig)
+    await adapter.getProductSkus('341451565', 'manual')
+
+    expect(optionsOf(0).gate?.flow).toBe('manual')
+  })
+
   it('下单预检走 getOrderProductSkus，绑定 order.checkout flow（策略 bypass，不被 1s 令牌拖慢）', async () => {
     mocks.httpPost.mockResolvedValue({ code: '200', msg: 'success', data: goodsData })
 

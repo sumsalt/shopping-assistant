@@ -42,7 +42,8 @@ export default defineEventHandler(async (event) => {
       ...(typeof body?.sku === 'string' && body.sku.trim() ? { sku: body.sku.trim() } : {}),
     }
 
-    const result: StockCheckResult = await checkStock(request, { adapterConfig })
+    // 页面手动查询：走 manual flow（bypass 闸门），避免交互被后台监控的 1s 令牌拖慢
+    const result: StockCheckResult = await checkStock(request, { adapterConfig, flow: 'manual' })
     return createSuccessResponse(result)
   } catch (error: unknown) {
     console.error('库存查询失败:', error)

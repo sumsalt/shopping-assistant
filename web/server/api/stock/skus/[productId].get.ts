@@ -33,7 +33,8 @@ export default defineEventHandler(async (event) => {
       productId,
     }
 
-    const result: ProductSkuResult = await getProductSkus(request, { adapterConfig })
+    // 页面手动查看详情：走 manual flow（bypass 闸门），避免被后台监控排队拖慢
+    const result: ProductSkuResult = await getProductSkus(request, { adapterConfig, flow: 'manual' })
 
     return createSuccessResponse(result)
   } catch (error: unknown) {

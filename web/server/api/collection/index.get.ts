@@ -69,9 +69,10 @@ export default defineEventHandler(async (event) => {
       )
     }
 
-    // 调用核心库查询收藏夹
+    // 页面手动翻收藏夹：走 manual flow（bypass 闸门），避免被后台监控排队拖慢
     const result: CollectionStockCheckResult = await checkCollectionStock(request, {
       adapterConfig: resolved.config,
+      flow: 'manual',
     })
 
     // 返回结果；带上本次使用的账号摘要，供页面标明正在查看谁的收藏夹

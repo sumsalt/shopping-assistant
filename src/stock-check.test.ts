@@ -67,7 +67,7 @@ describe('checkStock - 库存查询主函数', () => {
     );
 
     expect(getAdapter).toHaveBeenCalledWith('yishou', { uid: 'test', token: 'test' });
-    expect(mockAdapter.checkStock).toHaveBeenCalledWith('123456', undefined);
+    expect(mockAdapter.checkStock).toHaveBeenCalledWith('123456', undefined, undefined);
     expect(result.inStock).toBe(true);
   });
 
@@ -99,6 +99,28 @@ describe('checkStock - 库存查询主函数', () => {
       { adapterConfig: { uid: 'test', token: 'test' } }
     );
 
-    expect(mockAdapter.checkStock).toHaveBeenCalledWith('123456', '红色 / M');
+    expect(mockAdapter.checkStock).toHaveBeenCalledWith('123456', '红色 / M', undefined);
+  });
+
+  it('页面传 flow=manual 时透传给适配器（手动查询 bypass 闸门）', async () => {
+    const { getAdapter } = await import('./adapters');
+    const mockAdapter = {
+      platform: 'yishou' as const,
+      checkStock: vi.fn().mockResolvedValue({
+        platform: 'yishou', productId: '123456', productName: '测试商品', productNo: 'GN001',
+        inStock: true, price: 99, productUrl: '', productImage: '', message: '',
+      }),
+      checkCollectionStock: vi.fn(),
+      getProductSkus: vi.fn(),
+      getPriceInfo: vi.fn(),
+    };
+    vi.mocked(getAdapter).mockReturnValue(mockAdapter);
+
+    await checkStock(
+      { platform: 'yishou', productId: '123456' },
+      { adapterConfig: { uid: 'test', token: 'test' }, flow: 'manual' }
+    );
+
+    expect(mockAdapter.checkStock).toHaveBeenCalledWith('123456', undefined, 'manual');
   });
 });

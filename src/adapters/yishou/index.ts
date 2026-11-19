@@ -23,6 +23,7 @@ import type {
   YishouTabGoodsData,
   KeywordSearchResult,
 } from '../../types';
+import type { GateFlow } from '../../utils/request-gate';
 import { BaseAdapter } from '../base-adapter';
 import type { AdapterConfig, RenewOrderAdapter } from '../types';
 import * as EP from './endpoints';
@@ -107,9 +108,14 @@ export class YishouAdapter extends BaseAdapter {
     }
   }
 
-  /** 查询商品库存状态 */
-  async checkStock(productId: string, _sku?: string): Promise<StockCheckResult> {
-    return this.fetchGoods(productId, 'monitor.stock')
+  /**
+   * 查询商品库存状态
+   *
+   * @param flow 业务流，决定闸门策略；默认 monitor.stock（后台监控走闸门），
+   *   页面手动查询传 manual（bypass，避免交互被 1s 令牌拖慢）。
+   */
+  async checkStock(productId: string, _sku?: string, flow: GateFlow = 'monitor.stock'): Promise<StockCheckResult> {
+    return this.fetchGoods(productId, flow)
       .then(mapToStockResult)
       .catch(withErrorContext('查询商品库存失败'));
   }
@@ -132,10 +138,16 @@ export class YishouAdapter extends BaseAdapter {
       .catch(withErrorContext('获取价格失败'));
   }
 
-  /** 查询收藏夹库存 */
+  /**
+   * 查询收藏夹库存
+   *
+   * @param flow 业务流；默认 collection.sync（后台扫描走闸门），
+   *   页面手动翻页传 manual（bypass）。
+   */
   async checkCollectionStock(
     page: number = 1,
-    pageSize: number = 20
+    pageSize: number = 20,
+    flow: GateFlow = 'collection.sync'
   ): Promise<CollectionStockCheckResult> {
     const index = Math.max(1, Math.floor(page) || 1)
     const size = Math.max(1, Math.floor(pageSize) || 20)
@@ -148,7 +160,7 @@ export class YishouAdapter extends BaseAdapter {
         pagesize: `${size}`,
         goods_sale_status: '',
         market_id: '',
-      })
+      }, flow)
       .then(items => splitByStock((items || []).map(mapCollectionItemToResult)))
       .catch(withErrorContext('查询收藏夹库存失败'));
   }
@@ -219,7 +231,13 @@ export class YishouAdapter extends BaseAdapter {
       .catch(withErrorContext('取消收藏失败'));
   }
 
-  /** 获取 H5 Tab 商品列表 */
+  /**
+   * 获取 H5 Tab 商品列表
+   *
+   * 该接口只被后台 Tab 监控循环调用（页面看商品详情走 getProductSkus），
+   * 必须走闸门限流，因此显式传 monitor.tab——不能依赖 client 默认的 manual
+   * （manual 已改为 bypass，漏传会让后台高频翻页绕过闸门）。
+   */
   async getTabGoodsList(
     tabId: string,
     page: number = 1,
@@ -239,7 +257,7 @@ export class YishouAdapter extends BaseAdapter {
         max_price: `${maxPrice}`,
         page: `${page}`,
         page_size: `${pageSize}`,
-      })
+      }, 'monitor.tab')
       .then(data => splitByStock((data?.list || []).map(mapTabItemToResult)))
       .catch(withErrorContext('获取 Tab 商品列表失败'));
   }
@@ -275,11 +293,13 @@ export class YishouAdapter extends BaseAdapter {
    *
    * 详情页只调这一个接口：SKU 树、价格、库存、收藏标记一次拿全。
    * 该接口匿名可用，未登录时价格回落成游客参考价（读 alone_price），
-   * 所以这里不再要求登录态。走闸门限流（flow=monitor.stock）。
+   * 所以这里不再要求登录态。
    *
-   * 下单预检的时效敏感场景请用 {@link getOrderProductSkus}（bypass 闸门）。
+   * @param flow 业务流；默认 monitor.stock（后台监控走闸门），
+   *   页面手动查看详情传 manual（bypass，避免交互被 1s 令牌拖慢）。
+   *   下单预检的时效敏感场景请用 {@link getOrderProductSkus}（bypass 闸门）。
    */
-  async getProductSkus(productId: string): Promise<ProductSkuResult> {
+  async getProductSkus(productId: string, flow: GateFlow = 'monitor.stock'): Promise<ProductSkuResult> {
     const id = String(productId || '').trim();
     if (!id) {
       throw new StockCheckError(StockCheckErrorType.API_ERROR, '缺少商品 ID');
@@ -287,7 +307,7 @@ export class YishouAdapter extends BaseAdapter {
 
     const guest = !this.client.hasAuth;
     try {
-      const data = await this.fetchGoods(id, 'monitor.stock');
+      const data = await this.fetchGoods(id, flow);
       return mapGoodsToSkuResult(data, { guest });
     } catch (error) {
       if (error instanceof StockCheckError && error.type === StockCheckErrorType.PRODUCT_NOT_FOUND) {

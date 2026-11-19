@@ -15,6 +15,7 @@ import type {
   KeywordSearchResult,
   AddToCollectionResult,
 } from '../types';
+import type { GateFlow } from '../utils/request-gate';
 
 /**
  * 平台适配器接口
@@ -30,7 +31,7 @@ export interface PlatformAdapter {
    * @param sku 可选的商品规格（颜色+尺码）
    * @returns 库存查询结果
    */
-  checkStock(productId: string, sku?: string): Promise<StockCheckResult>;
+  checkStock(productId: string, sku?: string, flow?: GateFlow): Promise<StockCheckResult>;
 
   /**
    * 查询收藏夹内商品的库存状态
@@ -38,14 +39,14 @@ export interface PlatformAdapter {
    * @param pageSize 每页数量，默认为20
    * @returns 收藏夹库存查询结果
    */
-  checkCollectionStock(page?: number, pageSize?: number): Promise<CollectionStockCheckResult>;
+  checkCollectionStock(page?: number, pageSize?: number, flow?: GateFlow): Promise<CollectionStockCheckResult>;
 
   /**
    * 获取商品的所有 SKU 信息
    * @param productNo 商品货号
    * @returns 商品 SKU 查询结果
    */
-  getProductSkus(productId: string): Promise<ProductSkuResult>;
+  getProductSkus(productId: string, flow?: GateFlow): Promise<ProductSkuResult>;
 
   /**
    * 获取商品价格快照（必须携带登录态）
