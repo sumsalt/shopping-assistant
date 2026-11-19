@@ -15,17 +15,20 @@ import {
   checkCollectionStock,
   removeProductFromCollection,
   CollectionMonitorEngine,
-  type AdapterConfig,
+  runWithGateContext,
   type CollectionAccountConfig,
 } from '@core'
 import { getRuntimeSettings } from '../utils/settingsStore'
 import { getAccount } from '../utils/accountStore'
 import { resolveAdapterConfigForAccount } from '../utils/adapterConfig'
+import { createCollectionIndex, type CollectionIndexHandle } from './collection-index'
 
 /** 固定页大小：与引擎一致 */
 const PAGE_SIZE = 20
-/** 现查收藏条目的最大翻页数，防止异常情况下无限翻 */
+/** 全量翻页的最大页数，防止异常情况下无限翻 */
 const PAGE_LIMIT = 50
+/** 全量索引有效期：期内后续商品命中缓存，不再各自翻页 */
+const INDEX_TTL_MS = 10_000
 
 const engine = new CollectionMonitorEngine()
 
@@ -108,22 +111,53 @@ const resolveAccountConfig = (): { accountId: string; config: CollectionAccountC
   }
 }
 
-/** 翻页查找某商品当前是否已在收藏夹，返回 collectId（不在则空串） */
-const findCollectId = async (productNo: string, adapterConfig: AdapterConfig): Promise<string> => {
-  for (let page = 1; page <= PAGE_LIMIT; page++) {
-    const result = await checkCollectionStock(
-      { platform: 'yishou', page, pageSize: PAGE_SIZE },
-      { adapterConfig }
-    )
-    const items = [...result.inStockItems, ...result.outOfStockItems]
-    if (items.length === 0) return ''
+/**
+ * 全量加载收藏夹索引：翻完整个收藏夹，构建 productNo -> collectId 映射。
+ *
+ * 关键点：翻页请求放在收藏夹账号的 gate 上下文里，走 UID 桶 + IP 桶限频，
+ * 与引擎扫描、其他后台请求统一节奏。重启时 N 个任务的查找会被索引的
+ * singleflight 合并成这一次全量翻页，而不是 N 串各自翻页。
+ */
+const loadFullCollectionIndex = async (): Promise<Map<string, string>> => {
+  const map = new Map<string, string>()
+  const resolved = resolveAccountConfig()
+  if (!resolved) return map
 
-    const hit = items.find(item => String(item.productNo || '').trim() === productNo)
-    if (hit) return hit.collectId || ''
-    if (items.length < PAGE_SIZE) return ''
-  }
-  return ''
+  const { adapterConfig, accountKey } = resolved.config
+  await runWithGateContext(
+    {
+      taskId: 'collection-index',
+      kind: 'stock',
+      accountKey,
+      localAddress: adapterConfig.localAddress,
+    },
+    async () => {
+      for (let page = 1; page <= PAGE_LIMIT; page++) {
+        const result = await checkCollectionStock(
+          { platform: 'yishou', page, pageSize: PAGE_SIZE },
+          { adapterConfig }
+        )
+        const items = [...result.inStockItems, ...result.outOfStockItems]
+        if (items.length === 0) break
+        for (const item of items) {
+          const no = String(item.productNo || '').trim()
+          if (no && item.collectId) map.set(no, item.collectId)
+        }
+        if (items.length < PAGE_SIZE) break
+      }
+    }
+  )
+  return map
 }
+
+/** 收藏夹全量索引：一次翻页填充，TTL 内后续商品命中缓存 */
+const collectionIndex: CollectionIndexHandle = createCollectionIndex(
+  loadFullCollectionIndex,
+  INDEX_TTL_MS
+)
+
+/** 翻页查找某商品当前是否已在收藏夹，返回 collectId（走全量索引，命中则零请求） */
+const findCollectId = async (productNo: string): Promise<string> => collectionIndex.find(productNo)
 
 /**
  * 确保商品在收藏夹里（幂等）。
@@ -152,7 +186,7 @@ export const ensureCollected = (productNo: string): Promise<string> => {
         return cached
       }
 
-      const found = await findCollectId(no, resolved.config.adapterConfig)
+      const found = await findCollectId(no)
       if (found) {
         collectIdCache.set(no, found)
         return found
@@ -164,7 +198,11 @@ export const ensureCollected = (productNo: string): Promise<string> => {
           { adapterConfig: resolved.config.adapterConfig }
         )
       )
-      if (added.collectId) collectIdCache.set(no, added.collectId)
+      if (added.collectId) {
+        collectIdCache.set(no, added.collectId)
+        // 增量写入全量索引：后续同批商品命中缓存，且本商品不会因 TTL 过期被误判为未收藏
+        collectionIndex.set(no, added.collectId)
+      }
       return added.collectId
     } catch (error) {
       engine.unreserve(no)
@@ -194,7 +232,7 @@ export const releaseCollected = (productNo: string): Promise<void> => {
     let collectId = collectIdCache.get(no) || engine.getCollectId(no) || ''
     if (!collectId) {
       try {
-        collectId = await findCollectId(no, resolved.config.adapterConfig)
+        collectId = await findCollectId(no)
       } catch (error) {
         console.warn(
           `[CollectionEngine] 查找收藏条目失败 ${no}: ${error instanceof Error ? error.message : String(error)}`
@@ -202,10 +240,12 @@ export const releaseCollected = (productNo: string): Promise<void> => {
       }
     }
 
-    // 无论是否真的发出移除请求，都先清掉两层缓存：旧的 collectId 已不可信，
+    // 无论是否真的发出移除请求，都先清掉缓存：旧的 collectId 已不可信，
     // 留着只会让后续 ensureCollected 误判「商品已在收藏夹」而跳过真正加回。
+    // 全量索引也要清本商品，否则 TTL 期内会假命中「已收藏」。
     collectIdCache.delete(no)
     engine.forgetProduct(no)
+    collectionIndex.remove(no)
     if (!collectId || collectId === '0') return
 
     try {
@@ -239,6 +279,7 @@ export const syncCollectionEngine = (): void => {
     if (engine.isRunning) {
       engine.stop()
       activeAccountId = ''
+      collectionIndex.clear()
     }
     return
   }
@@ -247,13 +288,15 @@ export const syncCollectionEngine = (): void => {
     if (engine.isRunning) {
       engine.stop()
       activeAccountId = ''
+      collectionIndex.clear()
     }
     return
   }
 
-  // 账号变了：停掉旧循环，用新账号启动
+  // 账号变了：停掉旧循环，清掉旧账号的全量索引，用新账号重新加载
   if (engine.isRunning && activeAccountId !== resolved.accountId) {
     engine.stop()
+    collectionIndex.clear()
   }
 
   if (!engine.isRunning) {
