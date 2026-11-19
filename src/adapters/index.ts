@@ -21,6 +21,28 @@ export const registerAdapter = (
   adapterRegistry.set(platform, AdapterClass);
 };
 
+/** 自动下单所需的能力键（显式声明，集中在此，避免 duck typing 散落） */
+const ORDER_CAPABILITIES: ReadonlyArray<keyof AutoOrderAdapter> = [
+  'getAddresses',
+  'getOrderProductSkus',
+  'prepareCheckout',
+  'createOrder',
+  'discardCheckout',
+];
+
+/** 订单续期所需的能力键 */
+const RENEW_CAPABILITIES: ReadonlyArray<keyof RenewOrderAdapter> = [
+  'getOrderList',
+  'confirmWaitPayOrder',
+  'reloadWaitPayOrder',
+];
+
+/** 运行时能力检测：对象是否具备全部指定方法 */
+const hasCapabilities = <T>(value: unknown, keys: ReadonlyArray<keyof T>): value is T =>
+  Boolean(value) &&
+  typeof value === 'object' &&
+  keys.every((key) => typeof (value as Record<string, unknown>)[key as string] === 'function');
+
 /**
  * 获取支持自动下单的适配器
  *
@@ -31,41 +53,26 @@ export const getOrderAdapter = (
   platform: Platform,
   config: AdapterConfig = {}
 ): AutoOrderAdapter | null => {
-  const adapter = getAdapter(platform, config) as unknown as AutoOrderAdapter;
-
-  const capable =
-    typeof adapter.getAddresses === 'function' &&
-    typeof adapter.getProductSkus === 'function' &&
-    typeof adapter.prepareCheckout === 'function' &&
-    typeof adapter.createOrder === 'function' &&
-    typeof adapter.discardCheckout === 'function';
-
-  return capable ? adapter : null;
+  const adapter: unknown = getAdapter(platform, config);
+  return hasCapabilities<AutoOrderAdapter>(adapter, ORDER_CAPABILITIES) ? adapter : null;
 };
 
 /**
  * 获取支持「待支付订单续期」的适配器
  *
- * 独立于 getOrderAdapter 做能力检测：不改动下单的 5 项检测，
- * 避免影响既有自动下单契约测试里只有 5 个方法的 mock adapter。
+ * 续期走 order.renew flow（闸门限频），与下单的 bypass 通道分离。
+ * 若适配器提供续期专用视图（asRenewAdapter），用它取绑定了正确 flow 的对象。
  */
 export const getRenewAdapter = (
   platform: Platform,
   config: AdapterConfig = {}
 ): RenewOrderAdapter | null => {
-  const raw = getAdapter(platform, config) as unknown as RenewOrderAdapter & {
-    asRenewAdapter?: () => RenewOrderAdapter;
-  };
-
-  // 若适配器提供续期专用视图，用它（续期请求走闸门限频，与下单的 skipGate 视图分离）
-  const adapter = typeof raw.asRenewAdapter === 'function' ? raw.asRenewAdapter() : raw;
-
-  const capable =
-    typeof adapter.getOrderList === 'function' &&
-    typeof adapter.confirmWaitPayOrder === 'function' &&
-    typeof adapter.reloadWaitPayOrder === 'function';
-
-  return capable ? adapter : null;
+  const raw: unknown = getAdapter(platform, config);
+  const candidate =
+    raw && typeof (raw as { asRenewAdapter?: unknown }).asRenewAdapter === 'function'
+      ? (raw as { asRenewAdapter: () => unknown }).asRenewAdapter()
+      : raw;
+  return hasCapabilities<RenewOrderAdapter>(candidate, RENEW_CAPABILITIES) ? candidate : null;
 };
 
 /**

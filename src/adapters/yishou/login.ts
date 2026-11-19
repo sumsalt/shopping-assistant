@@ -254,8 +254,8 @@ export const loginYishouByPassword = async (options: {
       : {}),
   };
 
-  // 登录是用户主动触发的一次性动作，不进检测闸门
-  const client = new YishouClient(config, { skipGate: true, timeout: 15000 });
+  // 登录走 auth.login flow（策略为 bypass，获取身份的前置步骤不进闸门）
+  const client = new YishouClient(config, { flow: 'auth.login', timeout: 15000 });
 
   try {
     const data = await client.post<YishouLoginData>(EP.USER_LOGIN, {

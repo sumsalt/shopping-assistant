@@ -1,12 +1,17 @@
 /**
  * HTTP 请求工具
+ *
+ * 所有发往外部的请求都经这里。闸门是出口的默认属性：请求显式带上自己的
+ * {@link GateIdentity}（由一手 client 从账号快照解析），出口按策略表决定
+ * 是排队还是放行——不再依赖 AsyncLocalStorage 隐式上下文。
  */
 
 import http from 'node:http';
 import https from 'node:https';
 import axios, { type AxiosRequestConfig, type AxiosResponse } from 'axios';
 import { StockCheckError, StockCheckErrorType } from '../types';
-import { acquireRequestSlot, GateTimeoutError, getGateContext } from './request-gate';
+import { acquireRequestSlot, GateTimeoutError, type GateIdentity } from './request-gate';
+import { getRatePolicy } from './rate-policy';
 
 /**
  * HTTP 请求选项
@@ -23,26 +28,12 @@ export interface HttpRequestOptions {
   /** 代理 URL（可选） */
   proxyUrl?: string;
   /**
-   * 跳过全局请求闸门
+   * 本次请求的闸门身份（显式传入，来自账号快照）。
    *
-   * 下单链路（加购 / 结算 / 建单）是「抢库存」操作，排队 5 秒即失去意义，
-   * 因此这些请求显式跳过限流；它们只在检测到有货时触发，不会持续空转。
+   * 携带时按身份里的 flow 查策略表：normal 走两级令牌排队，bypass（下单 / 登录）直接放行。
+   * 不携带身份的请求（非平台请求、工具调用）也不过闸门——闸门只约束发往一手的请求。
    */
-  skipGate?: boolean;
-  /**
-   * 本次请求的限流身份
-   *
-   * 决定进哪个 UID 桶：有值进 `uid:<accountKey>`；空串表示匿名请求，跳过 UID 层只过 IP 桶。
-   * 适配器按「这次请求到底带没带 uid/token」传入，避免任务上下文与请求身份对不上。
-   */
-  accountKey?: string;
-  /**
-   * 本次请求使用的出口 IP（本机网卡 localAddress）
-   *
-   * 决定进哪个 IP 桶：不同出口 IP 互不影响，未指定进 `ip:default`。
-   * 由适配器按账号配置的网卡地址传入。
-   */
-  localAddress?: string;
+  gate?: GateIdentity;
 }
 
 /**
@@ -77,8 +68,7 @@ export const httpRequest = async <T>(
     body,
     timeout = 10000,
     proxyUrl,
-    skipGate = false,
-    localAddress,
+    gate,
   } = options;
 
   const axiosConfig: AxiosRequestConfig = {
@@ -92,12 +82,12 @@ export const httpRequest = async <T>(
   // 出口网卡绑定：localAddress 必须是本机某块网卡上真实存在的 IP，
   // 否则 Node 会抛 EADDRNOTAVAIL。未配置时不设置 agent，走系统默认路由。
   // 注意：走 HTTP/HTTPS 代理时 localAddress 绑的是到代理的这条连接，需按实际网络拓扑评估。
-  if (localAddress) {
+  if (gate?.localAddress) {
     const urlObj = new URL(url);
     if (urlObj.protocol === 'https:') {
-      axiosConfig.httpsAgent = new https.Agent({ localAddress });
+      axiosConfig.httpsAgent = new https.Agent({ localAddress: gate.localAddress });
     } else {
-      axiosConfig.httpAgent = new http.Agent({ localAddress });
+      axiosConfig.httpAgent = new http.Agent({ localAddress: gate.localAddress });
     }
   }
 
@@ -114,20 +104,11 @@ export const httpRequest = async <T>(
     }
   }
 
-  // 全局请求闸门：只有带任务上下文的请求才排队限流；
-  // 用户手动触发的请求（无上下文）直接放行，不受任何限制。
-  const gateContext = getGateContext();
-  if (gateContext && !skipGate) {
-    // 两层分桶都跟着「本次请求实际的属性」走：请求级声明优先于任务上下文。
-    // - accountKey 决定 UID 桶（登录 uid / 匿名 anon）；
-    // - localAddress 决定 IP 桶（账号绑定的出口网卡 / 默认）。
-    const scopedContext = {
-      ...gateContext,
-      ...(options.accountKey !== undefined ? { accountKey: options.accountKey } : {}),
-      ...(options.localAddress !== undefined ? { localAddress: options.localAddress } : {}),
-    };
+  // 闸门：请求显式带身份且策略为 normal 时排队；bypass（下单 / 登录）或无身份（非平台请求）直接放行。
+  // 分桶身份完全来自本次请求自带的 gate，不再读取任何隐式上下文，也不再被请求级参数覆盖。
+  if (gate && getRatePolicy(gate.flow).gate === 'normal') {
     try {
-      await acquireRequestSlot(scopedContext);
+      await acquireRequestSlot(gate);
     } catch (error) {
       if (error instanceof GateTimeoutError) {
         throw new StockCheckError(
@@ -200,11 +181,6 @@ export const httpRequest = async <T>(
 
 /**
  * 发送 POST 请求（便捷方法）
- * @param url 请求 URL
- * @param body 请求体
- * @param headers 请求头
- * @param options 请求选项（包含代理等）
- * @returns 响应数据
  */
 export const httpPost = async <T>(
   url: string,

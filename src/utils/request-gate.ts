@@ -1,65 +1,61 @@
 /**
- * 双层全局请求闸门（实验分支：验证一手风控策略）
+ * 双层全局请求闸门
  *
- * 每个后台监控请求必须依次通过两层令牌，两层都拿到才允许发出：
- * - IP 层（`ip:<出口IP>`）：同一出口 IP 的最小间隔，默认 1 秒。
- *   所有请求都过这一层，包括登录态——这正是「按 IP 限流」的核心。
+ * 设计原则：**闸门是 HTTP 出口的默认属性，不是调用方申请的许可。**
+ * 每个发往一手的请求都自带显式身份 {@link GateIdentity}，出口据此依次申请两层令牌：
+ * - IP 层（`ip:<出口IP>`）：同一出口 IP 的最小间隔，默认 1 秒。所有请求都过这一层。
  * - UID 层（`uid:<账号键>`）：同一账号的最小间隔，默认 1 秒。
- *   账号闸门本来就是约束「账号」的——只有登录态请求进 `uid:<uid>`；
- *   匿名请求没有账号身份，只过 IP 桶，跳过 UID 层。
+ *   匿名请求（无账号身份）只过 IP 桶，跳过 UID 层。
  *
- * 与旧版（登录 5s / 匿名 1s 的单桶）的区别：
- * - 旧版分叉成 auth/anon 两个桶，登录态根本不占 IP 维度；
- * - 新版所有请求先过 IP 桶；登录态再多过一层 UID 桶，两层间隔都是 1 秒；
- *   匿名请求只过 IP 桶（不再有全局 uid:anon 桶把多个匿名任务串在一起）。
+ * 不再使用 AsyncLocalStorage 隐式上下文：请求身份由调用方（一手 client）随请求显式传入，
+ * 不再依赖「循环有没有打上下文」这种隐式开关。是否限流由身份里的 {@link GatePolicy} 决定：
+ * - `normal`（默认）：过闸门；
+ * - `bypass`：仅下单 / 登录等时效敏感或前置场景豁免。
  *
- * 只对「后台监控任务」生效：监控循环在执行前用 {@link runWithGateContext} 打上上下文，
- * HTTP 出口（utils/http.ts）检测到上下文时才排队；没有上下文的请求
- * （用户手动查询、创建任务时的基线拉取等）直接放行，不受任何限制。
+ * 每个身份还带一个 {@link GateFlow} 业务流标识，仅用于统计展示（哪个业务在排队），
+ * 也作为 UID 桶内的公平调度键（同一 flow 的请求共用一个子队列轮转）。
  */
 
-import { AsyncLocalStorage } from 'node:async_hooks';
+/** 业务流：请求属于哪个后台业务，仅用于闸门统计与公平分组 */
+export type GateFlow =
+  | 'monitor.stock'
+  | 'monitor.price'
+  | 'monitor.tab'
+  | 'collection.sync'
+  | 'collection.index'
+  | 'collection.write'
+  | 'order.renew'
+  | 'order.checkout'
+  | 'auth.login'
+  | 'manual';
 
-/** 任务类型 */
-export type GateTaskKind = 'stock' | 'price' | 'tab';
+/** 闸门策略：是否参与限流 */
+export type GatePolicy = 'normal' | 'bypass';
 
 /** 请求闸门层级 */
 export type GateScope = 'ip' | 'uid';
 
-/** 请求闸门上下文（由监控循环注入） */
-export interface GateContext {
-  /** 任务 ID，用于任务级公平调度；同一任务的所有请求共用一个子队列 */
-  taskId: string;
-  /** 任务类型，仅用于统计展示 */
-  kind?: GateTaskKind;
+/**
+ * 请求自带的闸门身份
+ *
+ * 由一手 client 在发请求时从账号快照（profile）解析并显式传入，不依赖任何上下文。
+ */
+export interface GateIdentity {
+  /** 业务流，决定统计归类与 UID 桶内的公平分组 */
+  flow: GateFlow;
+  /** 公平调度键；缺省时用 flow。同一键的请求共用一个子队列轮转 */
+  queueKey?: string;
   /**
-   * 登录态标识（uid）；为空表示匿名请求。
-   *
-   * 决定进哪个 UID 桶：有值进 `uid:<uid>`；匿名请求没有账号身份，跳过 UID 层只过 IP 桶。
-   * 由 HTTP 出口按请求实际凭证覆盖（`HttpRequestOptions.accountKey`）。
+   * 登录 uid；空串表示匿名请求。
+   * 有值进 `uid:<accountKey>`；匿名只过 IP 桶。
    */
   accountKey?: string;
   /**
-   * 出口 IP（本机网卡地址 / localAddress）。
-   *
-   * 决定进哪个 IP 桶：不同出口 IP 互不影响，未指定时进全局 `ip:default`。
-   * 由 HTTP 出口按请求实际使用的 localAddress 覆盖。
+   * 出口 IP（本机网卡 localAddress）。
+   * 决定进哪个 IP 桶；未指定进 `ip:default`。
    */
   localAddress?: string;
 }
-
-const storage = new AsyncLocalStorage<GateContext>();
-
-/**
- * 在指定上下文中执行（后续所有异步操作都会继承该上下文）
- */
-export const runWithGateContext = <T>(context: GateContext, fn: () => T): T =>
-  storage.run(context, fn);
-
-/**
- * 读取当前上下文；没有上下文表示这是用户主动发起的请求，不做限流
- */
-export const getGateContext = (): GateContext | undefined => storage.getStore();
 
 /** 闸门参数 */
 export interface GateOptions {
@@ -113,20 +109,20 @@ export const getGateOptions = (): GateOptions => ({ ...options });
 
 /** 排队超时错误 */
 export class GateTimeoutError extends Error {
-  readonly taskId: string;
+  readonly queueKey: string;
   readonly waitedMs: number;
 
-  constructor(taskId: string, waitedMs: number) {
+  constructor(queueKey: string, waitedMs: number) {
     super(`请求排队超时（已等待 ${Math.round(waitedMs / 1000)} 秒）`);
     this.name = 'GateTimeoutError';
-    this.taskId = taskId;
+    this.queueKey = queueKey;
     this.waitedMs = waitedMs;
   }
 }
 
 interface Waiter {
-  taskId: string;
-  kind?: GateTaskKind;
+  queueKey: string;
+  flow: GateFlow;
   enqueuedAt: number;
   resolve: () => void;
   reject: (error: GateTimeoutError) => void;
@@ -141,9 +137,9 @@ interface Bucket {
   intervalMsFor: () => number;
   /** 上次放行时间 */
   lastGrantAt: number;
-  /** taskId -> 该任务的等待队列 */
+  /** queueKey -> 该身份的等待队列 */
   queues: Map<string, Waiter[]>;
-  /** 有等待的任务 ID 列表，轮转指针在其上移动 */
+  /** 有等待的身份 key 列表，轮转指针在其上移动 */
   order: string[];
   /** 轮转指针 */
   cursor: number;
@@ -177,13 +173,13 @@ const getBucket = (key: string, scope: GateScope): Bucket => {
   return bucket;
 };
 
-/** 取下一位应放行的等待者（任务级轮转） */
+/** 取下一位应放行的等待者（身份级轮转） */
 const shiftNext = (bucket: Bucket): Waiter | null => {
   const total = bucket.order.length;
   for (let i = 0; i < total; i++) {
     const index = (bucket.cursor + i) % total;
-    const taskId = bucket.order[index];
-    const queue = bucket.queues.get(taskId);
+    const queueKey = bucket.order[index];
+    const queue = bucket.queues.get(queueKey);
 
     if (!queue || queue.length === 0) {
       continue;
@@ -195,7 +191,7 @@ const shiftNext = (bucket: Bucket): Waiter | null => {
     }
 
     if (queue.length === 0) {
-      bucket.queues.delete(taskId);
+      bucket.queues.delete(queueKey);
       bucket.order.splice(index, 1);
       bucket.cursor = bucket.order.length === 0 ? 0 : index % bucket.order.length;
     } else {
@@ -253,7 +249,7 @@ const drain = (bucket: Bucket): void => {
 };
 
 /** 在单个桶里申请一次配额 */
-const acquireBucket = (bucket: Bucket, context: GateContext): Promise<void> => {
+const acquireBucket = (bucket: Bucket, identity: GateIdentity, queueKey: string): Promise<void> => {
   const now = Date.now();
 
   // 无人排队且距上次放行已够间隔：直接放行
@@ -265,26 +261,23 @@ const acquireBucket = (bucket: Bucket, context: GateContext): Promise<void> => {
 
   return new Promise<void>((resolve, reject) => {
     const waiter: Waiter = {
-      taskId: context.taskId,
-      kind: context.kind,
+      queueKey,
+      flow: identity.flow,
       enqueuedAt: now,
       resolve,
       reject: (error: GateTimeoutError) => {
-        const index = bucket.order.indexOf(context.taskId);
-        if (index >= 0) {
-          const queue = bucket.queues.get(context.taskId);
-          if (queue) {
-            const at = queue.indexOf(waiter);
-            if (at >= 0) {
-              queue.splice(at, 1);
-            }
-            if (queue.length === 0) {
-              bucket.queues.delete(context.taskId);
-              const orderIndex = bucket.order.indexOf(context.taskId);
-              if (orderIndex >= 0) {
-                bucket.order.splice(orderIndex, 1);
-                bucket.cursor = bucket.order.length === 0 ? 0 : orderIndex % bucket.order.length;
-              }
+        const queue = bucket.queues.get(queueKey);
+        if (queue) {
+          const at = queue.indexOf(waiter);
+          if (at >= 0) {
+            queue.splice(at, 1);
+          }
+          if (queue.length === 0) {
+            bucket.queues.delete(queueKey);
+            const orderIndex = bucket.order.indexOf(queueKey);
+            if (orderIndex >= 0) {
+              bucket.order.splice(orderIndex, 1);
+              bucket.cursor = bucket.order.length === 0 ? 0 : orderIndex % bucket.order.length;
             }
           }
         }
@@ -292,17 +285,17 @@ const acquireBucket = (bucket: Bucket, context: GateContext): Promise<void> => {
         reject(error);
       },
       timer: setTimeout(() => {
-        waiter.reject(new GateTimeoutError(context.taskId, Date.now() - waiter.enqueuedAt));
+        waiter.reject(new GateTimeoutError(queueKey, Date.now() - waiter.enqueuedAt));
       }, options.maxWaitMs),
     };
     waiter.timer.unref?.();
 
-    const queue = bucket.queues.get(context.taskId);
+    const queue = bucket.queues.get(queueKey);
     if (queue) {
       queue.push(waiter);
     } else {
-      bucket.queues.set(context.taskId, [waiter]);
-      bucket.order.push(context.taskId);
+      bucket.queues.set(queueKey, [waiter]);
+      bucket.order.push(queueKey);
     }
 
     schedule(bucket);
@@ -312,25 +305,26 @@ const acquireBucket = (bucket: Bucket, context: GateContext): Promise<void> => {
 /**
  * 申请一次请求配额：依次通过 IP 层和 UID 层
  *
- * 仅在存在任务上下文时由 HTTP 出口调用；两层都 resolve 后才允许发请求。
+ * 由 HTTP 出口在「策略为 normal」时以显式身份调用；两层都 resolve 后才允许发请求。
  * 排队超过 {@link GateOptions.maxWaitMs} 会 reject，调用方应视为一次任务失败而非无限挂起。
  */
-export const acquireRequestSlot = async (context: GateContext): Promise<void> => {
-  // 第一层：出口 IP。所有请求都过，未指定 localAddress 时共享 ip:default
-  const address = context.localAddress?.trim() || 'default';
-  await acquireBucket(getBucket(`ip:${address}`, 'ip'), context);
+export const acquireRequestSlot = async (identity: GateIdentity): Promise<void> => {
+  const queueKey = identity.queueKey?.trim() || identity.flow;
 
-  // 第二层：账号闸门只约束「账号」。匿名请求没有账号身份，只过 IP 桶即可，
-  // 跳过 UID 层——否则所有匿名监控任务会被全局 uid:anon 桶串在一起互相拖慢。
-  const uid = context.accountKey?.trim();
+  // 第一层：出口 IP。所有请求都过，未指定 localAddress 时共享 ip:default
+  const address = identity.localAddress?.trim() || 'default';
+  await acquireBucket(getBucket(`ip:${address}`, 'ip'), identity, queueKey);
+
+  // 第二层：账号闸门只约束「账号」。匿名请求没有账号身份，只过 IP 桶即可。
+  const uid = identity.accountKey?.trim();
   if (!uid) return;
-  await acquireBucket(getBucket(`uid:${uid}`, 'uid'), context);
+  await acquireBucket(getBucket(`uid:${uid}`, 'uid'), identity, queueKey);
 };
 
-/** 单个任务的排队统计 */
+/** 单个身份的排队统计 */
 export interface GateTaskStats {
-  taskId: string;
-  kind?: GateTaskKind;
+  queueKey: string;
+  flow: GateFlow;
   pending: number;
   oldestWaitMs: number;
 }
@@ -369,12 +363,12 @@ export const getGateStats = (): GateStats => {
   let timedOut = 0;
 
   for (const bucket of buckets.values()) {
-    const tasks: GateTaskStats[] = bucket.order.map((taskId) => {
-      const queue = bucket.queues.get(taskId) || [];
+    const tasks: GateTaskStats[] = bucket.order.map((queueKey) => {
+      const queue = bucket.queues.get(queueKey) || [];
       const oldest = queue[0];
       return {
-        taskId,
-        kind: oldest?.kind,
+        queueKey,
+        flow: oldest?.flow ?? 'manual',
         pending: queue.length,
         oldestWaitMs: oldest ? now - oldest.enqueuedAt : 0,
       };

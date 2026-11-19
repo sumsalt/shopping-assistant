@@ -13,7 +13,6 @@ import {
   loadEmailConfigFromEnv,
   loadTabEmailConfigFromEnv,
 } from './email';
-import { runWithGateContext } from './utils/request-gate';
 // SMTP 配置来自环境变量（SMTP_PASS 等），代码里不保存授权码
 const emailConfig = loadEmailConfigFromEnv();
 if (emailConfig) {
@@ -410,13 +409,8 @@ export const createCancellableTabMonitor = (
   const controller = new AbortController();
   const { signal } = controller;
 
-  // 打上任务上下文：循环内所有 HTTP 请求都会经过全局请求闸门（用户手动操作无上下文，不受限）
-  const promise = runWithGateContext(
-    {
-      taskId: config.taskId || 'tab-monitor',
-      kind: 'tab',
-    },
-    async (): Promise<TabMonitorResult> => {
+  // 闸门身份由每次 HTTP 请求自带的账号快照决定；检测走 monitor.tab flow（闸门限流）
+  const promise = (async (): Promise<TabMonitorResult> => {
     const {
       interval = 60,
       duration = 7 * 24 * 60 * 60,
@@ -1154,8 +1148,7 @@ export const createCancellableTabMonitor = (
       checkCount,
       errorCount,
     };
-    }
-  );
+    })();
 
   return { controller, promise };
 };

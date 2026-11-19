@@ -155,8 +155,8 @@ describe('YishouAdapter 下单链路（对齐抓包）', () => {
     expect(ready.activityDiscount).toBe(86.76)
     expect(ready.payTools).toEqual(['1', '4'])
     expect(ready.address.addressId).toBe('9740845')
-    // 所有下单请求跳过闸门
-    for (const c of calls()) expect((c[3] as { skipGate: boolean }).skipGate).toBe(true)
+    // 所有下单请求走 order.checkout flow（策略表定义为 bypass）
+    for (const c of calls()) expect((c[3] as { gate?: { flow?: string } }).gate?.flow).toBe('order.checkout')
   })
 
   it('加购 selected 是 color+item 嵌套结构，带抓包的来源参数与保险开关', async () => {

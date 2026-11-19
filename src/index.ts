@@ -191,25 +191,35 @@ export type {
   CollectionMonitorConfig,
 } from './collection-monitor';
 
-// 导出全局请求闸门
+// 导出全局请求闸门（显式身份模型：请求自带 GateIdentity，无隐式上下文）
 export {
   acquireRequestSlot,
   configureRequestGate,
-  getGateContext,
   getGateOptions,
   getGateStats,
   resetRequestGate,
-  runWithGateContext,
   GateTimeoutError,
 } from './utils/request-gate';
 export type {
-  GateContext,
+  GateIdentity,
+  GateFlow,
+  GatePolicy,
+  GateScope,
   GateOptions,
   GateStats,
   GateBucketStats,
   GateTaskStats,
-  GateTaskKind,
 } from './utils/request-gate';
+
+// 导出中央限频策略表（闸门 + 额外节流 + 缓存的统一真相来源）
+export {
+  RATE_POLICIES,
+  getRatePolicy,
+  isGateBypassed,
+  COLLECTION_WRITE_GAP_MS,
+  COLLECTION_INDEX_TTL_MS,
+} from './utils/rate-policy';
+export type { FlowRatePolicy } from './utils/rate-policy';
 
 // ==================== 共享契约层 ====================
 // 任务与商品/订单的统一类型，服务端与前端共用；Platform/AdapterConfig 仍从原出口导出。

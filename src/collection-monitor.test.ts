@@ -13,17 +13,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({
   checkCollectionStock: vi.fn(),
   removeProductFromCollection: vi.fn(),
-  runWithGateContext: vi.fn(),
 }))
 
 vi.mock('./stock-check', () => ({
   checkCollectionStock: mocks.checkCollectionStock,
   removeProductFromCollection: mocks.removeProductFromCollection,
-}))
-
-// 让 runWithGateContext 直接执行传入的函数（测试里不真的建闸门上下文）
-vi.mock('./utils/request-gate', () => ({
-  runWithGateContext: (_ctx: unknown, fn: () => unknown) => fn(),
 }))
 
 import { CollectionMonitorEngine } from './collection-monitor'
@@ -71,7 +65,6 @@ const pageResult = (items: CollectionStockResult[]) => ({
 beforeEach(() => {
   mocks.checkCollectionStock.mockReset()
   mocks.removeProductFromCollection.mockReset()
-  mocks.runWithGateContext.mockClear()
 })
 
 describe('CollectionMonitorEngine', () => {

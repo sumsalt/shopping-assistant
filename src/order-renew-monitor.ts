@@ -16,15 +16,18 @@
  *   - reload 返回非 wait_pay（已付 / 已关）：标记该单结束，后续不再续期。
  *   - 凭据失效：停止任务并告警，不无限重试。
  *
- * 续期走闸门：getRenewAdapter 返回的是走闸门的续期视图（不 skipGate），本循环挂在
- * runWithGateContext 上下文里，请求按 UID/IP 桶限频。下方 300ms/5s 的间隔是额外节流，
+ * 续期走闸门：getRenewAdapter 返回的续期视图绑定 order.renew flow，请求按 UID/IP 桶限频。
+ * 下方 300ms/5s 的间隔来自 RATE_POLICIES 的额外节流（order.renew.gapMs / writeGapMs），
  * 进一步克制写操作（reload_wait_pay_order）的频率，避免同一账号连续提交触发风控。
  */
 
 import type { AdapterConfig, RenewOrderAdapter } from './adapters/types';
 import type { OrderListItem } from './types';
 import { StockCheckError, StockCheckErrorType } from './types';
-import { runWithGateContext } from './utils/request-gate';
+import {
+  RENEW_REQUEST_GAP_MS as POLICY_READ_GAP_MS,
+  RENEW_WRITE_GAP_MS as POLICY_WRITE_GAP_MS,
+} from './utils/rate-policy';
 
 // ==================== 常量 ====================
 
@@ -38,15 +41,15 @@ export const RENEW_COOLDOWN_MS = 4 * 60 * 1000;
 export const RENEW_MAX_PAGES = 20;
 /** 单轮最大处理订单数 */
 export const RENEW_MAX_ORDERS_PER_ROUND = 200;
-/** 同一次扫描内相邻请求的最小间隔（毫秒） */
-export const RENEW_REQUEST_GAP_MS = 300;
+/** 同一次扫描内相邻请求的最小间隔（毫秒）—— 真相在 RATE_POLICIES.order.renew.gapMs */
+export const RENEW_REQUEST_GAP_MS = POLICY_READ_GAP_MS;
 /**
- * 两次 reload（写操作）之间的最小间隔（毫秒）
+ * 两次 reload（写操作）之间的最小间隔（毫秒）—— 真相在 RATE_POLICIES.order.renew.writeGapMs
  *
  * reload 是写操作，连续提交同一账号的多笔订单容易被服务端限流；
  * 读请求（列表 / confirm）仍按 {@link RENEW_REQUEST_GAP_MS} 走。
  */
-export const RENEW_WRITE_GAP_MS = 5_000;
+export const RENEW_WRITE_GAP_MS = POLICY_WRITE_GAP_MS;
 /** 订单列表每页条数（一手硬上限） */
 export const RENEW_PAGE_SIZE = 10;
 /** 最近续期记录保留条数 */
@@ -382,14 +385,9 @@ export const createCancellableOrderRenewMonitor = (
     return renewed.finished ? 'finished' : 'renewed';
   };
 
-  const promise = runWithGateContext(
-    {
-      taskId: config.adapterConfig?.uid ? `renew-${config.adapterConfig.uid}` : 'order-renew',
-      kind: 'stock',
-      accountKey: config.adapterConfig?.uid || '',
-      localAddress: config.adapterConfig?.localAddress,
-    },
-    async (): Promise<OrderRenewMonitorResult> => {
+  // 续期请求走 getRenewAdapter 返回的 order.renew 视图（绑定闸门身份与策略），
+  // 循环本身不再注入任何隐式上下文；下方 300ms/5s 间隔来自 RATE_POLICIES 的额外节流。
+  const promise = (async (): Promise<OrderRenewMonitorResult> => {
     while (true) {
       if (signal.aborted) break;
 
@@ -536,8 +534,7 @@ export const createCancellableOrderRenewMonitor = (
     }
 
     return result;
-    }
-  );
+  })();
 
   return { controller, promise };
 };

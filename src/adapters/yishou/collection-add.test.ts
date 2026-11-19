@@ -61,14 +61,13 @@ describe('addCollection（POST /users/add_goods_collection）', () => {
     expect(result).toEqual({ collectId: '374803378' })
   })
 
-  it('收藏写入走闸门限频（手动点击无 gate 上下文会自动豁免，后台加收藏受控）', async () => {
+  it('收藏写入绑 collection.write flow（策略 normal，走闸门限频）', async () => {
     mocks.httpPost.mockResolvedValue({ code: '200', msg: 'success', data: { collect_id: '1' } })
 
     const adapter = new YishouAdapter(config)
     await adapter.addCollection('1381104809')
 
-    // 不再无条件 skipGate：是否在闸门排队由请求上下文（runWithGateContext）决定
-    expect((calls()[0][3] as { skipGate?: boolean }).skipGate).not.toBe(true)
+    expect((calls()[0][3] as { gate?: { flow?: string } }).gate?.flow).toBe('collection.write')
   })
 
   it('重复收藏时把一手文案原样抛出，交给页面提示「已收藏」', async () => {

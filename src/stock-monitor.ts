@@ -21,7 +21,6 @@ import {
   configureEmailService,
   loadEmailConfigFromEnv,
 } from './email';
-import { runWithGateContext, type GateContext } from './utils/request-gate';
 
 // SMTP 配置来自环境变量（SMTP_PASS 等），代码里不保存授权码
 const emailConfig = loadEmailConfigFromEnv();
@@ -204,18 +203,6 @@ export const monitorSingleStock = async (
 };
 
 /**
- * 库存监控的闸门上下文
- *
- * 检测跟随任务凭证：当前账号有登录态就带凭证走 IP+UID 两层桶，
- * 匿名模式则只有 IP 桶（两层间隔都是 1 秒，节奏一致）。
- * 下单链路 skipGate，不进闸门排队。
- */
-export const createStockGateContext = (config: StockMonitorConfig): GateContext => ({
-  taskId: config.taskId || 'stock-monitor',
-  kind: 'stock',
-});
-
-/**
  * 创建可取消的库存监控
  *
  * @param task 监控任务（一个任务只包含一个商品）
@@ -233,11 +220,9 @@ export const createCancellableMonitor = (
   const controller = new AbortController();
   const { signal } = controller;
 
-      // 打上任务上下文：循环内所有 HTTP 请求都会经过全局请求闸门（用户手动操作无上下文，不受限）
-      // 桶由每次请求实际带的凭证决定：检测带凭证 → IP+UID 桶，匿名 → 仅 IP 桶；下单 skipGate，不排队
-      const promise = runWithGateContext(
-    createStockGateContext(config),
-    async (): Promise<MonitorResult> => {
+      // 闸门身份由每次 HTTP 请求自带的账号快照决定：带凭证 → IP+UID 桶，匿名 → 仅 IP 桶。
+      // 检测请求走 monitor.stock flow（闸门限流）；下单请求走 order.checkout flow（bypass）。
+      const promise = (async (): Promise<MonitorResult> => {
       const {
         interval = MIN_STOCK_MONITOR_INTERVAL,
         duration,
@@ -489,8 +474,7 @@ export const createCancellableMonitor = (
       }
 
       return result;
-    }
-  );
+    })();
 
   return { controller, promise };
 };

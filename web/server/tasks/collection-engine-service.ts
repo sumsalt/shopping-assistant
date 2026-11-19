@@ -15,20 +15,23 @@ import {
   checkCollectionStock,
   removeProductFromCollection,
   CollectionMonitorEngine,
-  runWithGateContext,
   type CollectionAccountConfig,
 } from '@core'
 import { getRuntimeSettings } from '../utils/settingsStore'
 import { getAccount } from '../utils/accountStore'
 import { resolveAdapterConfigForAccount } from '../utils/adapterConfig'
 import { createCollectionIndex, type CollectionIndexHandle } from './collection-index'
+import {
+  COLLECTION_INDEX_TTL_MS,
+  COLLECTION_WRITE_GAP_MS,
+} from '@core'
 
 /** 固定页大小：与引擎一致 */
 const PAGE_SIZE = 20
 /** 全量翻页的最大页数，防止异常情况下无限翻 */
 const PAGE_LIMIT = 50
-/** 全量索引有效期：期内后续商品命中缓存，不再各自翻页 */
-const INDEX_TTL_MS = 10_000
+/** 全量索引有效期：真相在 RATE_POLICIES.collection.index.cacheTtlMs */
+const INDEX_TTL_MS = COLLECTION_INDEX_TTL_MS
 
 const engine = new CollectionMonitorEngine()
 
@@ -71,44 +74,22 @@ const enqueueCollectOp = <T>(productNo: string, op: () => Promise<T>): Promise<T
 /**
  * 全局「加收藏」串行队列。
  *
- * 一手的 add_goods_collection 是限流敏感的写操作且 skipGate 跳过本地闸门：
- * 进程重启时会批量 restore 几十个收藏夹任务，若各自 ensureCollected 并发加收藏，
- * 会被一手风控返回「操作过于频繁」。这里把真正向一手发出的加收藏请求全局排队，
- * 逐个执行，避免批量恢复时打爆一手。仅包住 add 请求本身（慢 IO），不影响查找。
+ * 一手的 add_goods_collection 是限流敏感的写操作：进程重启时会批量 restore
+ * 几十个收藏夹任务，若各自 ensureCollected 并发加收藏，会被一手风控返回「操作过于频繁」。
+ * 这里把真正向一手发出的加收藏请求全局排队，逐个执行，避免批量恢复时打爆一手。
+ * 加/删收藏本身已走闸门（collection.write flow），这里的串行与 300ms 间隔是额外节流。
  */
 let addCollectionTail: Promise<unknown> = Promise.resolve()
-const ADD_GAP_MS = 300
 const enqueueAddCollection = <T>(op: () => Promise<T>): Promise<T> => {
   // 与前一次加收藏之间留间隔，进一步降低一手写接口的频率风控概率
   const next = addCollectionTail.catch(() => {}).then(async () => {
-    await new Promise(resolve => setTimeout(resolve, ADD_GAP_MS))
+    await new Promise(resolve => setTimeout(resolve, COLLECTION_WRITE_GAP_MS))
     return op()
   })
   addCollectionTail = next
   void next.catch(() => {})
   return next
 }
-
-/**
- * 在收藏夹账号的 gate 上下文里执行操作。
- *
- * 加入/移出收藏是后台自动的写操作，必须走闸门限频（与周期扫描、全量翻页统一节奏）。
- * 手动点击收藏走的是不带 gate 上下文的 API，即使共用同一 client 也不会被限流。
- */
-const withCollectionGate = <T>(
-  config: CollectionAccountConfig,
-  taskId: string,
-  op: () => Promise<T>
-): Promise<T> =>
-  runWithGateContext(
-    {
-      taskId,
-      kind: 'stock',
-      accountKey: config.accountKey,
-      localAddress: config.adapterConfig.localAddress,
-    },
-    op
-  )
 
 /** 解析收藏夹专用账号凭证 */
 const resolveAccountConfig = (): { accountId: string; config: CollectionAccountConfig } | null => {
@@ -135,39 +116,29 @@ const resolveAccountConfig = (): { accountId: string; config: CollectionAccountC
 /**
  * 全量加载收藏夹索引：翻完整个收藏夹，构建 productNo -> collectId 映射。
  *
- * 关键点：翻页请求放在收藏夹账号的 gate 上下文里，走 UID 桶 + IP 桶限频，
- * 与引擎扫描、其他后台请求统一节奏。重启时 N 个任务的查找会被索引的
- * singleflight 合并成这一次全量翻页，而不是 N 串各自翻页。
+ * 关键点：翻页请求经 checkCollectionStock → adapter(directClient)，自带 collection.sync flow
+ * 与账号身份（uid / localAddress），走 UID + IP 桶限频，与引擎扫描统一节奏。
+ * 重启时 N 个任务的查找会被索引的 singleflight 合并成这一次全量翻页，而不是 N 串各自翻页。
  */
 const loadFullCollectionIndex = async (): Promise<Map<string, string>> => {
   const map = new Map<string, string>()
   const resolved = resolveAccountConfig()
   if (!resolved) return map
 
-  const { adapterConfig, accountKey } = resolved.config
-  await runWithGateContext(
-    {
-      taskId: 'collection-index',
-      kind: 'stock',
-      accountKey,
-      localAddress: adapterConfig.localAddress,
-    },
-    async () => {
-      for (let page = 1; page <= PAGE_LIMIT; page++) {
-        const result = await checkCollectionStock(
-          { platform: 'yishou', page, pageSize: PAGE_SIZE },
-          { adapterConfig }
-        )
-        const items = [...result.inStockItems, ...result.outOfStockItems]
-        if (items.length === 0) break
-        for (const item of items) {
-          const no = String(item.productNo || '').trim()
-          if (no && item.collectId) map.set(no, item.collectId)
-        }
-        if (items.length < PAGE_SIZE) break
-      }
+  const { adapterConfig } = resolved.config
+  for (let page = 1; page <= PAGE_LIMIT; page++) {
+    const result = await checkCollectionStock(
+      { platform: 'yishou', page, pageSize: PAGE_SIZE },
+      { adapterConfig }
+    )
+    const items = [...result.inStockItems, ...result.outOfStockItems]
+    if (items.length === 0) break
+    for (const item of items) {
+      const no = String(item.productNo || '').trim()
+      if (no && item.collectId) map.set(no, item.collectId)
     }
-  )
+    if (items.length < PAGE_SIZE) break
+  }
   return map
 }
 
@@ -214,11 +185,9 @@ export const ensureCollected = (productNo: string): Promise<string> => {
       }
 
       const added = await enqueueAddCollection(() =>
-        withCollectionGate(resolved.config, 'collection-add', () =>
-          addProductToCollection(
-            { platform: 'yishou', productNo: no },
-            { adapterConfig: resolved.config.adapterConfig }
-          )
+        addProductToCollection(
+          { platform: 'yishou', productNo: no },
+          { adapterConfig: resolved.config.adapterConfig }
         )
       )
       if (added.collectId) {
@@ -272,11 +241,9 @@ export const releaseCollected = (productNo: string): Promise<void> => {
     if (!collectId || collectId === '0') return
 
     try {
-      await withCollectionGate(resolved.config, 'collection-remove', () =>
-        removeProductFromCollection(
-          { platform: 'yishou', productNo: no, collectId },
-          { adapterConfig: resolved.config.adapterConfig }
-        )
+      await removeProductFromCollection(
+        { platform: 'yishou', productNo: no, collectId },
+        { adapterConfig: resolved.config.adapterConfig }
       )
     } catch (error) {
       console.warn(

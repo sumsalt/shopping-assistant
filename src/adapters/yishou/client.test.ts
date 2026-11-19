@@ -29,9 +29,9 @@ const authedConfig = {
   requestHeaders: { 'User-Agent': 'Mozilla/5.0 MicroMessenger/8.0.60' },
 }
 
-/** 取第 n 次请求的选项 */
+/** 取第 n 次请求的闸门身份 */
 const optionsOf = (index = 0) =>
-  mocks.httpPost.mock.calls[index]?.[3] as { accountKey?: string; skipGate?: boolean }
+  mocks.httpPost.mock.calls[index]?.[3] as { gate?: { flow?: string; accountKey?: string; localAddress?: string } }
 
 describe('YishouClient 限流分桶', () => {
   beforeEach(() => {
@@ -41,7 +41,7 @@ describe('YishouClient 限流分桶', () => {
 
   it('带 uid+token 的请求按账号分桶', async () => {
     await new YishouClient(authedConfig).request('https://example.com/goods')
-    expect(optionsOf().accountKey).toBe('20536811')
+    expect(optionsOf().gate?.accountKey).toBe('20536811')
   })
 
   it('凭证被剔除后按匿名分桶', async () => {
@@ -52,7 +52,7 @@ describe('YishouClient 限流分桶', () => {
       requestParams: { ...baseParams },
     }
     await new YishouClient(anonymous).request('https://example.com/goods')
-    expect(optionsOf().accountKey).toBe('')
+    expect(optionsOf().gate?.accountKey).toBe('')
   })
 
   it('只有 uid 没有 token 时仍算匿名', async () => {
@@ -62,6 +62,11 @@ describe('YishouClient 限流分桶', () => {
       requestParams: { ...baseParams, uid: '20536811' },
     }
     await new YishouClient(halfAuth).request('https://example.com/goods')
-    expect(optionsOf().accountKey).toBe('')
+    expect(optionsOf().gate?.accountKey).toBe('')
+  })
+
+  it('请求自带业务流标识，默认 manual', async () => {
+    await new YishouClient(authedConfig).request('https://example.com/goods')
+    expect(optionsOf().gate?.flow).toBe('manual')
   })
 })

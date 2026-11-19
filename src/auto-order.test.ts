@@ -82,7 +82,7 @@ const createdOrder: YishouCreateOrderData = {
 /** 构造一个全成功路径的假适配器 */
 const createAdapter = (overrides: Partial<AutoOrderAdapter> = {}): AutoOrderAdapter => ({
   getAddresses: vi.fn().mockResolvedValue([address]),
-  getProductSkus: vi.fn().mockResolvedValue(skuResult([0, 3])),
+  getOrderProductSkus: vi.fn().mockResolvedValue(skuResult([0, 3])),
   prepareCheckout: vi.fn().mockResolvedValue(checkoutReady()),
   createOrder: vi.fn().mockResolvedValue(createdOrder),
   discardCheckout: vi.fn().mockResolvedValue(undefined),
@@ -106,7 +106,7 @@ const createArgs = (adapter: AutoOrderAdapter) =>
 describe('placeAutoOrder', () => {
   it('商品级停售时前置拦截，不进入加购建单', async () => {
     const stopped = { ...skuResult([0, 3]), inStock: false, stockMessage: '商品已停售' }
-    const adapter = createAdapter({ getProductSkus: vi.fn().mockResolvedValue(stopped) })
+    const adapter = createAdapter({ getOrderProductSkus: vi.fn().mockResolvedValue(stopped) })
     const result = await placeAutoOrder(adapter, params)
 
     expect(result.success).toBe(false)
@@ -118,7 +118,7 @@ describe('placeAutoOrder', () => {
   it('商品级 inStock 缺失（旧适配器）时不拦截，兼容历史数据', async () => {
     const legacy = { ...skuResult([0, 3]) } as any
     delete legacy.inStock
-    const adapter = createAdapter({ getProductSkus: vi.fn().mockResolvedValue(legacy) })
+    const adapter = createAdapter({ getOrderProductSkus: vi.fn().mockResolvedValue(legacy) })
     const result = await placeAutoOrder(adapter, params)
 
     expect(result.success).toBe(true)
@@ -149,7 +149,7 @@ describe('placeAutoOrder', () => {
 
   it('没有可售规格时不下单，标记为可重试', async () => {
     const adapter = createAdapter({
-      getProductSkus: vi.fn().mockResolvedValue(skuResult([0, 0])),
+      getOrderProductSkus: vi.fn().mockResolvedValue(skuResult([0, 0])),
     })
     const result = await placeAutoOrder(adapter, params)
 
@@ -269,7 +269,7 @@ describe('placeAutoOrder', () => {
 
   it('库存不够时按实际可买数量下单', async () => {
     const adapter = createAdapter({
-      getProductSkus: vi.fn().mockResolvedValue(skuResult([0, 1])),
+      getOrderProductSkus: vi.fn().mockResolvedValue(skuResult([0, 1])),
     })
     const result = await placeAutoOrder(adapter, { ...params, config: { enabled: true, num: 5 } })
 
@@ -283,7 +283,7 @@ describe('placeAutoOrder', () => {
 
   it('两个规格各 1 件、要 2 件时合并成一单', async () => {
     const adapter = createAdapter({
-      getProductSkus: vi.fn().mockResolvedValue(skuResult([1, 1])),
+      getOrderProductSkus: vi.fn().mockResolvedValue(skuResult([1, 1])),
       prepareCheckout: vi.fn().mockResolvedValue(
         checkoutReady({ items: [{ sku: '850000', num: 1 }, { sku: '850001', num: 1 }], num: 2 })
       ),
@@ -307,7 +307,7 @@ describe('placeAutoOrder', () => {
 
   it('要 5 件但只有 2 个有货规格时各 1 件，共 2 件', async () => {
     const adapter = createAdapter({
-      getProductSkus: vi.fn().mockResolvedValue(skuResult([3, 4])),
+      getOrderProductSkus: vi.fn().mockResolvedValue(skuResult([3, 4])),
       prepareCheckout: vi.fn().mockResolvedValue(
         checkoutReady({ items: [{ sku: '850000', num: 1 }, { sku: '850001', num: 1 }], num: 2 })
       ),
@@ -326,7 +326,7 @@ describe('placeAutoOrder', () => {
   it('每个有货规格各 1 件，合计不超过 5 件', async () => {
     // 7 个都有货的规格，上限 5 → 只铺前 5 个规格、各 1 件
     const adapter = createAdapter({
-      getProductSkus: vi.fn().mockResolvedValue(skuResult([2, 3, 1, 1, 4, 2, 1])),
+      getOrderProductSkus: vi.fn().mockResolvedValue(skuResult([2, 3, 1, 1, 4, 2, 1])),
       prepareCheckout: vi.fn().mockResolvedValue(
         checkoutReady({
           items: [
@@ -361,7 +361,7 @@ describe('placeAutoOrder', () => {
   it('有货规格少于上限时全部各 1 件', async () => {
     // 3 个规格有货、1 个无货 → 只下 2 个有货规格各 1 件
     const adapter = createAdapter({
-      getProductSkus: vi.fn().mockResolvedValue(skuResult([1, 0, 2])),
+      getOrderProductSkus: vi.fn().mockResolvedValue(skuResult([1, 0, 2])),
       prepareCheckout: vi.fn().mockResolvedValue(
         checkoutReady({
           items: [
@@ -388,7 +388,7 @@ describe('placeAutoOrder', () => {
 
   it('结算时某个规格卖完，只下剩下的规格', async () => {
     const adapter = createAdapter({
-      getProductSkus: vi.fn().mockResolvedValue(skuResult([1, 1])),
+      getOrderProductSkus: vi.fn().mockResolvedValue(skuResult([1, 1])),
       prepareCheckout: vi.fn().mockResolvedValue(
         checkoutReady({ items: [{ sku: '850001', num: 1 }], num: 1 })
       ),
@@ -403,7 +403,7 @@ describe('placeAutoOrder', () => {
 
   it('结算出现本次没加购的规格时放弃结算重试，避免买错规格', async () => {
     const adapter = createAdapter({
-      getProductSkus: vi.fn().mockResolvedValue(skuResult([0, 1])),
+      getOrderProductSkus: vi.fn().mockResolvedValue(skuResult([0, 1])),
       prepareCheckout: vi.fn().mockResolvedValue(
         checkoutReady({ items: [{ sku: '850002', num: 1 }] })
       ),
@@ -419,7 +419,7 @@ describe('placeAutoOrder', () => {
 
   it('指定多个规格时只在其中挑选有货的', async () => {
     const adapter = createAdapter({
-      getProductSkus: vi.fn().mockResolvedValue(skuResult([0, 0, 2])),
+      getOrderProductSkus: vi.fn().mockResolvedValue(skuResult([0, 0, 2])),
       prepareCheckout: vi.fn().mockResolvedValue(
         checkoutReady({ items: [{ sku: '850002', num: 1 }] })
       ),
@@ -433,7 +433,7 @@ describe('placeAutoOrder', () => {
 
   it('指定规格都没货时不做回退，标记为可重试', async () => {
     const adapter = createAdapter({
-      getProductSkus: vi.fn().mockResolvedValue(skuResult([2, 0])),
+      getOrderProductSkus: vi.fn().mockResolvedValue(skuResult([2, 0])),
     })
     const result = await placeAutoOrder(adapter, { ...params, skus: ['850001'] })
 
@@ -446,7 +446,7 @@ describe('placeAutoOrder', () => {
 
   it('购物车有残留导致结算件数变多时放弃并重试，避免多买', async () => {
     const adapter = createAdapter({
-      getProductSkus: vi.fn().mockResolvedValue(skuResult([0, 3])),
+      getOrderProductSkus: vi.fn().mockResolvedValue(skuResult([0, 3])),
       prepareCheckout: vi.fn().mockResolvedValue(
         checkoutReady({ items: [{ sku: '850001', num: 6 }], num: 6 })
       ),
@@ -499,7 +499,7 @@ describe('precheckAutoOrder', () => {
 
   it('显示合并后的每个规格与件数', async () => {
     const adapter = createAdapter({
-      getProductSkus: vi.fn().mockResolvedValue(skuResult([1, 1])),
+      getOrderProductSkus: vi.fn().mockResolvedValue(skuResult([1, 1])),
       prepareCheckout: vi.fn().mockResolvedValue(
         checkoutReady({
           items: [{ sku: '850000', num: 1 }, { sku: '850001', num: 1 }],
@@ -518,7 +518,7 @@ describe('precheckAutoOrder', () => {
 
   it('无货时返回可重试原因', async () => {
     const adapter = createAdapter({
-      getProductSkus: vi.fn().mockResolvedValue(skuResult([0, 0])),
+      getOrderProductSkus: vi.fn().mockResolvedValue(skuResult([0, 0])),
     })
     const result = await precheckAutoOrder(adapter, params)
 

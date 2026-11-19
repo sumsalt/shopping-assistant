@@ -87,7 +87,7 @@ const goodsData = {
 
 const calls = () => mocks.httpPost.mock.calls as Array<[string, Record<string, string>, unknown, unknown]>
 const bodyOf = (i: number) => calls()[i][1]
-const optionsOf = (i: number) => calls()[i][3] as { skipGate?: boolean }
+const optionsOf = (i: number) => calls()[i][3] as { gate?: { flow?: string; accountKey?: string } }
 
 describe('getProductSkus（POST /goods/get_goods_info_v2）', () => {
   beforeEach(() => {
@@ -105,22 +105,22 @@ describe('getProductSkus（POST /goods/get_goods_info_v2）', () => {
     expect(bodyOf(0)).toMatchObject({ goods_id: '341451565', goods_no: '' })
   })
 
-  it('默认过闸门：库存/价格监控的 SKU 检测不跳过闸门', async () => {
+  it('默认过闸门：库存/价格监控的 SKU 检测走 monitor.stock flow', async () => {
     mocks.httpPost.mockResolvedValue({ code: '200', msg: 'success', data: goodsData })
 
     const adapter = new YishouAdapter({ channel: 'app' })
     await adapter.getProductSkus('341451565')
 
-    expect(optionsOf(0).skipGate).not.toBe(true)
+    expect(optionsOf(0).gate?.flow).toBe('monitor.stock')
   })
 
-  it('skipGate=true：下单预检跳过闸门，不被 1s 令牌拖慢', async () => {
+  it('下单预检走 getOrderProductSkus，绑定 order.checkout flow（策略 bypass，不被 1s 令牌拖慢）', async () => {
     mocks.httpPost.mockResolvedValue({ code: '200', msg: 'success', data: goodsData })
 
     const adapter = new YishouAdapter(authConfig)
-    await adapter.getProductSkus('341451565', true)
+    await adapter.getOrderProductSkus('341451565')
 
-    expect(optionsOf(0).skipGate).toBe(true)
+    expect(optionsOf(0).gate?.flow).toBe('order.checkout')
   })
 
   it('登录态：拿货价、收藏标记、SKU 库存都从同一次响应带出', async () => {

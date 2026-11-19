@@ -1,12 +1,18 @@
 /**
  * 一手请求客户端
  *
- * 把「签名 + 公共参数 + 请求头 + 代理 + 闸门 + 响应解包 + 错误映射」收在一处。
- * 适配器每个接口方法因此只需要一行 post + 一行映射，不再重复 6 步样板。
+ * 把「签名 + 公共参数 + 请求头 + 代理 + 闸门身份 + 响应解包 + 错误映射」收在一处。
+ * 适配器每个接口方法因此只需要一行 post + 一行映射，不再重复样板。
+ *
+ * 闸门身份（flow / accountKey / localAddress）由本 client 在发请求时显式组装：
+ * - flow 在构造时绑定（这个 client 的业务用途），方法可按需 override；
+ * - accountKey / localAddress 从账号快照 profile 解析；
+ * 出口据此查策略表决定排队还是放行，全程不依赖隐式上下文。
  */
 
 import { httpPost } from '../../utils/http';
 import { StockCheckError, StockCheckErrorType } from '../../types';
+import type { GateFlow } from '../../utils/request-gate';
 import type { AdapterConfig } from '../types';
 import { resolveRequestProfile, type RequestProfile } from './profile';
 
@@ -18,8 +24,11 @@ export interface YishouEnvelope<T> {
 }
 
 export interface YishouClientOptions {
-  /** 抢库存类请求（加购 / 建单）跳过全局闸门 */
-  skipGate?: boolean;
+  /**
+   * 业务流标识：决定闸门策略（bypass / normal）与统计归类。
+   * 默认 'manual'（手动操作）。下单传 'order.checkout'、登录传 'auth.login' 走豁免。
+   */
+  flow?: GateFlow;
   /** 超时（毫秒），默认 10 秒；下单链路用 20 秒 */
   timeout?: number;
   /** 是否使用配置里的代理，默认 true（收藏夹 / SKU 接口历史上直连） */
@@ -28,9 +37,6 @@ export interface YishouClientOptions {
 
 /**
  * 把一手返回的 code/msg 映射成统一错误
- *
- * 一手没有规范错误码，只能靠文案判断：登录失效、商品不存在是最需要区分的两类，
- * 其余一律 API_ERROR，避免调用方拿到「未知错误」无从处理。
  */
 const toApiError = (msg: string, code: string): StockCheckError => {
   if (msg.includes('登录')) {
@@ -86,16 +92,20 @@ export class YishouClient {
   }
 
   /**
-   * 发送请求并返回完整响应壳
+   * 发送请求并返回完整响应壳。
    *
-   * 所有请求（含下单）都走这里，签名 / 请求头 / 代理 / 闸门只有一份实现。
+   * 所有请求（含下单）都走这里，签名 / 请求头 / 代理 / 闸门身份只有一份实现。
+   * @param flowOverride 本次请求覆盖 client 默认 flow（同一 client 服务多业务时用）
    */
-  async request<T>(url: string, extra: Record<string, string> = {}): Promise<YishouEnvelope<T>> {
+  async request<T>(
+    url: string,
+    extra: Record<string, string> = {},
+    flowOverride?: GateFlow
+  ): Promise<YishouEnvelope<T>> {
     const t_t = this.profile.timestamp();
     const body: Record<string, string> = {
       ...this.profile.params,
       ...extra,
-      // t_t 永远用本次生成的值，抓包里残留的旧值已在 profile 里剔除
       t_t: `${t_t}`,
     };
     const headers: Record<string, string> = {
@@ -103,24 +113,30 @@ export class YishouClient {
       sign: this.profile.sign(t_t),
     };
 
+    // 闸门身份由这次请求的实际属性决定：
+    // - flow 决定策略（bypass / normal）与统计；
+    // - accountKey → UID 桶（登录 uid / 匿名空串跳过）；
+    // - localAddress → IP 桶（账号绑定的出口网卡 / 默认）。
     return httpPost<YishouEnvelope<T>>(url, body, headers, {
       ...(this.options.useProxy !== false && this.profile.proxyUrl
         ? { proxyUrl: this.profile.proxyUrl }
         : {}),
-      ...(this.options.skipGate ? { skipGate: true } : {}),
       ...(this.options.timeout ? { timeout: this.options.timeout } : {}),
-      ...(this.profile.localAddress ? { localAddress: this.profile.localAddress } : {}),
-      // 两层限流身份都由这次请求的实际属性决定：
-      // - accountKey → UID 桶（登录 uid / 匿名 anon）
-      // - localAddress → IP 桶（账号绑定的出口网卡 / 默认）
-      // 任务层不再自己声明，避免两处口径不一致。
-      accountKey: this.profile.hasAuth ? this.profile.uid : '',
+      gate: {
+        flow: flowOverride ?? this.options.flow ?? 'manual',
+        accountKey: this.profile.hasAuth ? this.profile.uid : '',
+        localAddress: this.profile.localAddress,
+      },
     });
   }
 
   /** 发送请求并解包 data；code 非 200 直接抛业务错误 */
-  async post<T>(url: string, extra: Record<string, string> = {}): Promise<T> {
-    const response = await this.request<T>(url, extra);
+  async post<T>(
+    url: string,
+    extra: Record<string, string> = {},
+    flowOverride?: GateFlow
+  ): Promise<T> {
+    const response = await this.request<T>(url, extra, flowOverride);
     if (response?.code !== '200') {
       throw toApiError(response?.msg ?? '', String(response?.code ?? ''));
     }

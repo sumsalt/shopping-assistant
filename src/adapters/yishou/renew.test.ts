@@ -85,7 +85,7 @@ const route = (url: string): unknown => {
 const calls = () => mocks.httpPost.mock.calls as Array<[string, Record<string, string>, unknown, unknown]>
 const urlOf = (i: number) => calls()[i][0]
 const bodyOf = (i: number) => calls()[i][1]
-const optionsOf = (i: number) => calls()[i][3] as { skipGate?: boolean; timeout?: number }
+const optionsOf = (i: number) => calls()[i][3] as { gate?: { flow?: string }; timeout?: number }
 
 describe('confirmWaitPayOrder（抓包 1.1）', () => {
   beforeEach(() => {
@@ -107,10 +107,10 @@ describe('confirmWaitPayOrder（抓包 1.1）', () => {
     expect(bodyOf(0).order_sn).toBe('12641516245909')
   })
 
-  it('沿用下单链路的 skipGate + 20s 超时', async () => {
+  it('续期走 order.renew flow（闸门限频）+ 20s 超时', async () => {
     const adapter = new YishouAdapter(config)
     await adapter.confirmWaitPayOrder('12641516245909')
-    expect(optionsOf(0).skipGate).toBe(true)
+    expect(optionsOf(0).gate?.flow).toBe('order.renew')
     expect(optionsOf(0).timeout).toBe(20000)
   })
 
@@ -175,7 +175,7 @@ describe('reloadWaitPayOrder（抓包 1.4）', () => {
     }
     // 非灰度账号（confirm 没返回 stock_warning_options）一个字段都不加
     expect(body).not.toHaveProperty('stock_warning_methods')
-    expect(optionsOf(0).skipGate).toBe(true)
+    expect(optionsOf(0).gate?.flow).toBe('order.renew')
 
     expect(result.orderSn).toBe('12641516245909')
     expect(result.payStatus).toBe('wait_pay')
@@ -300,12 +300,12 @@ describe('reloadWaitPayOrder（抓包 1.4）', () => {
     expect(result.cancelExpireAt).toBe(1794499531000)
   })
 
-  it('续期专用视图走闸门（不 skipGate），与下单视图分离', async () => {
+  it('续期专用视图与直接调用都走 order.renew flow（闸门限频），与下单 bypass 分离', async () => {
     const adapter = new YishouAdapter(config)
     const renew = adapter.asRenewAdapter()
     await renew.confirmWaitPayOrder('12641516245909')
 
-    expect(optionsOf(0).skipGate).not.toBe(true)
+    expect(optionsOf(0).gate?.flow).toBe('order.renew')
     expect(optionsOf(0).timeout).toBe(20000)
   })
 })

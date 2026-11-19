@@ -15,7 +15,6 @@
  */
 
 import { checkCollectionStock, removeProductFromCollection } from './stock-check';
-import { runWithGateContext } from './utils/request-gate';
 import type { AdapterConfig } from './adapters';
 import type { CollectionStockResult } from './types';
 
@@ -154,18 +153,10 @@ export class CollectionMonitorEngine {
 
     const log = config.log ?? (() => {});
     const pageSize = config.pageSize && config.pageSize > 0 ? Math.floor(config.pageSize) : 20;
-    const accountKey = account.accountKey;
 
-    // 整个循环跑在闸门上下文里：翻页请求带登录态 → 进 uid:<账号> 桶 + IP 桶，
-    // 由登录桶控制节奏（不 sleep）。
-    void runWithGateContext(
-      {
-        taskId: 'collection-engine',
-        kind: 'stock',
-        accountKey,
-        localAddress: account.adapterConfig.localAddress,
-      },
-      async () => {
+    // 翻页请求经 checkCollectionStock → adapter(directClient)，自带 collection.sync flow
+    // 与账号身份（uid / localAddress），由闸门按 IP + UID 桶控制节奏（不 sleep）。
+    void (async () => {
         log('收藏夹共享循环已启动', 'info');
         let consecutiveFailures = 0;
         const baseRetry = this.config.errorRetryDelayMs ?? 1000;
@@ -198,8 +189,7 @@ export class CollectionMonitorEngine {
           this.controller = null;
           log('收藏夹共享循环已停止', 'info');
         }
-      }
-    );
+    })();
   }
 
   /** 停止循环（不清空订阅；订阅由各任务删除时自行 unsubscribe） */

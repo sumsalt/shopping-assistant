@@ -27,7 +27,6 @@ import {
   createAutoOrderFailedTemplate,
 } from './email';
 import { placeAutoOrder } from './auto-order';
-import { runWithGateContext } from './utils/request-gate';
 
 /** 检测间隔硬下限（秒），需求要求大于 1 分钟一次 */
 export const MIN_PRICE_MONITOR_INTERVAL = 60;
@@ -445,13 +444,8 @@ export const createCancellablePriceMonitor = (
   const controller = new AbortController();
   const { signal } = controller;
 
-  // 打上任务上下文：循环内所有 HTTP 请求都会经过全局请求闸门（用户手动操作无上下文，不受限）
-  const promise = runWithGateContext(
-    {
-      taskId: config.taskId || 'price-monitor',
-      kind: 'price',
-    },
-    async (): Promise<PriceMonitorResult> => {
+  // 闸门身份由每次 HTTP 请求自带的账号快照决定；检测走 monitor.price flow（闸门限流）
+  const promise = (async (): Promise<PriceMonitorResult> => {
       const {
         interval = DEFAULT_PRICE_MONITOR_INTERVAL,
         duration,
@@ -805,8 +799,7 @@ export const createCancellablePriceMonitor = (
       }
 
       return result;
-    }
-  );
+    })();
 
   return { controller, promise };
 };

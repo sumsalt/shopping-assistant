@@ -1,7 +1,9 @@
 /**
  * 一手下单链路（协议适配层）
  *
- * 与查询接口的差别：必须登录、跳过全局闸门（抢库存排队 5 秒没有意义）、超时放宽到 20 秒。
+ * 与查询接口的差别：必须登录、超时放宽到 20 秒。闸门策略由构造时的 flow 决定：
+ * 下单链路传 'order.checkout'（bypass，抢库存排队 5 秒没有意义），
+ * 续期链路传 'order.renew'（走闸门，批量续期需限频）。
  *
  * 对外只暴露三个「业务动作」，把抓包 15 步收敛成清晰的编排：
  *   - prepareCheckout：取规格 → 加购 → 购物车明细 → 算折 → 结算确认，产出 CheckoutReady
@@ -26,6 +28,7 @@ import type {
   YishouCreateOrderData,
 } from '../../types';
 import type { AdapterConfig } from '../types';
+import type { GateFlow } from '../../utils/request-gate';
 import { StockCheckError, StockCheckErrorType } from '../../types';
 import * as EP from './endpoints';
 import { YishouClient } from './client';
@@ -117,11 +120,11 @@ export class YishouOrderApi {
   private readonly client: YishouClient;
 
   /**
-   * @param skipGate 是否跳过全局闸门。下单链路传 true（抢库存，保持豁免）；
-   *   订单续期传 false，让请求走闸门限频，避免批量续期打爆一手。
+   * @param flow 业务流标识，决定闸门策略：下单 'order.checkout' 走 bypass，
+   *   续期 'order.renew' 走闸门。默认下单。
    */
-  constructor(config: AdapterConfig = {}, private readonly skipGate = true) {
-    this.client = new YishouClient(config, { skipGate, timeout: 20000 });
+  constructor(config: AdapterConfig = {}, flow: GateFlow = 'order.checkout') {
+    this.client = new YishouClient(config, { flow, timeout: 20000 });
   }
 
   /**

@@ -24,7 +24,7 @@ import type {
   KeywordSearchResult,
 } from '../../types';
 import { BaseAdapter } from '../base-adapter';
-import type { AdapterConfig } from '../types';
+import type { AdapterConfig, RenewOrderAdapter } from '../types';
 import * as EP from './endpoints';
 import { YishouClient, withErrorContext } from './client';
 import { YishouOrderApi } from './order-api';
@@ -61,48 +61,41 @@ const splitByStock = (
 export class YishouAdapter extends BaseAdapter {
   readonly platform: Platform = 'yishou';
 
-  /** 普通查询 */
-  private readonly client: YishouClient;
-  /** 收藏夹 / SKU 两个接口历史上不走代理 */
-  private readonly directClient: YishouClient;
-  /** 下单链路（skipGate，保持抢库存豁免） */
-  private readonly order: YishouOrderApi;
-  /** 订单续期链路（走闸门限频，避免批量续期触发一手风控） */
-  private readonly renewOrder: YishouOrderApi;
   /**
-   * 收藏写入：走闸门限频
-   *
-   * 后台的加/删收藏（收藏夹监控 ensure/release）会包 gate 上下文，请求经此 client
-   * 走 UID/IP 桶排队，避免批量恢复时并发触发一手风控。手动点击收藏没有 gate 上下文，
-   * 闸门判断需要 gateContext 才排队，因此手动操作依旧即时放行、不受影响。
+   * 普通查询（监控 / 手动查询）：走闸门。
+   * flow 由具体方法通过 flowOverride 指定（stock / price / tab / manual）。
    */
-  private readonly writeClient: YishouClient;
-  /** 下单预检查 SKU：走代理但跳过闸门，避免下单流程被闸门拖慢 */
+  private readonly client: YishouClient;
+  /** 收藏夹翻页（历史上不走代理）：走闸门 */
+  private readonly directClient: YishouClient;
+  /** 下单链路（order.checkout，bypass 抢库存豁免） */
+  private readonly order: YishouOrderApi;
+  /** 订单续期链路（order.renew，走闸门，避免批量续期触发一手风控） */
+  private readonly renewOrder: YishouOrderApi;
+  /** 下单预检 SKU（order.checkout，bypass）：走代理但跳过闸门 */
   private readonly orderSkuClient: YishouClient;
 
   constructor(config: AdapterConfig = {}) {
     super(config);
-    this.client = new YishouClient(config);
-    this.directClient = new YishouClient(config, { useProxy: false });
-    this.order = new YishouOrderApi(config);
-    // 续期用独立的非 skipGate 实例：getOrderList / confirm / reload / getOrderDetail 都走闸门
-    this.renewOrder = new YishouOrderApi(config, false);
-    this.writeClient = new YishouClient(config, { useProxy: false });
-    this.orderSkuClient = new YishouClient(config, { skipGate: true });
+    this.client = new YishouClient(config, { flow: 'manual' });
+    this.directClient = new YishouClient(config, { useProxy: false, flow: 'collection.sync' });
+    this.order = new YishouOrderApi(config, 'order.checkout');
+    this.renewOrder = new YishouOrderApi(config, 'order.renew');
+    this.orderSkuClient = new YishouClient(config, { flow: 'order.checkout' });
   }
 
   /**
-   * 按 goods_id 查商品详情（库存 / 价格共用）
+   * 按 goods_id 查商品详情（库存 / 价格 / 下单预检共用）
    *
-   * @param skipGate 抢单预检等时效敏感场景传 true 跳过全局闸门；库存/价格监控按默认 false 走闸门限流
+   * @param flow 业务流：决定闸门策略与统计；下单预检传 'order.checkout' 走 bypass
    */
-  private async fetchGoods(productId: string, skipGate = false): Promise<YishouGoodsData> {
-    const client = skipGate ? this.orderSkuClient : this.client;
+  private async fetchGoods(productId: string, flow: import('../../utils/request-gate').GateFlow = 'monitor.stock'): Promise<YishouGoodsData> {
+    const client = flow === 'order.checkout' ? this.orderSkuClient : this.client;
     try {
       const data = await client.post<YishouGoodsData>(EP.GOODS_INFO, {
         goods_id: productId,
         goods_no: '',
-      });
+      }, client === this.client ? flow : undefined);
       if (!data) throw notFound(productId);
       return data;
     } catch (error) {
@@ -116,7 +109,7 @@ export class YishouAdapter extends BaseAdapter {
 
   /** 查询商品库存状态 */
   async checkStock(productId: string, _sku?: string): Promise<StockCheckResult> {
-    return this.fetchGoods(productId)
+    return this.fetchGoods(productId, 'monitor.stock')
       .then(mapToStockResult)
       .catch(withErrorContext('查询商品库存失败'));
   }
@@ -125,7 +118,7 @@ export class YishouAdapter extends BaseAdapter {
   async getPriceInfo(productId: string): Promise<PriceSnapshot> {
     this.client.requireAuth('价格监控需要登录态，请先在账号管理中选择带登录态的账号');
 
-    return this.fetchGoods(productId)
+    return this.fetchGoods(productId, 'monitor.price')
       .then(data => {
         const snapshot = mapToPriceSnapshot(data);
         if (snapshot.authState !== 'logged_in') {
@@ -171,15 +164,16 @@ export class YishouAdapter extends BaseAdapter {
     if (!no) {
       throw new StockCheckError(StockCheckErrorType.API_ERROR, '缺少商品货号，无法收藏');
     }
-    if (!this.writeClient.hasAuth) {
+    if (!this.directClient.hasAuth) {
       throw new StockCheckError(StockCheckErrorType.AUTH_REQUIRED, '收藏需要登录态，请先选择账号');
     }
 
-    const data = await this.writeClient
-      .post<{ collect_id?: string | number }>(EP.ADD_COLLECTION, {
-        app_code: '0',
-        goods_no: no,
-      })
+    const data = await this.directClient
+      .post<{ collect_id?: string | number }>(
+        EP.ADD_COLLECTION,
+        { app_code: '0', goods_no: no },
+        'collection.write'
+      )
       .catch(withErrorContext('添加到收藏夹失败'));
 
     const collectId = String(data?.collect_id ?? '');
@@ -198,7 +192,7 @@ export class YishouAdapter extends BaseAdapter {
    * 从收藏夹移除（抓包：POST /users/del_goods_collection，JSON 形态）
    *
    * 抓包体 `{version_name, goods_no, goods_id, collect_id, token, uid}`：
-   * version_name/token/uid 由 writeClient 从账号快照自动注入、签名同理，
+   * version_name/token/uid 由 directClient 从账号快照自动注入、签名同理，
    * 这里只补业务三件套 goods_no + collect_id（+ 抓包也带的 goods_id）。
    * collect_id 决定移除哪一条收藏，缺它服务端无法定位。
    */
@@ -208,16 +202,20 @@ export class YishouAdapter extends BaseAdapter {
     if (!no || !cid) {
       throw new StockCheckError(StockCheckErrorType.API_ERROR, '缺少商品货号或收藏 ID，无法取消收藏');
     }
-    if (!this.writeClient.hasAuth) {
+    if (!this.directClient.hasAuth) {
       throw new StockCheckError(StockCheckErrorType.AUTH_REQUIRED, '取消收藏需要登录态，请先选择账号');
     }
 
-    await this.writeClient
-      .post(EP.DEL_COLLECTION, {
-        goods_no: no,
-        ...(productId ? { goods_id: String(productId) } : {}),
-        collect_id: cid,
-      })
+    await this.directClient
+      .post(
+        EP.DEL_COLLECTION,
+        {
+          goods_no: no,
+          ...(productId ? { goods_id: String(productId) } : {}),
+          collect_id: cid,
+        },
+        'collection.write'
+      )
       .catch(withErrorContext('取消收藏失败'));
   }
 
@@ -277,11 +275,11 @@ export class YishouAdapter extends BaseAdapter {
    *
    * 详情页只调这一个接口：SKU 树、价格、库存、收藏标记一次拿全。
    * 该接口匿名可用，未登录时价格回落成游客参考价（读 alone_price），
-   * 所以这里不再要求登录态。
+   * 所以这里不再要求登录态。走闸门限流（flow=monitor.stock）。
    *
-   * @param skipGate 下单预检传 true 跳过闸门；库存/价格监控用默认 false，仍走闸门限流
+   * 下单预检的时效敏感场景请用 {@link getOrderProductSkus}（bypass 闸门）。
    */
-  async getProductSkus(productId: string, skipGate = false): Promise<ProductSkuResult> {
+  async getProductSkus(productId: string): Promise<ProductSkuResult> {
     const id = String(productId || '').trim();
     if (!id) {
       throw new StockCheckError(StockCheckErrorType.API_ERROR, '缺少商品 ID');
@@ -289,7 +287,7 @@ export class YishouAdapter extends BaseAdapter {
 
     const guest = !this.client.hasAuth;
     try {
-      const data = await this.fetchGoods(id, skipGate);
+      const data = await this.fetchGoods(id, 'monitor.stock');
       return mapGoodsToSkuResult(data, { guest });
     } catch (error) {
       if (error instanceof StockCheckError && error.type === StockCheckErrorType.PRODUCT_NOT_FOUND) {
@@ -297,6 +295,20 @@ export class YishouAdapter extends BaseAdapter {
       }
       throw withErrorContext('获取商品 SKU 失败')(error);
     }
+  }
+
+  /**
+   * 下单预检用的 SKU 查询：走下单专用 client（order.checkout，bypass 闸门），
+   * 避免抢库存时被闸门排队拖慢。语义与 getProductSkus 相同，仅闸门策略不同。
+   */
+  async getOrderProductSkus(productId: string): Promise<ProductSkuResult> {
+    const id = String(productId || '').trim();
+    if (!id) {
+      throw new StockCheckError(StockCheckErrorType.API_ERROR, '缺少商品 ID');
+    }
+    const guest = !this.orderSkuClient.hasAuth;
+    const data = await this.fetchGoods(id, 'order.checkout');
+    return mapGoodsToSkuResult(data, { guest });
   }
 
   // ==================== 下单链路（委托给 YishouOrderApi） ====================
@@ -329,13 +341,13 @@ export class YishouAdapter extends BaseAdapter {
     return this.order.getOrderDetail(orderSn);
   }
 
-  // ==================== 待支付订单续期（委托给走闸门的 renewOrder） ====================
+  // ==================== 待支付订单续期 ====================
 
   /**
-   * 返回续期专用视图：所有方法走不 skipGate 的 renewOrder，请求经闸门限频。
-   * 与下单视图分离，保证下单链路（skipGate）不受影响。
+   * 返回续期专用适配器：所有方法走 order.renew flow（闸门限频），与下单的 bypass 视图分离。
+   * 由 getRenewAdapter 工厂调用，编排层不接触具体平台。
    */
-  asRenewAdapter() {
+  asRenewAdapter(): RenewOrderAdapter {
     const api = this.renewOrder;
     return {
       getOrderList: (page?: number, pageSize?: number, status?: OrderStatusTab) =>
@@ -346,14 +358,14 @@ export class YishouAdapter extends BaseAdapter {
     };
   }
 
-  /** 抓包 1.1：取重新结算上下文（保留给旧引用；续期请用 asRenewAdapter） */
+  /** 续期确认（走 order.renew flow，闸门限频）；等价于 asRenewAdapter().confirmWaitPayOrder */
   confirmWaitPayOrder(orderSn: string) {
-    return this.order.confirmWaitPayOrder(orderSn);
+    return this.renewOrder.confirmWaitPayOrder(orderSn);
   }
 
-  /** 抓包 1.4：重新提交支付单刷新有效期（保留给旧引用；续期请用 asRenewAdapter） */
+  /** 续期提交（走 order.renew flow，闸门限频）；等价于 asRenewAdapter().reloadWaitPayOrder */
   reloadWaitPayOrder(protocol: unknown) {
-    return this.order.reloadWaitPayOrder(protocol);
+    return this.renewOrder.reloadWaitPayOrder(protocol);
   }
 }
 

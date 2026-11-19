@@ -38,7 +38,7 @@ export abstract class BaseAdapter implements PlatformAdapter {
   /**
    * 获取商品的所有 SKU 信息（抽象方法，子类必须实现）
    */
-  abstract getProductSkus(productId: string, skipGate?: boolean): Promise<ProductSkuResult>;
+  abstract getProductSkus(productId: string): Promise<ProductSkuResult>;
 
   /**
    * 获取商品价格快照（抽象方法，子类必须实现）
