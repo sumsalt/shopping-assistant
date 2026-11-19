@@ -65,6 +65,7 @@
         :key="task.id"
         :task="task"
         :busy="busyId === task.id"
+        @stop="handleStop"
         @restart="handleRestart"
         @delete="handleDelete"
       >
@@ -272,7 +273,7 @@ import type { PriceMonitorProduct } from '~/composables/usePriceMonitor'
 definePageMeta({ title: 'Tab 监控任务', keepalive: true })
 
 const router = useRouter()
-const { tasks, isLoading, error, busyId, statusFilter, filteredTasks, statusCounts, fetchTasks, remove, restart } =
+const { tasks, isLoading, error, busyId, statusFilter, filteredTasks, statusCounts, fetchTasks, remove, stop, restart } =
   useTaskList(taskEndpoint('tab'))
 const { fetchSeenProducts } = useTabSeen()
 const { isMobileViewport, openYishouProduct } = useYishouApp()
@@ -304,6 +305,11 @@ const handleCreated = async () => {
 const handleDelete = async (task: TaskSummary) => {
   const confirmed = await confirmDelete('确定要删除此监控任务吗？删除后无法恢复。')
   if (confirmed) await remove(task)
+}
+
+const handleStop = async (task: TaskSummary) => {
+  const confirmed = await confirmRestart('确定要停止此监控任务吗？任务会保留在列表中，可随时重新发起。', '停止任务')
+  if (confirmed) await stop(task)
 }
 
 const handleRestart = async (task: TaskSummary) => {

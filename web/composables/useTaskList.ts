@@ -4,6 +4,7 @@
  * 四类任务的列表接口形状完全一致：
  *   GET    {base}/list    -> { tasks: TaskSummary[], total }
  *   DELETE {base}/delete  -> { taskId, message }
+ *   POST   {base}/stop    -> { task }
  *   POST   {base}/restart -> { taskId, task, message }
  *
  * 页面只关心「拿到的统一视图」，不再各自手写 DTO。
@@ -26,7 +27,7 @@ export const useTaskList = (baseUrl: string) => {
   const tasks = ref<TaskSummary[]>([])
   const isLoading = ref(false)
   const error = ref<string | null>(null)
-  /** 正在操作的任务 id（删除 / 重启） */
+  /** 正在操作的任务 id（停止 / 删除 / 重启） */
   const busyId = ref('')
 
   /** 状态筛选：四个任务列表页共用，切页不影响各自状态 */
@@ -78,6 +79,28 @@ export const useTaskList = (baseUrl: string) => {
     }
   }
 
+  const stop = async (task: TaskSummary): Promise<boolean> => {
+    busyId.value = task.id
+    try {
+      const response = await $fetch<ApiResponse<{ task: TaskSummary }>>(`${baseUrl}/stop`, {
+        method: 'POST',
+        body: { taskId: task.id },
+      })
+      if (!response.success) {
+        toast.error(response.error?.message || '停止失败')
+        return false
+      }
+      await fetchTasks()
+      toast.success('任务已停止')
+      return true
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : '网络请求失败')
+      return false
+    } finally {
+      busyId.value = ''
+    }
+  }
+
   const restart = async (task: TaskSummary): Promise<boolean> => {
     busyId.value = task.id
     try {
@@ -107,6 +130,7 @@ export const useTaskList = (baseUrl: string) => {
     busyId,
     fetchTasks,
     remove,
+    stop,
     restart,
     statusFilter,
     filteredTasks,

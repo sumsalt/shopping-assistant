@@ -70,6 +70,7 @@
         :key="task.id"
         :task="task"
         :busy="busyId === task.id"
+        @stop="handleStop"
         @restart="handleRestart"
         @delete="handleDelete"
       />
@@ -96,11 +97,21 @@ import type { TaskSummary } from '@core/contract'
 
 definePageMeta({ title: '订单续期' })
 
-const { tasks, isLoading, error, busyId, statusFilter, filteredTasks, statusCounts, fetchTasks, remove, restart } =
+const { tasks, isLoading, error, busyId, statusFilter, filteredTasks, statusCounts, fetchTasks, remove, stop, restart } =
   useTaskList(taskEndpoint('renew'))
 
 const confirmDialog = useConfirmDialog()
 const showCreateDialog = ref(false)
+
+const handleStop = async (task: TaskSummary) => {
+  const confirmed = await confirmDialog.confirm({
+    title: '停止订单续期任务',
+    message: `确定要停止「${task.target.name}」的订单续期任务吗？任务会保留在列表中，可随时重新发起。`,
+    confirmText: '停止',
+    cancelText: '取消',
+  })
+  if (confirmed) await stop(task)
+}
 
 const handleRestart = async (task: TaskSummary) => {
   await restart(task)

@@ -83,6 +83,22 @@ export const deleteTaskHandler = <S>(service: TaskService<S>) =>
     return createSuccessResponse({ message: '任务已删除', taskId })
   })
 
+export const stopTaskHandler = <S>(service: TaskService<S>) =>
+  safeHandler(`停止${service.definition.label}任务`, async event => {
+    const user = requireUser(event)
+    if (!user) return createErrorResponse(ErrorCode.UNAUTHORIZED, '请先登录')
+
+    const body = await readBody(event)
+    const taskId = body?.taskId as string
+    if (!taskId) throw new TaskApiError(ErrorCode.INVALID_PARAMS, '缺少任务 ID')
+
+    const record = service.stop(user.username, taskId)
+    const payload: TaskDetailPayload = {
+      task: service.project(record, { full: true }),
+    }
+    return createSuccessResponse(payload)
+  })
+
 export const restartTaskHandler = <S>(service: TaskService<S>) =>
   safeHandler(`重新发起${service.definition.label}任务`, async event => {
     const user = requireUser(event)

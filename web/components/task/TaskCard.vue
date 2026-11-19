@@ -125,6 +125,16 @@
       <!-- 操作 -->
       <div class="flex items-center gap-2 pt-4 mt-4 border-t border-gray-100">
         <UiButton
+          v-if="task.status === 'running'"
+          variant="outline"
+          size="sm"
+          class="text-amber-600 border-amber-200 hover:bg-amber-50 hover:border-amber-300"
+          :disabled="busy"
+          @click="emit('stop', task)"
+        >
+          停止
+        </UiButton>
+        <UiButton
           variant="outline"
           size="sm"
           class="text-blue-600 border-blue-200 hover:bg-blue-50 hover:border-blue-300"
@@ -165,6 +175,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
+  stop: [task: TaskSummary]
   restart: [task: TaskSummary]
   delete: [task: TaskSummary]
 }>()

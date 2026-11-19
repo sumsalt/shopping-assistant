@@ -166,6 +166,30 @@ export class TaskService<S> {
   }
 
   /**
+   * 停止运行中的任务：中止循环并落 stopped，保留记录（可重新发起）。
+   *
+   * 与删除的区别：停止不移除记录、不清空业务状态；abort 会触发各 runner 的收尾，
+   * 收藏夹通道在此释放订阅与收藏项。清空 controller 让 launch 的 promise 收尾跳过，
+   * 否则收尾会把状态覆盖成 completed。
+   */
+  stop(username: string, taskId: string): TaskRecordBase<S> {
+    const record = this.requireOwned(username, taskId, '停止')
+    if (record.status !== 'running') {
+      throw new TaskApiError(ErrorCode.INVALID_PARAMS, '任务未在运行，无法停止')
+    }
+
+    // abort 触发 runner 收尾：收藏夹通道会 releaseCollected + unsubscribeCollection
+    this.registry.abort(taskId)
+    // 关键：清空 controller，使 launch 的 promise.then 因 controller 变化而跳过，
+    // 从而保留这里写入的 stopped（与 extend 同一手法）
+    record.controller = undefined
+    record.status = 'stopped'
+    record.updatedAt = new Date()
+    this.registry.touch(record, 'now')
+    return record
+  }
+
+  /**
    * 延长运行中的任务：把时长重置为 durationSeconds（从当前时刻重新计时），保留累计统计。
    *
    * 用于「已有同类任务时把时长更新为 12 小时」：不新建任务、不换 id，
