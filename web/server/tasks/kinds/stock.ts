@@ -327,9 +327,6 @@ export const stockDefinition: TaskKindDefinition<StockTaskState> = {
   },
 
   restart(record) {
-    if (record.status === 'running') {
-      throw new TaskApiError(ErrorCode.INVALID_PARAMS, '该任务正在运行，请先删除后再重新发起')
-    }
     const state = record.state
     return {
       state: {
