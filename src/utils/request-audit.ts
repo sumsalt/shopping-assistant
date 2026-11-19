@@ -5,10 +5,11 @@
  * 代码层面的异常——循环失控、重试风暴、flow 归属错误（后台任务误挂 bypass）、
  * 闸门拥堵等。所有 record 调用都是同步、非阻塞、异常吞掉，绝不影响请求本身。
  *
- * 规则分两层（定义见 audit-policy.ts）：
- * - 确定性规则（每次请求判定，命中即告警）：闸门超时 / bypass 高频 / 同接口失败风暴
- * - 统计性规则（只在摘要定时器里判定，默认仅观测）：单 flow 增速突刺 / 全局速率超限
+ * 规则分两层（定义见 audit-policy.ts），命中即发告警邮件：
+ * - 确定性规则（每次请求判定）：闸门超时 / bypass 高频 / 同接口失败风暴
+ * - 统计性规则（摘要定时器里判定）：单 flow 增速突刺 / 全局速率超限
  *
+ * 周期性的流量摘要只写日志、不发邮件；只有异常才发邮件。
  * 告警自发自收：收件人默认取 SMTP_USER（AUDIT_ALERT_TO 可覆盖）。
  * 未配置 SMTP_PASS 时优雅跳过，不改变任何业务行为。
  */
@@ -368,35 +369,21 @@ export const runAuditSummary = (): void => {
     }
   }
 
-  if (!canSend()) return;
+  // 流量摘要只写日志、不发邮件（邮箱只用于真正的异常告警）
   const snap = getAuditSnapshot();
   const gate = getGateStats();
   const fmt = (obj: Record<string, number>): string =>
-    Object.entries(obj).sort((a, b) => b[1] - a[1]).map(([k, v]) => `    ${k}: ${v}`).join('\n') || '    （无）';
-  const text = [
-    `服务器: ${labelOf(policy)}`,
-    `统计窗口: ${policy.windowMs / 1000}s  生成时间: ${new Date(now).toISOString()}`,
-    '',
-    `最近窗口请求总数: ${snap.total}`,
-    `闸门超时: ${snap.gateTimeouts}  排队中: ${gate.pending}  累计超时: ${gate.timedOut}`,
-    '',
-    '--- 各业务流请求数 ---',
-    fmt(snap.flows),
-    '',
-    '--- bypass 流请求数（正常应极低）---',
-    fmt(snap.bypass),
-    '',
-    '--- 失败最多的接口 ---',
-    fmt(snap.failures),
-    '',
-    '--- 统计性观测 ---',
-    stats.length ? stats.map((e) => `    [${e.key}] ${e.detail}`).join('\n') : '    无异常',
-    '',
-    `提示: 统计性规则当前${policy.statAlertEnabled ? '会' : '不会'}单独发告警邮件（AUDIT_STAT_ALERT_ENABLED=${policy.statAlertEnabled}）`,
-    '（本邮件由请求审计自动发出，自发自收，用于发现代码问题）',
-  ].join('\n');
-
-  deliver(policy, `[请求审计摘要][${labelOf(policy)}] 流量与异常观测`, text);
+    Object.entries(obj).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k}:${v}`).join(' ') || '无';
+  console.log(
+    [
+      `[请求审计摘要][${labelOf(policy)}] ${new Date(now).toISOString()} 窗口=${policy.windowMs / 1000}s`,
+      `  总量=${snap.total} 闸门超时=${snap.gateTimeouts} 排队中=${gate.pending} 累计超时=${gate.timedOut}`,
+      `  业务流[${fmt(snap.flows)}]`,
+      `  bypass[${fmt(snap.bypass)}]`,
+      `  失败接口[${fmt(snap.failures)}]`,
+      `  统计观测[${stats.length ? stats.map((e) => e.key).join(' ') : '无'}]`,
+    ].join('\n')
+  );
 };
 
 /** 启动摘要定时器（幂等，unref 不阻止进程退出） */

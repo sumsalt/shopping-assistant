@@ -125,57 +125,59 @@ describe('确定性规则（命中即告警）', () => {
   });
 });
 
-describe('统计性规则（默认仅观测）', () => {
-  it('默认 statAlertEnabled=false：突刺只进观测，不发单独告警', () => {
+describe('统计性规则', () => {
+  // 构造突刺：过去 9 个窗口低基线，当前窗口突增
+  const createSpike = (flow: string) => {
+    vi.setSystemTime(Date.now() - 9 * 60_000);
+    for (let w = 0; w < 9; w++) {
+      for (let i = 0; i < 2; i++) recordOutbound(identity(flow), 'https://x/a');
+      vi.setSystemTime(Date.now() + 60_000);
+    }
+    for (let i = 0; i < 40; i++) recordOutbound(identity(flow), 'https://x/a');
+  };
+
+  it('默认即发告警：突刺命中时发邮件', () => {
     process.env.AUDIT_SPIKE_MIN_SAMPLES = '5';
     process.env.AUDIT_SPIKE_FACTOR = '4';
     process.env.AUDIT_FAIL_STORM_LIMIT = '100000'; // 关掉确定性规则干扰
+    process.env.AUDIT_GLOBAL_LIMIT = '100000';
+    createSpike('monitor.price');
 
-    // 过去 9 个窗口保持低基线
-    vi.setSystemTime(Date.now() - 9 * 60_000);
-    for (let w = 0; w < 9; w++) {
-      for (let i = 0; i < 2; i++) recordOutbound(identity('monitor.stock'), 'https://x/a');
-      vi.setSystemTime(Date.now() + 60_000);
-    }
-    // 当前窗口突增
-    for (let i = 0; i < 40; i++) recordOutbound(identity('monitor.stock'), 'https://x/a');
-
-    mocks.sendEmail.mockClear(); // 清掉过程中可能触发的告警，只关注摘要判定
+    mocks.sendEmail.mockClear();
+    vi.spyOn(console, 'log').mockImplementation(() => {});
     runAuditSummary();
-    const snap = getAuditSnapshot();
-    expect(snap.observations.some((e) => e.key === 'spike:monitor.stock')).toBe(true);
-    // 观测模式下没有「突刺」单独告警（bypass/失败风暴已关闭，闸门超时无）
-    const alertSubjects = mocks.sendEmail.mock.calls.map((c) => c[0].subject as string);
-    expect(alertSubjects.some((s) => s.includes('流量突刺'))).toBe(false);
+    const subjects = mocks.sendEmail.mock.calls.map((c) => c[0].subject as string);
+    expect(subjects.some((s) => s.includes('流量突刺'))).toBe(true);
+    vi.restoreAllMocks();
   });
 
-  it('statAlertEnabled=true：突刺会发单独告警', () => {
-    process.env.AUDIT_STAT_ALERT_ENABLED = 'true';
+  it('statAlertEnabled=false：突刺只进观测，不发邮件', () => {
+    process.env.AUDIT_STAT_ALERT_ENABLED = 'false';
     process.env.AUDIT_SPIKE_MIN_SAMPLES = '5';
     process.env.AUDIT_SPIKE_FACTOR = '4';
     process.env.AUDIT_FAIL_STORM_LIMIT = '100000';
     process.env.AUDIT_GLOBAL_LIMIT = '100000';
-
-    vi.setSystemTime(Date.now() - 9 * 60_000);
-    for (let w = 0; w < 9; w++) {
-      for (let i = 0; i < 2; i++) recordOutbound(identity('monitor.price'), 'https://x/p');
-      vi.setSystemTime(Date.now() + 60_000);
-    }
-    for (let i = 0; i < 40; i++) recordOutbound(identity('monitor.price'), 'https://x/p');
+    createSpike('monitor.stock');
 
     mocks.sendEmail.mockClear();
+    vi.spyOn(console, 'log').mockImplementation(() => {});
     runAuditSummary();
-    const subjects = mocks.sendEmail.mock.calls.map((c) => c[0].subject as string);
-    expect(subjects.some((s) => s.includes('流量突刺'))).toBe(true);
+    const snap = getAuditSnapshot();
+    expect(snap.observations.some((e) => e.key === 'spike:monitor.stock')).toBe(true);
+    const alertSubjects = mocks.sendEmail.mock.calls.map((c) => c[0].subject as string);
+    expect(alertSubjects.some((s) => s.includes('流量突刺'))).toBe(false);
+    vi.restoreAllMocks();
   });
 });
 
 describe('发信与健壮性', () => {
   it('未配置 SMTP（ensureConfigured=false）时不发信、不抛错', () => {
     mocks.ensureConfigured.mockReturnValue(false);
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     expect(() => recordGateTimeout(identity('monitor.stock'))).not.toThrow();
     expect(() => runAuditSummary()).not.toThrow();
     expect(mocks.sendEmail).not.toHaveBeenCalled();
+    logSpy.mockRestore();
   });
 
   it('收件人默认自发自收，可用 AUDIT_ALERT_TO 覆盖', () => {
@@ -190,15 +192,24 @@ describe('发信与健壮性', () => {
     expect((mocks.sendEmail.mock.calls[0][0] as { to: string }).to).toBe('ops@example.com');
   });
 
-  it('摘要邮件标题带服务器标签', () => {
+  it('周期摘要只写日志、不发邮件（只有异常才发邮件）', () => {
     process.env.AUDIT_SERVER_LABEL = 'main';
     process.env.AUDIT_SUMMARY_INTERVAL_MS = '600000';
-    recordOutbound(identity('monitor.stock'), 'https://x/a');
+    // 制造一次确定性异常，验证异常仍发邮件
+    recordGateTimeout(identity('monitor.stock'));
     mocks.sendEmail.mockClear();
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     runAuditSummary();
-    expect(mocks.sendEmail).toHaveBeenCalled();
-    const subject = mocks.sendEmail.mock.calls[0][0].subject as string;
-    expect(subject).toContain('请求审计摘要');
-    expect(subject).toContain('main');
+
+    // 摘要本身不发邮件
+    const subjects = mocks.sendEmail.mock.calls.map((c) => c[0].subject as string);
+    expect(subjects.some((s) => s.includes('请求审计摘要'))).toBe(false);
+    // 摘要写进了日志，带服务器标签
+    expect(logSpy).toHaveBeenCalled();
+    const logText = logSpy.mock.calls.map((c) => String(c[0])).join('\n');
+    expect(logText).toContain('请求审计摘要');
+    expect(logText).toContain('main');
+    logSpy.mockRestore();
   });
 });

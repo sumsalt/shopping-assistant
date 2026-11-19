@@ -5,13 +5,13 @@
  * 目标是发现代码层面的异常——循环失控、重试风暴、flow 归属错误（后台任务误挂 bypass）、
  * 闸门拥堵等，而不是替代闸门限流。告警自发自收（收件人默认=发件账号），仅用于自查。
  *
- * 规则分两层：
- * - 确定性规则（默认开启）：命中几乎必然是 bug，立即告警。
+ * 规则分两层，命中即发告警邮件（自发自收，仅用于自查）：
+ * - 确定性规则：命中几乎必然是 bug。
  *   ① 闸门排队超时（任何一次）  ② bypass 流高频  ③ 同接口失败风暴
- * - 统计性规则（默认只观测、不告警）：相对基线判突变，避免误报；先跑一段时间校准阈值。
+ * - 统计性规则：相对基线判突变。
  *   ④ 单 flow 增速突刺  ⑤ 全局速率超限
- *   设 AUDIT_STAT_ALERT_ENABLED=true 才让这两类也发告警邮件；否则只进摘要。
  *
+ * 只有「异常」才发邮件；周期性的流量摘要只写日志、不发邮件。
  * 所有开关 / 阈值都可用环境变量覆盖，便于线上不改代码调参。
  */
 
@@ -44,7 +44,7 @@ export interface AuditPolicy {
   cooldownMs: number;
   /** 流量摘要的发送间隔（毫秒），0 表示不发摘要 */
   summaryIntervalMs: number;
-  /** 统计性规则是否也发告警（默认 false=只观测） */
+  /** 统计性规则是否发告警（默认 true；设 false 可退化为只写日志观测） */
   statAlertEnabled: boolean;
   /** 确定性规则阈值 */
   thresholds: AuditThresholds;
@@ -76,7 +76,7 @@ export const getAuditPolicy = (): AuditPolicy => ({
   windowMs: readInt('AUDIT_WINDOW_MS', 60_000),
   cooldownMs: readInt('AUDIT_COOLDOWN_MS', 10 * 60_000),
   summaryIntervalMs: readInt('AUDIT_SUMMARY_INTERVAL_MS', 10 * 60_000),
-  statAlertEnabled: readBool('AUDIT_STAT_ALERT_ENABLED', false),
+  statAlertEnabled: readBool('AUDIT_STAT_ALERT_ENABLED', true),
   thresholds: {
     bypassPerWindow: {
       // 手动查看详情/订单：用户狂点也很难 1 分钟 300 次；后台误挂 manual 会瞬间超过
