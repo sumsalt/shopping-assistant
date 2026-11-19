@@ -920,6 +920,17 @@ const handleRowLogin = async (item: AccountItem) => {
     return
   }
 
+  // 已有登录信息的账号重新登录会覆盖当前 token 和抓包快照，先二次确认，避免误点冲掉有效登录态
+  if (item.hasToken) {
+    const confirmed = await confirmDialog({
+      title: '重新登录',
+      message: `「${accountDisplayName(item)}」已有登录信息，重新登录会用已保存的密码换取新 token，并覆盖当前登录态与抓包快照。确定继续吗？`,
+      confirmText: '重新登录',
+      type: 'warning',
+    })
+    if (!confirmed) return
+  }
+
   loggingInId.value = item.id
   try {
     await loginWithPassword({ phone: item.phone })
