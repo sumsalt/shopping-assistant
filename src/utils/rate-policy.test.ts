@@ -18,9 +18,13 @@ import {
 import type { GateFlow } from './request-gate';
 
 describe('rate-policy 中央限频策略表', () => {
-  it('唯一豁免是下单与登录，其余业务流全部过闸门', () => {
+  it('豁免是下单 / 登录 / 手动操作，其余业务流全部过闸门', () => {
     const bypassed = (Object.keys(RATE_POLICIES) as GateFlow[]).filter(isGateBypassed);
-    expect(bypassed.sort()).toEqual(['auth.login', 'order.checkout']);
+    expect(bypassed.sort()).toEqual(['auth.login', 'manual', 'order.checkout']);
+  });
+
+  it('手动查看详情 / 订单不过闸门，避免交互被 1s 令牌拖慢', () => {
+    expect(getRatePolicy('manual').gate).toBe('bypass');
   });
 
   it('监控扫描 / 收藏读写 / 订单续期都过闸门', () => {
@@ -32,7 +36,6 @@ describe('rate-policy 中央限频策略表', () => {
       'collection.index',
       'collection.write',
       'order.renew',
-      'manual',
     ] as GateFlow[]) {
       expect(getRatePolicy(flow).gate, flow).toBe('normal');
     }

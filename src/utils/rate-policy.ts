@@ -6,7 +6,8 @@
  *
  * 约定：
  * - gate='normal'：请求经 HTTP 出口时按出口 IP + 账号 UID 两级令牌排队；
- * - gate='bypass'：唯一豁免——下单（抢库存时效）与登录（获取身份的前置步骤）。
+ * - gate='bypass'：豁免——下单（抢库存时效）、登录（获取身份的前置步骤）、
+ *   手动操作（查看详情/订单是低频用户交互，排队 1 秒体感明显；风控压力来自后台高频流量）。
  * - gapMs / writeGapMs：闸门之外的额外节流，用于写操作密集的写接口（加收藏、订单续期）；
  *   它们是「进一步克制」而非「替代闸门」，与闸门叠加生效。
  * - cacheTtlMs：全量索引类缓存的有效期。
@@ -18,7 +19,7 @@ import type { GateFlow, GatePolicy } from './request-gate';
 
 /** 单个业务流的完整节奏策略 */
 export interface FlowRatePolicy {
-  /** 闸门策略：默认 normal，仅下单 / 登录 bypass */
+  /** 闸门策略：默认 normal，下单 / 登录 / 手动操作 bypass */
   gate: GatePolicy;
   /** 相邻两次请求的额外最小间隔（毫秒）；闸门之外的克制，默认 0 */
   gapMs?: number;
@@ -45,12 +46,13 @@ export const RATE_POLICIES: Record<GateFlow, FlowRatePolicy> = {
   // 订单续期：走闸门 + 300ms 读间隔 + 5s 写间隔
   'order.renew': { gate: 'normal', gapMs: 300, writeGapMs: 5_000 },
 
-  // 唯一豁免：下单抢库存（排队即失去意义）、登录（还没有身份可分桶）
+  // 豁免：下单抢库存（排队即失去意义）、登录（还没有身份可分桶）
   'order.checkout': { gate: 'bypass' },
   'auth.login': { gate: 'bypass' },
 
-  // 用户手动操作：无任务上下文，也走闸门（默认全部限流）
-  manual: { gate: 'normal' },
+  // 手动查看详情 / 订单：低频用户交互，手动点一次排队 1s 体感明显；
+  // 风控压力来自后台高频监控，手动流量豁免不会被闸门拖慢。
+  manual: { gate: 'bypass' },
 };
 
 /** 取某业务流的策略 */
