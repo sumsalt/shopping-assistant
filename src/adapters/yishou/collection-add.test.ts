@@ -84,6 +84,17 @@ describe('addCollection（POST /users/add_goods_collection）', () => {
     await expect(adapter.addCollection('1381104809')).rejects.toThrow(/未返回收藏 ID/)
   })
 
+  it('限流时一手把错误文案塞进 collect_id，必须当作失败抛出而非写回', async () => {
+    mocks.httpPost.mockResolvedValue({
+      code: '200',
+      msg: 'success',
+      data: { collect_id: '操作过于频繁，请稍后再试' },
+    })
+
+    const adapter = new YishouAdapter(config)
+    await expect(adapter.addCollection('1381104809')).rejects.toThrow(/操作过于频繁/)
+  })
+
   it('缺货号时直接报错，不发请求', async () => {
     const adapter = new YishouAdapter(config)
     await expect(adapter.addCollection('  ')).rejects.toThrow(/缺少商品货号/)

@@ -181,6 +181,11 @@ export class YishouAdapter extends BaseAdapter {
     if (!collectId) {
       throw new StockCheckError(StockCheckErrorType.API_ERROR, '收藏失败：未返回收藏 ID');
     }
+    // 一手在限流 / 异常时可能返回 code=200 但 collect_id 塞了错误文案（如「操作过于频繁」）。
+    // 真正的收藏条目 ID 是纯数字；非数字一律视为失败并原样抛出，绝不把脏值写回任务状态。
+    if (!/^\d+$/.test(collectId)) {
+      throw new StockCheckError(StockCheckErrorType.API_ERROR, `收藏失败：${collectId}`);
+    }
     return { collectId };
   }
 

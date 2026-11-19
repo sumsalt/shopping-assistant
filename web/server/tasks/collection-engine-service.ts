@@ -65,6 +65,27 @@ const enqueueCollectOp = <T>(productNo: string, op: () => Promise<T>): Promise<T
   return next
 }
 
+/**
+ * 全局「加收藏」串行队列。
+ *
+ * 一手的 add_goods_collection 是限流敏感的写操作且 skipGate 跳过本地闸门：
+ * 进程重启时会批量 restore 几十个收藏夹任务，若各自 ensureCollected 并发加收藏，
+ * 会被一手风控返回「操作过于频繁」。这里把真正向一手发出的加收藏请求全局排队，
+ * 逐个执行，避免批量恢复时打爆一手。仅包住 add 请求本身（慢 IO），不影响查找。
+ */
+let addCollectionTail: Promise<unknown> = Promise.resolve()
+const ADD_GAP_MS = 300
+const enqueueAddCollection = <T>(op: () => Promise<T>): Promise<T> => {
+  // 与前一次加收藏之间留间隔，进一步降低一手写接口的频率风控概率
+  const next = addCollectionTail.catch(() => {}).then(async () => {
+    await new Promise(resolve => setTimeout(resolve, ADD_GAP_MS))
+    return op()
+  })
+  addCollectionTail = next
+  void next.catch(() => {})
+  return next
+}
+
 /** 解析收藏夹专用账号凭证 */
 const resolveAccountConfig = (): { accountId: string; config: CollectionAccountConfig } | null => {
   const settings = getRuntimeSettings()
@@ -137,9 +158,11 @@ export const ensureCollected = (productNo: string): Promise<string> => {
         return found
       }
 
-      const added = await addProductToCollection(
-        { platform: 'yishou', productNo: no },
-        { adapterConfig: resolved.config.adapterConfig }
+      const added = await enqueueAddCollection(() =>
+        addProductToCollection(
+          { platform: 'yishou', productNo: no },
+          { adapterConfig: resolved.config.adapterConfig }
+        )
       )
       if (added.collectId) collectIdCache.set(no, added.collectId)
       return added.collectId
