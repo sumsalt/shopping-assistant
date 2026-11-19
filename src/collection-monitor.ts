@@ -42,7 +42,24 @@ export interface CollectionMonitorConfig {
   onDirty?: CollectionDirtyHandler;
   /** 单轮异常回调 */
   onError?: (error: unknown) => void;
+  /** 单轮扫描异常后的重试基准退避毫秒（默认 1000，指数增长到 15s）；测试可设 0 */
+  errorRetryDelayMs?: number;
 }
+
+/** 可被 abort 打断的 sleep：异常退避等待时用，stop 能立即唤醒而不必干等 */
+const sleepAbortable = (ms: number, signal: AbortSignal): Promise<void> =>
+  new Promise(resolve => {
+    if (signal.aborted) return resolve();
+    const onAbort = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
 
 interface Subscription {
   handler: CollectionItemHandler;
@@ -150,15 +167,31 @@ export class CollectionMonitorEngine {
       },
       async () => {
         log('收藏夹共享循环已启动', 'info');
+        let consecutiveFailures = 0;
+        const baseRetry = this.config.errorRetryDelayMs ?? 1000;
         try {
           while (!controller.signal.aborted) {
-            await this.scanOnce(account, pageSize, controller.signal, log);
-            // 不 sleep：立即进入下一轮，下一次翻页请求会被闸门挡住
-          }
-        } catch (error) {
-          if (!controller.signal.aborted) {
-            log(`收藏夹共享循环异常退出: ${error instanceof Error ? error.message : String(error)}`, 'error');
-            this.config.onError?.(error);
+            try {
+              await this.scanOnce(account, pageSize, controller.signal, log);
+              // 成功一轮即清零连续失败计数，恢复正常节奏
+              consecutiveFailures = 0;
+              // 不 sleep：立即进入下一轮，下一次翻页请求会被闸门挡住
+            } catch (error) {
+              if (controller.signal.aborted) break;
+              // 单轮异常（超时 / 502 等）不再终止整个循环：记日志、退避后续跑。
+              // 否则一次一手接口抖动就会让所有订阅商品永远扫不到、checkCount 卡在 0。
+              consecutiveFailures += 1;
+              log(
+                `收藏夹单轮扫描失败（连续 ${consecutiveFailures} 次）: ${
+                  error instanceof Error ? error.message : String(error)
+                }`,
+                'error'
+              );
+              this.config.onError?.(error);
+              // 指数退避封顶 15s，避免接口持续故障时疯狂空转；abort 可立即打断
+              const backoff = Math.min(baseRetry * 2 ** (consecutiveFailures - 1), 15_000);
+              await sleepAbortable(backoff, controller.signal);
+            }
           }
         } finally {
           this.running = false;
@@ -184,6 +217,18 @@ export class CollectionMonitorEngine {
   /** 该商品最近一次扫描到的收藏条目 ID（没有则 undefined） */
   getCollectId(productNo: string): string | undefined {
     return this.collectIds.get(String(productNo || '').trim());
+  }
+
+  /**
+   * 忘记某个商品的缓存态（收藏条目 ID、未命中计数、占位）。
+   * 由 server 层在「成功把商品移出收藏夹」后调用：否则引擎残留的旧 collectId 会让
+   * 下一次 ensureCollected 命中假缓存、误以为商品还在收藏夹，导致重新发起后扫不到。
+   */
+  forgetProduct(productNo: string): void {
+    const key = String(productNo || '').trim();
+    this.collectIds.delete(key);
+    this.missCounts.delete(key);
+    this.reserved.delete(key);
   }
 
   /** 单轮：全量翻页直到某页不足 pageSize */

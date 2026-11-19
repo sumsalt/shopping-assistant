@@ -106,6 +106,9 @@ export const stockDefinition: TaskKindDefinition<StockTaskState> = {
   kind: KIND,
   label: '到货监控',
   version: VERSION,
+  // 重新发起采用「原地重建」：先中止并移除原任务，再建新任务（与价格监控 / 订单续期一致）。
+  // 否则重发后列表里会同时留一条 stopped 旧任务和一条 running 新任务，语义混乱。
+  removeOriginalOnRestart: true,
 
   resolveAccount({ body, user }) {
     // 收藏夹通道：监控由全局收藏夹账号执行（引擎持有），任务只快照「下单账号」= 当前激活账号。

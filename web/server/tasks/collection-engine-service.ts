@@ -41,6 +41,30 @@ let restoring = false
 /** 商品 → 收藏条目 ID（引擎扫到或本次加入的都记在这里） */
 const collectIdCache = new Map<string, string>()
 
+/**
+ * 按货号串行的收藏操作队列。
+ *
+ * 背景：重新发起（原地重建）时，老任务 abort → releaseCollected 把商品移出收藏夹，
+ * 新任务几乎同时 ensureCollected 想把它加回来。两者若并发交错，可能出现「加回后才落地移除」
+ * 或「查找命中旧缓存而未真正加回」，最终商品不在收藏夹、checkCount 永远 0。
+ * 用 per-货号队列保证同一商品的加/移除严格按调用顺序执行，彻底消除该竞态。
+ */
+const collectOpQueue = new Map<string, Promise<unknown>>()
+const enqueueCollectOp = <T>(productNo: string, op: () => Promise<T>): Promise<T> => {
+  const no = String(productNo || '').trim()
+  const prev = collectOpQueue.get(no) ?? Promise.resolve()
+  const next = prev.catch(() => {}).then(op)
+  collectOpQueue.set(no, next)
+  void next
+    .finally(() => {
+      // 仅当队列尾仍是本任务时才清理，避免误删后入队任务的引用
+      if (collectOpQueue.get(no) === next) collectOpQueue.delete(no)
+    })
+    // 原 next 仍交给调用方处理；这里只吞掉 finally 派生链的 rejection，避免 unhandled
+    .catch(() => {})
+  return next
+}
+
 /** 解析收藏夹专用账号凭证 */
 const resolveAccountConfig = (): { accountId: string; config: CollectionAccountConfig } | null => {
   const settings = getRuntimeSettings()
@@ -86,57 +110,58 @@ const findCollectId = async (productNo: string, adapterConfig: AdapterConfig): P
  * 已在收藏夹则复用原条目，不重复添加；添加失败抛错，由任务创建流程转为创建失败。
  * 返回 collectId。
  */
-export const ensureCollected = async (productNo: string): Promise<string> => {
+export const ensureCollected = (productNo: string): Promise<string> => {
   const no = String(productNo || '').trim()
-  if (!no) throw new Error('收藏夹通道需要商品货号（productNo）')
+  if (!no) return Promise.reject(new Error('收藏夹通道需要商品货号（productNo）'))
 
-  const resolved = resolveAccountConfig()
-  if (!resolved) {
-    throw new Error('收藏夹监控账号未配置或缺少登录态，请先在「系统配置」里指定账号')
-  }
-
-  // 占位：从「加入收藏夹」到「任务订阅」之间，引擎扫到它也不会当脏数据删掉
-  engine.reserve(no)
-
-  try {
-    const cached = collectIdCache.get(no) || engine.getCollectId(no)
-    if (cached) {
-      collectIdCache.set(no, cached)
-      return cached
+  // 与 releaseCollected 共用 per-货号队列：重发时先移除、后加回，顺序确定
+  return enqueueCollectOp(no, async () => {
+    const resolved = resolveAccountConfig()
+    if (!resolved) {
+      throw new Error('收藏夹监控账号未配置或缺少登录态，请先在「系统配置」里指定账号')
     }
 
-    const found = await findCollectId(no, resolved.config.adapterConfig)
-    if (found) {
-      collectIdCache.set(no, found)
-      return found
-    }
+    // 占位：从「加入收藏夹」到「任务订阅」之间，引擎扫到它也不会当脏数据删掉
+    engine.reserve(no)
 
-    const added = await addProductToCollection(
-      { platform: 'yishou', productNo: no },
-      { adapterConfig: resolved.config.adapterConfig }
-    )
-    if (added.collectId) collectIdCache.set(no, added.collectId)
-    return added.collectId
-  } catch (error) {
-    engine.unreserve(no)
-    throw error
-  }
+    try {
+      const cached = collectIdCache.get(no) || engine.getCollectId(no)
+      if (cached) {
+        collectIdCache.set(no, cached)
+        return cached
+      }
+
+      const found = await findCollectId(no, resolved.config.adapterConfig)
+      if (found) {
+        collectIdCache.set(no, found)
+        return found
+      }
+
+      const added = await addProductToCollection(
+        { platform: 'yishou', productNo: no },
+        { adapterConfig: resolved.config.adapterConfig }
+      )
+      if (added.collectId) collectIdCache.set(no, added.collectId)
+      return added.collectId
+    } catch (error) {
+      engine.unreserve(no)
+      throw error
+    }
+  })
 }
-
-/** 正在执行移除的商品，避免「任务自然结束」与「手动删除」并发重复清理 */
-const releasing = new Set<string>()
 
 /**
  * 把商品移出收藏夹（幂等）。
  *
  * 清理属于尽力而为：找不到条目、账号失效、商品已被移除都只记日志，不影响任务删除。
+ * 与 ensureCollected 共用 per-货号队列；移除成功后同步清掉两层缓存，
+ * 避免引擎残留旧 collectId 让下一次 ensureCollected 假命中。
  */
-export const releaseCollected = async (productNo: string): Promise<void> => {
+export const releaseCollected = (productNo: string): Promise<void> => {
   const no = String(productNo || '').trim()
-  if (!no || releasing.has(no)) return
-  releasing.add(no)
+  if (!no) return Promise.resolve()
 
-  try {
+  return enqueueCollectOp(no, async () => {
     const resolved = resolveAccountConfig()
     if (!resolved) {
       console.warn(`[CollectionEngine] 收藏夹账号不可用，跳过清理 ${no}`)
@@ -154,7 +179,10 @@ export const releaseCollected = async (productNo: string): Promise<void> => {
       }
     }
 
+    // 无论是否真的发出移除请求，都先清掉两层缓存：旧的 collectId 已不可信，
+    // 留着只会让后续 ensureCollected 误判「商品已在收藏夹」而跳过真正加回。
     collectIdCache.delete(no)
+    engine.forgetProduct(no)
     if (!collectId || collectId === '0') return
 
     try {
@@ -167,9 +195,7 @@ export const releaseCollected = async (productNo: string): Promise<void> => {
         `[CollectionEngine] 清理收藏失败 ${no}: ${error instanceof Error ? error.message : String(error)}`
       )
     }
-  } finally {
-    releasing.delete(no)
-  }
+  })
 }
 
 /** 当前是否还有任务订阅（用于「改账号前拦截」） */

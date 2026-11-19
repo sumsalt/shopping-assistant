@@ -205,4 +205,58 @@ describe('CollectionMonitorEngine', () => {
     expect(onDirty).toHaveBeenCalledTimes(1)
     expect(mocks.removeProductFromCollection).not.toHaveBeenCalled()
   })
+
+  it('单轮扫描异常后继续下一轮，不终止整个循环（超时/502 自愈）', async () => {
+    const engine = new CollectionMonitorEngine()
+    const onError = vi.fn()
+    const log = vi.fn()
+    let calls = 0
+    let firstThrown = false
+
+    mocks.checkCollectionStock.mockImplementation(async () => {
+      await yieldTurn()
+      calls += 1
+      // 第一次抛 502，之后恢复正常；达到次数后停循环
+      if (!firstThrown) {
+        firstThrown = true
+        throw new Error('HTTP 502 Bad Gateway')
+      }
+      if (calls >= 4) {
+        engine.stop()
+        return pageResult([])
+      }
+      return pageResult([item('heal')])
+    })
+
+    engine.subscribe('heal', vi.fn())
+    engine.start(account, { onError, log, errorRetryDelayMs: 0 })
+    await tick(20)
+
+    // 异常被记录，但循环没有退出：后续轮次照常执行
+    expect(onError).toHaveBeenCalled()
+    expect(log.mock.calls.some(([msg, level]) => level === 'error' && String(msg).includes('单轮扫描失败'))).toBe(
+      true
+    )
+    expect(calls).toBeGreaterThanOrEqual(3)
+    engine.stop()
+  })
+
+  it('forgetProduct 清掉 collectId 缓存，避免下一次 ensure 假命中', async () => {
+    const engine = new CollectionMonitorEngine()
+    mocks.checkCollectionStock.mockImplementation(async () => {
+      await yieldTurn()
+      if (mocks.checkCollectionStock.mock.calls.length > 2) engine.stop()
+      return pageResult([item('forgot')])
+    })
+
+    engine.subscribe('forgot', vi.fn())
+    engine.start(account)
+    await tick()
+
+    // 扫描到后引擎记住了 collectId
+    expect(engine.getCollectId('forgot')).toBe('cid_forgot')
+    engine.forgetProduct('forgot')
+    expect(engine.getCollectId('forgot')).toBeUndefined()
+    engine.stop()
+  })
 })
