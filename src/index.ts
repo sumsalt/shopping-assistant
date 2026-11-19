@@ -221,6 +221,21 @@ export {
 } from './utils/rate-policy';
 export type { FlowRatePolicy } from './utils/rate-policy';
 
+// 导出请求审计（事后告警：异常高频 / bypass 滥用 / 失败风暴 / 闸门超时）
+export {
+  recordOutbound,
+  recordFailure,
+  recordGateTimeout,
+  getAuditSnapshot,
+  runAuditSummary,
+  startAuditReporter,
+  stopAuditReporter,
+  resetAudit,
+} from './utils/request-audit';
+export type { AuditEvent, AuditSnapshot } from './utils/request-audit';
+export { getAuditPolicy } from './utils/audit-policy';
+export type { AuditPolicy, AuditThresholds } from './utils/audit-policy';
+
 // ==================== 共享契约层 ====================
 // 任务与商品/订单的统一类型，服务端与前端共用；Platform/AdapterConfig 仍从原出口导出。
 export type {

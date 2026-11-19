@@ -12,6 +12,18 @@ import axios, { type AxiosRequestConfig, type AxiosResponse } from 'axios';
 import { StockCheckError, StockCheckErrorType } from '../types';
 import { acquireRequestSlot, GateTimeoutError, type GateIdentity } from './request-gate';
 import { getRatePolicy } from './rate-policy';
+import { recordOutbound, recordFailure, recordGateTimeout } from './request-audit';
+
+// 审计是「事后告警」，绝不能影响请求本身：所有调用都经过这层吞异常的包装。
+const auditOutbound = (gate: GateIdentity | undefined, url: string): void => {
+  try { recordOutbound(gate, url); } catch { /* 审计失败不影响请求 */ }
+};
+const auditFailure = (gate: GateIdentity | undefined, url: string): void => {
+  try { recordFailure(gate, url); } catch { /* 审计失败不影响请求 */ }
+};
+const auditGateTimeout = (gate: GateIdentity | undefined): void => {
+  try { recordGateTimeout(gate); } catch { /* 审计失败不影响请求 */ }
+};
 
 /**
  * HTTP 请求选项
@@ -111,6 +123,7 @@ export const httpRequest = async <T>(
       await acquireRequestSlot(gate);
     } catch (error) {
       if (error instanceof GateTimeoutError) {
+        auditGateTimeout(gate);
         throw new StockCheckError(
           StockCheckErrorType.REQUEST_GATE_TIMEOUT,
           error.message,
@@ -121,10 +134,15 @@ export const httpRequest = async <T>(
     }
   }
 
+  // 审计：请求已过闸门、即将发出。无论后续成败都算一次实际负载；
+  // 失败会再额外计一次 failure（用于失败风暴判定）。闸门超时的请求不会走到这里，单独记。
+  auditOutbound(gate, url);
+
   try {
     const response: AxiosResponse<T> = await axios(axiosConfig);
     return response.data;
   } catch (error) {
+    auditFailure(gate, url);
     if (axios.isAxiosError(error)) {
       const errorMessage = error.message;
       const code = error.code;

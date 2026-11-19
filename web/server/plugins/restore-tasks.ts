@@ -6,8 +6,10 @@
  * 2. 未到期的交回各 definition 续跑，进度沿用重启前的数据
  *
  * 具体逻辑都在 TaskService.restoreAll，这里只做遍历与退出刷盘。
+ * 同时拉起请求审计的摘要定时器（异常告警由 HTTP 出口的 record 实时触发，不依赖这里）。
  */
 
+import { startAuditReporter, stopAuditReporter } from '@core'
 import { closeDb } from '../utils/db'
 import { flushTasks } from '../tasks/engine/store'
 import { taskServices } from '../tasks/kinds'
@@ -53,13 +55,26 @@ const restoreAllTasks = () => {
 
 export default defineNitroPlugin(() => {
   // 等服务器初始化完成再拉起任务，避免阻塞启动
-  const timer = setTimeout(restoreAllTasks, 1500)
+  const timer = setTimeout(() => {
+    restoreAllTasks()
+    // 请求审计摘要定时器：与任务恢复一起启动，unref 不阻止退出
+    try {
+      startAuditReporter()
+    } catch {
+      // 审计启动失败不影响服务
+    }
+  }, 1500)
   if (typeof timer.unref === 'function') {
     timer.unref()
   }
 
   // 进程退出前把节流中的数据刷盘并关闭数据库
   const flush = () => {
+    try {
+      stopAuditReporter()
+    } catch {
+      // 忽略退出异常
+    }
     try {
       flushTasks()
       closeDb()
