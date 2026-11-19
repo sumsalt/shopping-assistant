@@ -478,21 +478,27 @@ export const createCancellableTabMonitor = (
 
     // 任务内已见过的商品（仅累计模式使用）：同一商品反复上下架只记一次，不会重复提醒
     // 续跑时优先用带时间的 initialSeenProducts；老任务只有 ID，按任务启动时间补齐
+    /**
+     * 商品去重键：优先用一手货号 goods_no（productNo），缺失时退回商品 ID。
+     *
+     * 一手商品重新上架会换 goods_id（productId），但 goods_no 不变；若按 productId 去重，
+     * 重新上架的同款会被当成新商品重复记录。用命名空间前缀区分两类键，避免某商品的
+     * productNo 恰好等于另一商品的 productId 时误合并。
+     */
+    const dedupeKey = (item: { productId: string; productNo?: string }): string => {
+      const no = String(item.productNo ?? '').trim();
+      return no ? `no:${no}` : `id:${item.productId}`;
+    };
+
     const seenProducts: TabSeenProduct[] = [...(config.initialSeenProducts ?? [])];
-    const seenProductIds = new Set<string>(
-      (config.initialSeenProducts ?? []).map(item => item.productId)
+    // 去重键集合：优先 goods_no，老记录没 productNo 时退回 productId
+    const seenKeys = new Set<string>(
+      (config.initialSeenProducts ?? []).map(item => dedupeKey(item))
     );
+    // 老任务只有 productId 列表：这些历史项也纳入去重键（按 id: 命名空间），
+    // 防止重启后把老商品重新记为新商品；但不再补造详情记录（无名称/价格，补了也是空壳）。
     for (const productId of config.initialSeenProductIds ?? []) {
-      if (seenProductIds.has(productId)) {
-        continue;
-      }
-      seenProductIds.add(productId);
-      seenProducts.push({
-        productId,
-        productName: '',
-        price: 0,
-        firstSeenAt: new Date(startTime).toISOString(),
-      });
+      seenKeys.add(`id:${productId}`);
     }
 
     /** 把本轮抓到的商品并入已见集合，返回新商品（原始条目 + 待落盘的记录） */
@@ -504,11 +510,12 @@ export const createCancellableTabMonitor = (
       const now = new Date().toISOString();
 
       for (const item of items) {
-        if (seenProductIds.has(item.productId)) {
+        const key = dedupeKey(item);
+        if (seenKeys.has(key)) {
           continue;
         }
 
-        seenProductIds.add(item.productId);
+        seenKeys.add(key);
         newlySeen.push(item);
 
         const record: TabSeenProduct = {
@@ -586,7 +593,7 @@ export const createCancellableTabMonitor = (
         checkCount,
         detectedCount,
         currentTotal: previousList.length,
-        seenTotal: mode === 'accumulate' ? seenProductIds.size : 0,
+        seenTotal: mode === 'accumulate' ? seenKeys.size : 0,
         ...(newlySeenProducts && newlySeenProducts.length > 0 ? { newlySeenProducts } : {}),
         ...(resetSeen ? { resetSeen } : {}),
       });
@@ -618,17 +625,18 @@ export const createCancellableTabMonitor = (
       }
     };
 
-    /** 合并多页商品并按 productId 去重（翻页期间排序抖动会出现重复条目） */
+    /** 合并多页商品并按 goods_no 去重（翻页期间排序抖动会出现重复条目） */
     const mergeProducts = (...lists: CollectionStockResult[][]): CollectionStockResult[] => {
       const merged: CollectionStockResult[] = [];
-      const seenIds = new Set<string>();
+      const seenPageKeys = new Set<string>();
 
       for (const list of lists) {
         for (const item of list) {
-          if (seenIds.has(item.productId)) {
+          const key = dedupeKey(item);
+          if (seenPageKeys.has(key)) {
             continue;
           }
-          seenIds.add(item.productId);
+          seenPageKeys.add(key);
           merged.push(item);
         }
       }
@@ -643,7 +651,7 @@ export const createCancellableTabMonitor = (
      * @param startPage 从第几页开始抓（默认配置的起始页）
      *
      * - 某一页返回空列表时提前结束（后面不会有数据了，省掉多余请求）
-     * - 同一商品出现在多页时按 productId 去重
+     * - 同一商品出现在多页时按 goods_no 去重（重新上架换 ID 也视为同款）
      * - 任何一页报错都会中断本轮，不返回「半份列表」，避免把缺失的商品当成新商品
      */
     const fetchPages = async (
@@ -654,7 +662,7 @@ export const createCancellableTabMonitor = (
       pagesFetched: number;
     }> => {
       const merged: CollectionStockResult[] = [];
-      const seenIds = new Set<string>();
+      const seenPageKeys = new Set<string>();
       let pagesFetched = 0;
 
       for (let offset = 0; offset < pages; offset++) {
@@ -675,10 +683,11 @@ export const createCancellableTabMonitor = (
         }
 
         for (const item of items) {
-          if (seenIds.has(item.productId)) {
+          const key = dedupeKey(item);
+          if (seenPageKeys.has(key)) {
             continue;
           }
-          seenIds.add(item.productId);
+          seenPageKeys.add(key);
           merged.push(item);
         }
 
@@ -890,9 +899,9 @@ export const createCancellableTabMonitor = (
         try {
           // 先抓取成功再清空：抓取失败时保留旧基线，下一轮继续重试
           const { list, pagesFetched } = await fetchPages(MAX_TAB_FULL_SCAN_PAGE_COUNT);
-          const clearedCount = seenProductIds.size;
+          const clearedCount = seenKeys.size;
 
-          seenProductIds.clear();
+          seenKeys.clear();
           seenProducts.length = 0;
           pendingNewProducts.length = 0;
           previousFirstPageIds = [];
@@ -933,11 +942,11 @@ export const createCancellableTabMonitor = (
         let pagesFetched = firstPage.pagesFetched;
         currentList = firstPage.list;
 
-        const previousIds = new Set(previousList.map(entry => entry.productId));
+        const previousKeys = new Set(previousList.map(entry => dedupeKey(entry)));
         const firstPageHasNew = firstPage.list.some(entry =>
           mode === 'accumulate'
-            ? !seenProductIds.has(entry.productId)
-            : !previousIds.has(entry.productId)
+            ? !seenKeys.has(dedupeKey(entry))
+            : !previousKeys.has(dedupeKey(entry))
         );
         const didFullScan = firstPageHasNew;
 
@@ -1056,7 +1065,7 @@ export const createCancellableTabMonitor = (
               mode: 'accumulate',
               newProducts: batch,
               currentTotal: currentList.length,
-              seenTotal: seenProductIds.size,
+              seenTotal: seenKeys.size,
             };
 
             console.log(

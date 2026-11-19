@@ -475,6 +475,34 @@ describe('monitorTabList 累计模式全量初始化', () => {
     controller.abort()
   })
 
+  it('同 goods_no 换 goods_id 重新上架，视为同款不重复记录', async () => {
+    // 基线：goods_no=G1 的商品，productId=100
+    const base = { ...item('100'), productNo: 'G1' } as CollectionStockResult
+    // 下一轮：同 goods_no=G1，但重新上架换成新 productId=200（一手重新上架会换 goods_id）
+    const relisted = { ...item('200'), productNo: 'G1' } as CollectionStockResult
+    queueItems([base], [relisted])
+
+    const progresses: TabMonitorProgress[] = []
+    const { controller } = createCancellableTabMonitor(
+      { recipient: 'dev@example.com', tabName: '测试 Tab' },
+      { tabId: '146453', interval: 60, minChangeCount: 1 },
+      progress => progresses.push(progress)
+    )
+
+    // 初始化建立基线（记录 100）
+    await vi.advanceTimersByTimeAsync(0)
+    expect(progresses.at(-1)?.seenTotal).toBe(1)
+
+    // 下一轮：同 goods_no 的新商品 ID 不应被当作新商品
+    await vi.advanceTimersByTimeAsync(60_000)
+    const last = progresses.at(-1)!
+    expect(last.newlySeenProducts ?? []).toHaveLength(0)
+    expect(last.seenTotal).toBe(1)
+    expect(mocks.sendEmail).toHaveBeenCalledTimes(0)
+
+    controller.abort()
+  })
+
   it('逐轮对比模式：首页没有新商品时只抓第一页', async () => {
     let firstPageCalls = 0
     mocks.getTabGoodsList.mockImplementation(async (_tabId: string, currentPage: number) => {
