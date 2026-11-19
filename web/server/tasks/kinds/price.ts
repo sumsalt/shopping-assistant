@@ -807,7 +807,30 @@ const runCollectionPriceMonitor = (
       }
     }
 
-    subscribeCollection(productNo, handler)
+    // restart / restore 的任务不会走 create 里的 ensureCollected，且本 definition 的 restart
+    // 不保留 collection 字段；商品很可能已被上个同货号任务 finish() 时的 releaseCollected
+    // 移出收藏夹。引擎每轮从账号收藏夹列表拉商品，商品不在列表里就永远推不到 handler，
+    // checkCount 会一直停在 0。所以订阅前必须先 ensureCollected 把商品重新加回收藏夹引擎。
+    void ensureCollected(productNo)
+      .then(collectId => {
+        // await 期间任务可能已被删除或超时结束，此时只做清理，不再订阅
+        if (settled || controller.signal.aborted) {
+          void releaseCollected(productNo)
+          return
+        }
+        if (collectId && state.collection?.collectId !== collectId) {
+          state.collection = { productNo, collectId }
+          ctx.save()
+        }
+        subscribeCollection(productNo, handler)
+      })
+      .catch(error => {
+        ctx.log(
+          `重新加入收藏夹失败，监控无法启动：${error instanceof Error ? error.message : String(error)}`,
+          'error'
+        )
+        finish()
+      })
 
     controller.signal.addEventListener('abort', () => finish())
 
