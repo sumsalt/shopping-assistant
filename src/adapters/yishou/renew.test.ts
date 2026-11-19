@@ -299,4 +299,13 @@ describe('reloadWaitPayOrder（抓包 1.4）', () => {
     const result = await adapter.reloadWaitPayOrder(protocol)
     expect(result.cancelExpireAt).toBe(1794499531000)
   })
+
+  it('续期专用视图走闸门（不 skipGate），与下单视图分离', async () => {
+    const adapter = new YishouAdapter(config)
+    const renew = adapter.asRenewAdapter()
+    await renew.confirmWaitPayOrder('12641516245909')
+
+    expect(optionsOf(0).skipGate).not.toBe(true)
+    expect(optionsOf(0).timeout).toBe(20000)
+  })
 })

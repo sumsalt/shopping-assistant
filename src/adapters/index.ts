@@ -53,7 +53,12 @@ export const getRenewAdapter = (
   platform: Platform,
   config: AdapterConfig = {}
 ): RenewOrderAdapter | null => {
-  const adapter = getAdapter(platform, config) as unknown as RenewOrderAdapter;
+  const raw = getAdapter(platform, config) as unknown as RenewOrderAdapter & {
+    asRenewAdapter?: () => RenewOrderAdapter;
+  };
+
+  // 若适配器提供续期专用视图，用它（续期请求走闸门限频，与下单的 skipGate 视图分离）
+  const adapter = typeof raw.asRenewAdapter === 'function' ? raw.asRenewAdapter() : raw;
 
   const capable =
     typeof adapter.getOrderList === 'function' &&

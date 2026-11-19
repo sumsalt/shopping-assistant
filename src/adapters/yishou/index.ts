@@ -65,13 +65,16 @@ export class YishouAdapter extends BaseAdapter {
   private readonly client: YishouClient;
   /** 收藏夹 / SKU 两个接口历史上不走代理 */
   private readonly directClient: YishouClient;
-  /** 下单链路 */
+  /** 下单链路（skipGate，保持抢库存豁免） */
   private readonly order: YishouOrderApi;
+  /** 订单续期链路（走闸门限频，避免批量续期触发一手风控） */
+  private readonly renewOrder: YishouOrderApi;
   /**
-   * 收藏写入：用户点击触发的一次性写操作，跳过闸门
+   * 收藏写入：走闸门限频
    *
-   * 收藏夹列表刚查过时（同一账号桶 5 秒），走普通 client 会卡 5 秒才发出去，
-   * 体验上像「点了没反应」；这类显式点击动作与下单同性质，按单次请求放行。
+   * 后台的加/删收藏（收藏夹监控 ensure/release）会包 gate 上下文，请求经此 client
+   * 走 UID/IP 桶排队，避免批量恢复时并发触发一手风控。手动点击收藏没有 gate 上下文，
+   * 闸门判断需要 gateContext 才排队，因此手动操作依旧即时放行、不受影响。
    */
   private readonly writeClient: YishouClient;
   /** 下单预检查 SKU：走代理但跳过闸门，避免下单流程被闸门拖慢 */
@@ -82,7 +85,9 @@ export class YishouAdapter extends BaseAdapter {
     this.client = new YishouClient(config);
     this.directClient = new YishouClient(config, { useProxy: false });
     this.order = new YishouOrderApi(config);
-    this.writeClient = new YishouClient(config, { useProxy: false, skipGate: true });
+    // 续期用独立的非 skipGate 实例：getOrderList / confirm / reload / getOrderDetail 都走闸门
+    this.renewOrder = new YishouOrderApi(config, false);
+    this.writeClient = new YishouClient(config, { useProxy: false });
     this.orderSkuClient = new YishouClient(config, { skipGate: true });
   }
 
@@ -324,14 +329,29 @@ export class YishouAdapter extends BaseAdapter {
     return this.order.getOrderDetail(orderSn);
   }
 
-  // ==================== 待支付订单续期（委托给 YishouOrderApi） ====================
+  // ==================== 待支付订单续期（委托给走闸门的 renewOrder） ====================
 
-  /** 抓包 1.1：取重新结算上下文 */
+  /**
+   * 返回续期专用视图：所有方法走不 skipGate 的 renewOrder，请求经闸门限频。
+   * 与下单视图分离，保证下单链路（skipGate）不受影响。
+   */
+  asRenewAdapter() {
+    const api = this.renewOrder;
+    return {
+      getOrderList: (page?: number, pageSize?: number, status?: OrderStatusTab) =>
+        api.getOrderList(page, pageSize, status),
+      confirmWaitPayOrder: (orderSn: string) => api.confirmWaitPayOrder(orderSn),
+      reloadWaitPayOrder: (protocol: unknown) => api.reloadWaitPayOrder(protocol),
+      getOrderDetail: (orderSn: string) => api.getOrderDetail(orderSn),
+    };
+  }
+
+  /** 抓包 1.1：取重新结算上下文（保留给旧引用；续期请用 asRenewAdapter） */
   confirmWaitPayOrder(orderSn: string) {
     return this.order.confirmWaitPayOrder(orderSn);
   }
 
-  /** 抓包 1.4：重新提交支付单刷新有效期 */
+  /** 抓包 1.4：重新提交支付单刷新有效期（保留给旧引用；续期请用 asRenewAdapter） */
   reloadWaitPayOrder(protocol: unknown) {
     return this.order.reloadWaitPayOrder(protocol);
   }

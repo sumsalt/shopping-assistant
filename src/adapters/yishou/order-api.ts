@@ -116,8 +116,12 @@ export interface PrepareCheckoutInput {
 export class YishouOrderApi {
   private readonly client: YishouClient;
 
-  constructor(config: AdapterConfig = {}) {
-    this.client = new YishouClient(config, { skipGate: true, timeout: 20000 });
+  /**
+   * @param skipGate 是否跳过全局闸门。下单链路传 true（抢库存，保持豁免）；
+   *   订单续期传 false，让请求走闸门限频，避免批量续期打爆一手。
+   */
+  constructor(config: AdapterConfig = {}, private readonly skipGate = true) {
+    this.client = new YishouClient(config, { skipGate, timeout: 20000 });
   }
 
   /**

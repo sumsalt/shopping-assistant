@@ -16,13 +16,15 @@
  *   - reload 返回非 wait_pay（已付 / 已关）：标记该单结束，后续不再续期。
  *   - 凭据失效：停止任务并告警，不无限重试。
  *
- * 接口已 skipGate（YishouOrderApi 构造时带 skipGate:true），因此请求节流由本层自律，
- * 也不挂 runWithGateContext —— 避免与全局闸门的 5 秒排队耦合。
+ * 续期走闸门：getRenewAdapter 返回的是走闸门的续期视图（不 skipGate），本循环挂在
+ * runWithGateContext 上下文里，请求按 UID/IP 桶限频。下方 300ms/5s 的间隔是额外节流，
+ * 进一步克制写操作（reload_wait_pay_order）的频率，避免同一账号连续提交触发风控。
  */
 
 import type { AdapterConfig, RenewOrderAdapter } from './adapters/types';
 import type { OrderListItem } from './types';
 import { StockCheckError, StockCheckErrorType } from './types';
+import { runWithGateContext } from './utils/request-gate';
 
 // ==================== 常量 ====================
 
@@ -380,7 +382,14 @@ export const createCancellableOrderRenewMonitor = (
     return renewed.finished ? 'finished' : 'renewed';
   };
 
-  const promise = (async (): Promise<OrderRenewMonitorResult> => {
+  const promise = runWithGateContext(
+    {
+      taskId: config.adapterConfig?.uid ? `renew-${config.adapterConfig.uid}` : 'order-renew',
+      kind: 'stock',
+      accountKey: config.adapterConfig?.uid || '',
+      localAddress: config.adapterConfig?.localAddress,
+    },
+    async (): Promise<OrderRenewMonitorResult> => {
     while (true) {
       if (signal.aborted) break;
 
@@ -527,7 +536,8 @@ export const createCancellableOrderRenewMonitor = (
     }
 
     return result;
-  })();
+    }
+  );
 
   return { controller, promise };
 };

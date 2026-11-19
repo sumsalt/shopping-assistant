@@ -81,13 +81,13 @@ describe('removeCollection（POST /users/del_goods_collection）', () => {
     expect(bodyOf(0)).toHaveProperty('t_t')
   })
 
-  it('取消收藏是一次性写操作：跳过闸门', async () => {
+  it('取消收藏走闸门限频（手动点击无 gate 上下文会自动豁免，后台清理受控）', async () => {
     mocks.httpPost.mockResolvedValue({ code: '200', msg: 'success', data: null })
 
     const adapter = new YishouAdapter(config)
     await adapter.removeCollection('1381104809', '374803803', '341451565')
 
-    expect((calls()[0][3] as { skipGate?: boolean }).skipGate).toBe(true)
+    expect((calls()[0][3] as { skipGate?: boolean }).skipGate).not.toBe(true)
   })
 
   it('一手业务错误（如不在收藏夹）原样抛出', async () => {

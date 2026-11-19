@@ -89,6 +89,27 @@ const enqueueAddCollection = <T>(op: () => Promise<T>): Promise<T> => {
   return next
 }
 
+/**
+ * 在收藏夹账号的 gate 上下文里执行操作。
+ *
+ * 加入/移出收藏是后台自动的写操作，必须走闸门限频（与周期扫描、全量翻页统一节奏）。
+ * 手动点击收藏走的是不带 gate 上下文的 API，即使共用同一 client 也不会被限流。
+ */
+const withCollectionGate = <T>(
+  config: CollectionAccountConfig,
+  taskId: string,
+  op: () => Promise<T>
+): Promise<T> =>
+  runWithGateContext(
+    {
+      taskId,
+      kind: 'stock',
+      accountKey: config.accountKey,
+      localAddress: config.adapterConfig.localAddress,
+    },
+    op
+  )
+
 /** 解析收藏夹专用账号凭证 */
 const resolveAccountConfig = (): { accountId: string; config: CollectionAccountConfig } | null => {
   const settings = getRuntimeSettings()
@@ -193,9 +214,11 @@ export const ensureCollected = (productNo: string): Promise<string> => {
       }
 
       const added = await enqueueAddCollection(() =>
-        addProductToCollection(
-          { platform: 'yishou', productNo: no },
-          { adapterConfig: resolved.config.adapterConfig }
+        withCollectionGate(resolved.config, 'collection-add', () =>
+          addProductToCollection(
+            { platform: 'yishou', productNo: no },
+            { adapterConfig: resolved.config.adapterConfig }
+          )
         )
       )
       if (added.collectId) {
@@ -249,9 +272,11 @@ export const releaseCollected = (productNo: string): Promise<void> => {
     if (!collectId || collectId === '0') return
 
     try {
-      await removeProductFromCollection(
-        { platform: 'yishou', productNo: no, collectId },
-        { adapterConfig: resolved.config.adapterConfig }
+      await withCollectionGate(resolved.config, 'collection-remove', () =>
+        removeProductFromCollection(
+          { platform: 'yishou', productNo: no, collectId },
+          { adapterConfig: resolved.config.adapterConfig }
+        )
       )
     } catch (error) {
       console.warn(

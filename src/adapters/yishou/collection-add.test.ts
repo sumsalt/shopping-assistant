@@ -61,13 +61,14 @@ describe('addCollection（POST /users/add_goods_collection）', () => {
     expect(result).toEqual({ collectId: '374803378' })
   })
 
-  it('收藏是用户点击的一次性写操作：跳过闸门，避免被上一请求压 5 秒', async () => {
+  it('收藏写入走闸门限频（手动点击无 gate 上下文会自动豁免，后台加收藏受控）', async () => {
     mocks.httpPost.mockResolvedValue({ code: '200', msg: 'success', data: { collect_id: '1' } })
 
     const adapter = new YishouAdapter(config)
     await adapter.addCollection('1381104809')
 
-    expect((calls()[0][3] as { skipGate?: boolean }).skipGate).toBe(true)
+    // 不再无条件 skipGate：是否在闸门排队由请求上下文（runWithGateContext）决定
+    expect((calls()[0][3] as { skipGate?: boolean }).skipGate).not.toBe(true)
   })
 
   it('重复收藏时把一手文案原样抛出，交给页面提示「已收藏」', async () => {
