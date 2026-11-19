@@ -102,14 +102,14 @@
         >
           <label class="flex min-w-0 items-center gap-1.5 text-xs text-gray-500">
             <span class="shrink-0">市场</span>
-            <select
+            <UiSelect
               v-model="seenMarket"
-              class="max-w-[11rem] truncate rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700 outline-none focus:border-blue-400"
+              :options="marketOptions"
+              size="sm"
+              :block="false"
+              aria-label="按市场筛选商品"
               @change="changeSeenMarket"
-            >
-              <option value="all">全部（{{ seenTotalAll }}）</option>
-              <option v-for="m in seenMarkets" :key="m" :value="m">{{ m }}</option>
-            </select>
+            />
           </label>
           <div class="inline-flex shrink-0 rounded-lg bg-gray-100 p-0.5 text-xs">
             <button
@@ -323,6 +323,11 @@ const seenMarket = ref('all')
 const seenMarkets = ref<string[]>([])
 /** 未做市场筛选的商品总数，供「全部」选项展示 */
 const seenTotalAll = ref(0)
+/** 市场下拉选项：全部（总数）+ 各市场 */
+const marketOptions = computed(() => [
+  { value: 'all', label: `全部（${seenTotalAll.value}）` },
+  ...seenMarkets.value.map(m => ({ value: m, label: m })),
+])
 const seenItems = ref<TabSeenProductItem[]>([])
 const seenHasMore = ref(false)
 const seenLoading = ref(false)
