@@ -3,6 +3,9 @@ import type { TaskSummary } from '../contract/task'
 import {
   countTasksByStatus,
   filterTasksByStatus,
+  collectAccountOptions,
+  filterTasksByAccount,
+  NO_ACCOUNT_FILTER,
   TASK_STATUS_VALUES,
   type TaskStatusFilter,
 } from './task-filter'
@@ -80,5 +83,56 @@ describe('filterTasksByStatus', () => {
 
   it('筛选条状态顺序固定为 监控中 → 已停止 → 已完成', () => {
     expect(TASK_STATUS_VALUES).toEqual(['running', 'stopped', 'completed'])
+  })
+})
+
+const makeAccountTask = (id: string, account?: { id: string; label: string }): TaskSummary =>
+  ({ id, status: 'running', account }) as unknown as TaskSummary
+
+describe('collectAccountOptions', () => {
+  it('按账号聚合计数并按数量降序，未绑定账号归入 __none__', () => {
+    const tasks = [
+      makeAccountTask('t1', { id: 'a1', label: '账号甲' }),
+      makeAccountTask('t2', { id: 'a2', label: '账号乙' }),
+      makeAccountTask('t3', { id: 'a1', label: '账号甲' }),
+      makeAccountTask('t4'),
+      makeAccountTask('t5'),
+    ]
+    expect(collectAccountOptions(tasks)).toEqual([
+      { value: NO_ACCOUNT_FILTER, label: '未绑定账号', count: 2 },
+      { value: 'a1', label: '账号甲', count: 2 },
+      { value: 'a2', label: '账号乙', count: 1 },
+    ])
+  })
+
+  it('空列表返回空选项', () => {
+    expect(collectAccountOptions([])).toEqual([])
+  })
+})
+
+describe('filterTasksByAccount', () => {
+  const tasks = [
+    makeAccountTask('t1', { id: 'a1', label: '账号甲' }),
+    makeAccountTask('t2', { id: 'a2', label: '账号乙' }),
+    makeAccountTask('t3', { id: 'a1', label: '账号甲' }),
+    makeAccountTask('t4'),
+  ]
+
+  it("'all' 返回原数组（引用相同）", () => {
+    expect(filterTasksByAccount(tasks, 'all')).toBe(tasks)
+  })
+
+  it('按账号 ID 过滤', () => {
+    const result = filterTasksByAccount(tasks, 'a1')
+    expect(result.map(t => t.id)).toEqual(['t1', 't3'])
+  })
+
+  it('__none__ 匹配未绑定账号的任务', () => {
+    const result = filterTasksByAccount(tasks, NO_ACCOUNT_FILTER)
+    expect(result.map(t => t.id)).toEqual(['t4'])
+  })
+
+  it('无匹配的账号返回空数组', () => {
+    expect(filterTasksByAccount(tasks, '没有的账号')).toEqual([])
   })
 })

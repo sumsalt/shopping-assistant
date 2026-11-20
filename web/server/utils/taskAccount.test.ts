@@ -12,7 +12,17 @@ vi.mock('./accountStore', () => ({
   getActiveAccount: () => store.active,
 }))
 
-const { describeTaskAccount } = await import('./taskAccount')
+// resolveCurrentTaskAccount 只关心这里的返回值；用开关控制 hasCredential
+const adapter = vi.hoisted(() => ({ hasCredential: true, config: { uid: 'u1', token: 't1' } }))
+vi.mock('./adapterConfig', () => ({
+  resolveAdapterConfigForUser: () => ({
+    config: adapter.config,
+    account: { id: 'acc_1' },
+    hasCredential: adapter.hasCredential,
+  }),
+}))
+
+const { describeTaskAccount, resolveCurrentTaskAccount } = await import('./taskAccount')
 
 const account = (overrides: Partial<AccountRecord> = {}): AccountRecord => ({
   id: 'acc_1',
@@ -37,6 +47,8 @@ const account = (overrides: Partial<AccountRecord> = {}): AccountRecord => ({
 afterEach(() => {
   store.accounts = []
   store.active = null
+  adapter.hasCredential = true
+  adapter.config = { uid: 'u1', token: 't1' }
 })
 
 describe('任务绑定账号展示', () => {
@@ -77,5 +89,28 @@ describe('任务绑定账号展示', () => {
   it('手机号过短时不截取尾号', () => {
     store.accounts = [account({ id: 'acc_1', phone: '123' })]
     expect(describeTaskAccount('u1', 'acc_1')?.label).toBe('123')
+  })
+})
+
+describe('resolveCurrentTaskAccount（重发切号）', () => {
+  it('普通通道：快照账号 ID + 凭证', () => {
+    expect(resolveCurrentTaskAccount('u1')).toEqual({
+      accountId: 'acc_1',
+      secret: { uid: 'u1', token: 't1' },
+      hasCredential: true,
+    })
+    expect(resolveCurrentTaskAccount('u1', 'normal').secret).toBeDefined()
+  })
+
+  it('收藏夹通道：只快照下单账号 ID，不落 secret', () => {
+    const resolved = resolveCurrentTaskAccount('u1', 'collection')
+    expect(resolved.accountId).toBe('acc_1')
+    expect(resolved.secret).toBeUndefined()
+    expect(resolved.hasCredential).toBe(true)
+  })
+
+  it('当前账号无登录态时如实返回 hasCredential=false', () => {
+    adapter.hasCredential = false
+    expect(resolveCurrentTaskAccount('u1').hasCredential).toBe(false)
   })
 })

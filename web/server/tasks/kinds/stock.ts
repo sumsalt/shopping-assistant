@@ -23,6 +23,7 @@ import {
 import type { TaskKind, TaskSummary, Tone } from '@core/contract'
 import { ErrorCode } from '../../utils/response'
 import { resolveAdapterConfigForUser } from '../../utils/adapterConfig'
+import { resolveCurrentTaskAccount } from '../../utils/taskAccount'
 import { ensureAutoRenewFromOrder } from '../auto-renew'
 import { TaskApiError, capEvents, makeEvent } from '../engine/types'
 import type { TaskKindDefinition, TaskRecordBase, TaskRunContext } from '../engine/types'
@@ -339,6 +340,20 @@ export const stockDefinition: TaskKindDefinition<StockTaskState> = {
         events: [],
       },
     }
+  },
+
+  // 重发时切到当前激活账号：按原任务的通道解析，collection 通道不落 secret。
+  // 若开了自动下单却无登录态，与 create 保持一致直接拦截，避免建出无法下单的任务。
+  resolveRestartAccount({ record, user }) {
+    const channel = record.state.config.channel
+    const resolved = resolveCurrentTaskAccount(user.username, channel)
+    if (channel === 'collection' && record.state.config.autoOrder?.enabled && !resolved.hasCredential) {
+      throw new TaskApiError(
+        ErrorCode.AUTH_REQUIRED,
+        '收藏夹通道自动下单需要一个带登录态的当前账号'
+      )
+    }
+    return resolved
   },
 
   durationOf(record) {

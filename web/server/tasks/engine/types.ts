@@ -91,6 +91,20 @@ export interface TaskKindDefinition<S> {
     user: { username: string; email: string }
   }): { accountId: string; secret?: AdapterConfig; hasCredential: boolean }
 
+  /**
+   * 重新发起时解析账号（可选）
+   *
+   * 实现后，restart 会用它的结果替换原任务的 accountId/secret，让任务跟随当前激活账号。
+   * 不实现则沿用原任务账号——订单续期即如此：它的账号是"要续期哪个账号的订单"，
+   * 不能随当前激活账号漂移。
+   *
+   * 各任务通常直接委托 resolveCurrentTaskAccount，并重放自己 create 时的登录态校验。
+   */
+  resolveRestartAccount?(input: {
+    record: TaskRecordBase<S>
+    user: { username: string; email: string }
+  }): { accountId: string; secret?: AdapterConfig; hasCredential: boolean }
+
   /** 校验输入 + 建立初始状态（可发一次基线请求） */
   create(input: TaskCreateInput): Promise<{ state: S }> | { state: S }
 

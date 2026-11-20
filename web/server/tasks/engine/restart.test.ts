@@ -85,4 +85,33 @@ describe('TaskService.restart 原地重建语义', () => {
     expect(next.id).not.toBe(original.id)
     expect(registry.get(original.id)).not.toBeNull()
   })
+
+  it('未实现 resolveRestartAccount 时沿用原任务账号（订单续期语义）', async () => {
+    const registry = new TaskRegistry<FakeState>('stock')
+    const service = new TaskService(makeDefinition(true), registry)
+    const original = { ...makeRecord(), accountId: 'old-account' }
+    registry.add(original)
+
+    const next = await service.restart('u1', original.id)
+
+    expect(next.accountId).toBe('old-account')
+  })
+
+  it('实现 resolveRestartAccount 时切到解析出的当前账号', async () => {
+    const registry = new TaskRegistry<FakeState>('stock')
+    const definition = makeDefinition(true)
+    definition.resolveRestartAccount = ({ user }) => ({
+      accountId: `current-${user.username}`,
+      secret: { uid: 'new-uid', token: 'new-token' },
+      hasCredential: true,
+    })
+    const service = new TaskService(definition, registry)
+    const original = { ...makeRecord(), accountId: 'old-account', secret: { uid: 'old' } }
+    registry.add(original)
+
+    const next = await service.restart('u1', original.id)
+
+    expect(next.accountId).toBe('current-u1')
+    expect(next.secret).toEqual({ uid: 'new-uid', token: 'new-token' })
+  })
 })

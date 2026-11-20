@@ -16,6 +16,7 @@ import type { TaskKind, TaskSummary, Tone } from '@core/contract'
 import { ErrorCode } from '../../utils/response'
 import { listBlacklistedSupplyIds } from '../../utils/shopStore'
 import { resolveAdapterConfigForUser } from '../../utils/adapterConfig'
+import { resolveCurrentTaskAccount } from '../../utils/taskAccount'
 import { TaskApiError, capEvents, makeEvent } from '../engine/types'
 import type { TaskKindDefinition, TaskRecordBase, TaskRunContext } from '../engine/types'
 import { filterVisibleSeen } from './tab-seen'
@@ -246,6 +247,11 @@ export const tabDefinition: TaskKindDefinition<TabTaskState> = {
         events: [],
       },
     }
+  },
+
+  // 重发时切到当前激活账号（Tab 无通道概念，直接快照账号 ID + 凭证）
+  resolveRestartAccount({ user }) {
+    return resolveCurrentTaskAccount(user.username)
   },
 
   durationOf(record) {

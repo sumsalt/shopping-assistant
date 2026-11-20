@@ -2,11 +2,13 @@
   <div class="max-w-6xl mx-auto">
     <TaskListHeader
       v-model="statusFilter"
+      v-model:account-filter="accountFilter"
       title="Tab 监控任务"
       description="监控 Tab 商品列表，累计发现新商品后邮件提醒"
       :is-loading="isLoading"
       :total="tasks.length"
       :counts="statusCounts"
+      :account-options="accountOptions"
       @refresh="fetchTasks()"
     >
       <template #actions>
@@ -50,11 +52,11 @@
     <div v-else-if="filteredTasks.length === 0" class="bg-white rounded-lg border border-gray-200">
       <UiEmptyState
         type="search"
-        title="该状态下暂无任务"
-        description="换个状态看看，或切回「全部」。"
+        title="当前筛选下暂无任务"
+        description="换个状态或账号看看，或点「查看全部」清除筛选。"
         action-text="查看全部"
         action-variant="outline"
-        @action="statusFilter = 'all'"
+        @action="resetFilters()"
       />
     </div>
 
@@ -273,8 +275,13 @@ import type { PriceMonitorProduct } from '~/composables/usePriceMonitor'
 definePageMeta({ title: 'Tab 监控任务', keepalive: true })
 
 const router = useRouter()
-const { tasks, isLoading, error, busyId, statusFilter, filteredTasks, statusCounts, fetchTasks, remove, stop, restart } =
+const { tasks, isLoading, error, busyId, statusFilter, accountFilter, accountOptions, filteredTasks, statusCounts, fetchTasks, remove, stop, restart } =
   useTaskList(taskEndpoint('tab'))
+
+const resetFilters = () => {
+  statusFilter.value = 'all'
+  accountFilter.value = 'all'
+}
 const { fetchSeenProducts } = useTabSeen()
 const { isMobileViewport, openYishouProduct } = useYishouApp()
 const { danger: confirmDelete, warning: confirmRestart, confirm } = useConfirmDialog()

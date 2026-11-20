@@ -10,6 +10,15 @@
         :block="false"
         aria-label="按状态筛选任务"
       />
+      <!-- 账号筛选：按任务绑定的账号过滤，选项由列表数据聚合 -->
+      <UiSelect
+        v-if="accountOptions.length > 1"
+        v-model="accountFilterModel"
+        :options="accountFilterOptions"
+        size="sm"
+        :block="false"
+        aria-label="按账号筛选任务"
+      />
       <UiButton variant="outline" size="sm" :disabled="isLoading" @click="emit('refresh')">
         <svg class="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path
@@ -33,7 +42,13 @@
  * 四个任务列表页（到货 / 价格 / Tab / 续期）共用，保证按钮样式与筛选交互一致。
  * 各页特有的操作按钮（新增监控 / 新建任务）通过 actions 插槽追加。
  */
-import { TASK_STATUS_VALUES, type TaskStatusCounts, type TaskStatusFilter } from '@core/utils/task-filter'
+import {
+  TASK_STATUS_VALUES,
+  type TaskStatusCounts,
+  type TaskStatusFilter,
+  type TaskAccountFilter,
+  type TaskAccountOption,
+} from '@core/utils/task-filter'
 import { getStatusText } from '@/utils/taskFormat'
 
 const props = defineProps<{
@@ -44,10 +59,14 @@ const props = defineProps<{
   total: number
   counts: TaskStatusCounts
   modelValue: TaskStatusFilter
+  /** 账号筛选项（由列表数据聚合） */
+  accountOptions: TaskAccountOption[]
+  accountFilter: TaskAccountFilter
 }>()
 
 const emit = defineEmits<{
   'update:modelValue': [value: TaskStatusFilter]
+  'update:accountFilter': [value: TaskAccountFilter]
   refresh: []
 }>()
 
@@ -71,5 +90,19 @@ const filterOptions = computed(() =>
 const statusFilterModel = computed({
   get: () => props.modelValue,
   set: (value: string | number) => emit('update:modelValue', value as TaskStatusFilter),
+})
+
+/** 账号下拉：前置"全部账号"，其余选项把数量拼进文案 */
+const accountFilterOptions = computed(() => [
+  { value: 'all' as TaskAccountFilter, label: `全部账号（${props.total}）` },
+  ...props.accountOptions.map(option => ({
+    value: option.value,
+    label: `${option.label}（${option.count}）`,
+  })),
+])
+
+const accountFilterModel = computed({
+  get: () => props.accountFilter,
+  set: (value: string | number) => emit('update:accountFilter', String(value) as TaskAccountFilter),
 })
 </script>

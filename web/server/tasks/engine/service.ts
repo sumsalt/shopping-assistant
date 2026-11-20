@@ -140,6 +140,14 @@ export class TaskService<S> {
   async restart(username: string, taskId: string): Promise<TaskRecordBase<S>> {    const original = this.requireOwned(username, taskId, '操作')
     const { state } = this.definition.restart(original)
 
+    // 账号跟随：实现了 resolveRestartAccount 的任务（到货 / 价格 / Tab）重发时切到当前激活账号；
+    // 未实现的（订单续期）沿用原账号——续期账号是"要续哪个账号的订单"，不能随当前账号漂移。
+    const account = this.definition.resolveRestartAccount
+      ? this.definition.resolveRestartAccount({ record: original, user: { username, email: original.userEmail } })
+      : null
+    const accountId = account ? account.accountId : original.accountId
+    const secret = account ? account.secret : original.secret
+
     if (this.definition.removeOriginalOnRestart) {
       this.registry.abort(original.id)
       this.registry.remove(original.id)
@@ -155,8 +163,8 @@ export class TaskService<S> {
       updatedAt: new Date(),
       version: this.definition.version,
       state,
-      ...(original.accountId ? { accountId: original.accountId } : {}),
-      ...(original.secret ? { secret: original.secret } : {}),
+      ...(accountId ? { accountId } : {}),
+      ...(secret ? { secret } : {}),
     }
 
     this.definition.uniqueness?.(record, this.registry.all())

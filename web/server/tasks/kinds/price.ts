@@ -31,6 +31,7 @@ import type {
 } from '@core/contract'
 import { ErrorCode } from '../../utils/response'
 import { resolveAdapterConfigForUser } from '../../utils/adapterConfig'
+import { resolveCurrentTaskAccount } from '../../utils/taskAccount'
 import { ensureAutoRenewFromOrder } from '../auto-renew'
 import { TaskApiError, capEvents, makeEvent } from '../engine/types'
 import type { TaskKindDefinition, TaskRecordBase, TaskRunContext } from '../engine/types'
@@ -530,6 +531,19 @@ export const priceDefinition: TaskKindDefinition<PriceTaskState> = {
         events: [],
       },
     }
+  },
+
+  // 重发时切到当前激活账号。价格监控无论是普通还是收藏夹通道都需要登录态
+  // （普通通道取登录态拿货价、collection 通道还要作基线与下单），与 create 一致强校验。
+  resolveRestartAccount({ record, user }) {
+    const resolved = resolveCurrentTaskAccount(user.username, record.state.config.channel)
+    if (!resolved.hasCredential) {
+      throw new TaskApiError(
+        ErrorCode.AUTH_REQUIRED,
+        '价格监控需要登录态，请先在账号管理中选择带登录态的账号'
+      )
+    }
+    return resolved
   },
 
   durationOf(record) {

@@ -16,8 +16,11 @@ import type { TaskListPayload, TaskSummary } from '@core/contract'
 import {
   countTasksByStatus,
   filterTasksByStatus,
+  collectAccountOptions,
+  filterTasksByAccount,
   type TaskStatusFilter,
   type TaskStatusCounts,
+  type TaskAccountFilter,
 } from '@core/utils/task-filter'
 import { useToast } from '@/composables/useToast'
 
@@ -32,7 +35,13 @@ export const useTaskList = (baseUrl: string) => {
 
   /** 状态筛选：四个任务列表页共用，切页不影响各自状态 */
   const statusFilter = ref<TaskStatusFilter>('all')
-  const filteredTasks = computed(() => filterTasksByStatus(tasks.value, statusFilter.value))
+  /** 账号筛选：从列表任务聚合，切页不影响各自状态 */
+  const accountFilter = ref<TaskAccountFilter>('all')
+  /** 账号选项基于全量任务，与状态筛选正交，切换状态时账号选项保持稳定 */
+  const accountOptions = computed(() => collectAccountOptions(tasks.value))
+  const filteredTasks = computed(() =>
+    filterTasksByAccount(filterTasksByStatus(tasks.value, statusFilter.value), accountFilter.value)
+  )
   const statusCounts = computed<TaskStatusCounts>(() => countTasksByStatus(tasks.value))
 
   const fetchTasks = async (): Promise<void> => {
@@ -133,6 +142,8 @@ export const useTaskList = (baseUrl: string) => {
     stop,
     restart,
     statusFilter,
+    accountFilter,
+    accountOptions,
     filteredTasks,
     statusCounts,
   }
